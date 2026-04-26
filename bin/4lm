@@ -253,7 +253,8 @@ validate_profile() {
 
   # tool_call_parser, if present, must be in the allowed enum.
   # Source: app/parsers/ in mlx-openai-server v1.7.1.
-  local allowed_parsers="functiongemma gemma4 glm4_moe harmony hermes kimi_k2 longcat_flash_lite minimax_m2 qwen3 qwen3_5 qwen3_coder qwen3_moe solar_open step35"
+  # Source of truth: `mlx-openai-server launch --help` (--tool-call-parser).
+  local allowed_parsers="functiongemma gemma4 glm4_moe harmony hermes iquest_coder_v1 kimi_k2 longcat_flash_lite minimax_m2 nemotron3_nano qwen3 qwen3_coder qwen3_moe qwen3_vl solar_open step_35"
   while IFS= read -r line; do
     local val
     val="$(awk -F': ' '{print $2}' <<<"${line}" | tr -d '"' | tr -d "'" | tr -d ' ')"
