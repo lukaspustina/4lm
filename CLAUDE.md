@@ -4,8 +4,9 @@ Personal local-LLM stack for Apple Silicon: `mlx-openai-server` (backend) +
 `open-webui` (frontend), managed by launchd, controlled by a single `4lm`
 command.
 
-Design rationale and model-selection background lives in `BRIEFING.md`. Read
-that before changing the model set or backend choice.
+Model selection and the layered architecture rationale live in
+`specs/sdd/4lm-rework.md` (the SDD this repo implements). Read that before
+changing the model set, the backend choice, or the activation model.
 
 ## Repo layout
 

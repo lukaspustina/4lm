@@ -105,8 +105,8 @@ For mobile or family access prefer Tailscale (or any VPN) over `lan`. Bind to
 The backend is the source of truth. WebUI is a stateless frontend proxying to
 the backend. OpenCode talks directly to `:8000/v1`.
 
-See `BRIEFING.md` for design rationale (model selection, why MLX over Ollama,
-why launchd over Docker, why bash over Python).
+See `specs/sdd/4lm-rework.md` for the design rationale (model selection, why
+MLX over Ollama, why launchd over Docker, why bash over Python).
 
 ## Common operations
 
@@ -136,8 +136,7 @@ sudo rm /etc/newsyslog.d/4lm.conf
 
 - `docs/setup.md` — operator runbook (sudoers, troubleshooting, model pulls)
 - `docs/profile-schema.md` — YAML key reference for `mlx-openai-server`
-- `BRIEFING.md` — design rationale, model selection, hardware context
-- `specs/sdd/` — design documents
+- `specs/sdd/` — design documents (rationale, decisions, requirements)
 - `CLAUDE.md` — repo-orientation pointer for AI assistants
 
 ## Development
