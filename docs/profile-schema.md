@@ -70,28 +70,31 @@ working set.
 
 ## Parser values
 
-`tool_call_parser` is a free-form string at the schema level. Valid parsers in
-`app/parsers/` (v1.7.1):
+`tool_call_parser` is a free-form string at the schema level. Source of truth
+is `mlx-openai-server launch --help` (`--tool-call-parser` choices); the 4lm
+validator enforces it. Current set:
 
 - `functiongemma`
 - `gemma4`
 - `glm4_moe`
 - `harmony`
 - `hermes`
+- `iquest_coder_v1`
 - `kimi_k2`
 - `longcat_flash_lite`
 - `minimax_m2`
+- `nemotron3_nano`
 - `qwen3`
-- `qwen3_5`
 - `qwen3_coder`
 - `qwen3_moe`
+- `qwen3_vl`
 - `solar_open`
-- `step35`
+- `step_35`
 
-The 4lm `validate_profile` enforces this enum.
-
-`reasoning_parser` values are model-specific and not enumerated here. Use the
-value documented for your model (e.g. `glm47_flash`, `qwen3`, `harmony`).
+`reasoning_parser` is also enum-restricted by the binary
+(`--reasoning-parser` choices) but 4lm does not validate it — use a value
+listed by `mlx-openai-server launch --help`. Examples used in this repo:
+`glm47_flash`, `qwen3`, `harmony`.
 
 ## Validation
 
