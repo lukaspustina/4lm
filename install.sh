@@ -4,11 +4,13 @@
 # What it does:
 #   1. Verifies prerequisites (macOS arm64, Python 3.11+)
 #   2. Creates ~/.4lm/{bin,config/profiles,launchd,logs}
-#   3. Installs scripts, profile YAMLs, plists (plists in ~/.4lm/launchd/, NOT ~/Library/LaunchAgents/)
+#   3. Installs scripts, profile YAMLs, plists (plists live in ~/.4lm/launchd/,
+#      NOT ~/Library/LaunchAgents/, so launchd never auto-loads them)
 #   4. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent
-#   5. pipx install each pinned package from requirements.txt
-#   6. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
-#   7. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
+#   5. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
+#   6. pipx install each pinned package from requirements.txt (python3.12)
+#   7. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
+#   8. Installs /etc/sudoers.d/4lm-stack and sets iogpu.wired_limit_mb=98304
 #
 # Idempotent. Re-run after updates is safe. Does NOT bootstrap services.
 # Stop running agents with `4lm stop` before re-running this script if the
@@ -187,13 +189,37 @@ else
   ok "newsyslog rotation → ${NEWSYSLOG_CONF}"
 fi
 
-# ---- 11. Wired memory hint ------------------------------------------------
+# ---- 11. Sudoers + wired memory limit -------------------------------------
+# Install the NOPASSWD rule for the wrapper, then set the limit now. The
+# wrapper invokes the same literal command (`sudo -n /usr/sbin/sysctl -w
+# iogpu.wired_limit_mb=98304`); any drift between this string and the
+# wrapper's call breaks passwordless sudo.
+SUDOERS_FILE="/etc/sudoers.d/4lm-stack"
+SUDOERS_CONTENT="${USER} ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304"
+
+if sudo grep -qF "${SUDOERS_CONTENT}" "${SUDOERS_FILE}" 2>/dev/null; then
+  ok "sudoers already configured at ${SUDOERS_FILE}"
+else
+  echo "Requires sudo: installing ${SUDOERS_FILE}"
+  TEMP_SUDOERS="$(mktemp)"
+  trap 'rm -f "${TEMP_SUDOERS}"' EXIT
+  printf '%s\n' "${SUDOERS_CONTENT}" >"${TEMP_SUDOERS}"
+  if ! visudo -c -q -f "${TEMP_SUDOERS}"; then
+    die "sudoers content failed visudo validation"
+  fi
+  sudo install -m 0440 -o root -g wheel "${TEMP_SUDOERS}" "${SUDOERS_FILE}"
+  rm -f "${TEMP_SUDOERS}"
+  trap - EXIT
+  ok "sudoers → ${SUDOERS_FILE}"
+fi
+
 CURRENT="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
 if [[ "${CURRENT}" -lt 98304 ]]; then
-  warn "iogpu.wired_limit_mb is ${CURRENT} (recommend ≥98304)"
-  echo "    See docs/setup.md §Sudoers for the one-line fix."
+  echo "Requires sudo: setting iogpu.wired_limit_mb=98304"
+  sudo /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304 >/dev/null
+  ok "iogpu.wired_limit_mb=98304 (was ${CURRENT})"
 else
-  ok "iogpu.wired_limit_mb = ${CURRENT}"
+  ok "iogpu.wired_limit_mb=${CURRENT}"
 fi
 
 # ---- 12. Final summary ----------------------------------------------------
