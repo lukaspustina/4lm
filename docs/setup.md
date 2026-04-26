@@ -138,6 +138,25 @@ provides authentication.
 binaries on PATH). `4lm diag` is the *runtime* sweep. Use `doctor`
 after install, `diag` when something feels off.
 
+### OpenCode / WebUI output loops on the same sentence
+
+Symptom: model output cycles two or three sentences verbatim. Classic
+`repetition_penalty=1.0` failure mode, especially with Qwen3.6.
+
+The OpenAI API spec has no `repetition_penalty` field — clients can only
+pass `frequency_penalty` / `presence_penalty`. mlx-openai-server's default
+is 1.0 (off). The fix is server-side: `bin/4lm-backend-start.sh` passes
+`--repetition-penalty 1.05` to the launch invocation. If you've edited
+the wrapper and removed it, restore it; if 1.05 isn't enough for a
+particularly stubborn model, raise to 1.10 (don't go above 1.15 — output
+quality starts dropping).
+
+```sh
+# Verify penalty is on the running master's argv
+ps -o command= -p "$(pgrep -f 'mlx-openai-server launch' | head -1)" \
+  | tr ' ' '\n' | grep -A1 repetition-penalty
+```
+
 ### Worker burning CPU with no in-flight requests
 
 Symptom in `4lm diag`:

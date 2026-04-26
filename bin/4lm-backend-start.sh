@@ -70,7 +70,15 @@ echo "  binary: ${MLX_BIN}"
 echo "  config: $(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
 echo "  bind:   ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
 
+# --repetition-penalty 1.05: mlx-openai-server defaults to 1.0 (off), and the
+# OpenAI API spec has no `repetition_penalty` field — clients (OpenCode,
+# Open WebUI) can't pass it per-request. Qwen3.6 in MLX 8-bit reliably loops
+# at 1.0 ("For client X: …" cycling verbatim). 1.05 is the Qwen authors'
+# recommended baseline: enough to break loops, low enough not to harm
+# normal output. Override per-request with frequency_penalty/presence_penalty
+# (those ARE in the OpenAI spec).
 exec "${MLX_BIN}" launch \
   --config "${ACTIVE_CONFIG}" \
   --host "${BIND_HOST}" \
-  --port "${NET_PORT}"
+  --port "${NET_PORT}" \
+  --repetition-penalty 1.05
