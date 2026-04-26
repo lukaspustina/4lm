@@ -1,0 +1,7 @@
+# Bind mode for backend (mlx-openai-server) and webui (open-webui).
+# Values: local (127.0.0.1) | lan (0.0.0.0)
+mode: local
+
+# Ports - normally left as defaults.
+backend_port: 8000
+webui_port: 3000

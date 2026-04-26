@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: brew install bats-core shellcheck shfmt
+
+      - name: shellcheck
+        run: shellcheck bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh
+
+      - name: shfmt -d
+        run: shfmt -d bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh
+
+      - name: bash -n
+        run: |
+          for f in bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh; do
+            bash -n "$f"
+          done
+
+      - name: plutil -lint
+        run: plutil -lint launchd/*.plist
+
+      - name: xmllint
+        run: xmllint --noout launchd/*.plist
+
+      - name: YAML profile validation
+        shell: bash
+        run: |
+          python3 - <<'PYEOF'
+          import glob, sys, yaml
+          fail = False
+          for path in sorted(glob.glob("config/profiles/*.yaml")):
+              try:
+                  d = yaml.safe_load(open(path))
+              except Exception as e:
+                  print(f"FAIL {path}: {e}"); fail = True; continue
+              if not isinstance(d, dict) or "models" not in d or not d["models"]:
+                  print(f"FAIL {path}: missing or empty 'models'"); fail = True; continue
+              for i, m in enumerate(d["models"]):
+                  if not m.get("model_path"):
+                      print(f"FAIL {path}[{i}]: missing model_path"); fail = True
+                  if not m.get("served_model_name"):
+                      print(f"FAIL {path}[{i}]: missing served_model_name"); fail = True
+                  ctx = m.get("context_length")
+                  if not isinstance(ctx, int) or ctx <= 0:
+                      print(f"FAIL {path}[{i}]: missing/invalid context_length"); fail = True
+              print(f"OK {path}")
+          sys.exit(1 if fail else 0)
+          PYEOF
+
+      - name: bats
+        run: bats tests/

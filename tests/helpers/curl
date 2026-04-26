@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Stub: configurable response per test via env vars.
+#   CURL_STUB_RESPONSE  — body printed on stdout
+#   CURL_STUB_EXIT      — exit code (default 1, mimicking --fail on no server)
+
+if [[ -n "${CURL_STUB_RESPONSE:-}" ]]; then
+  printf '%s' "${CURL_STUB_RESPONSE}"
+  exit 0
+fi
+exit "${CURL_STUB_EXIT:-1}"

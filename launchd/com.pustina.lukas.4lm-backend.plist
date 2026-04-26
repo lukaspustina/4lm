@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.4lm.backend</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/.4lm/bin/4lm-backend-start.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ExitTimeOut</key>
+    <integer>60</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.4lm/logs/backend.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.4lm/logs/backend.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>__HOME__/.4lm</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:__HOME__/.local/bin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <key>Umask</key>
+    <integer>63</integer>
+</dict>
+</plist>

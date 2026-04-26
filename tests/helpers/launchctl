@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Stub: records calls to ${BATS_TMPDIR}/launchctl.log, returns 0.
+# Tests that need to assert behaviour can grep the log file.
+
+LOG="${LAUNCHCTL_LOG:-${BATS_TMPDIR:-/tmp}/launchctl.log}"
+echo "$*" >> "${LOG}"
+
+# `launchctl print` is used by is_loaded/is_running. Default: not loaded.
+case "${1:-}" in
+  print)
+    if [[ -n "${LAUNCHCTL_PRINT_OUTPUT:-}" ]]; then
+      printf '%s\n' "${LAUNCHCTL_PRINT_OUTPUT}"
+      exit 0
+    fi
+    exit 1
+    ;;
+esac
+exit 0
