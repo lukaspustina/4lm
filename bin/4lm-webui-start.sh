@@ -57,7 +57,8 @@ fi
 # ---- Environment for Open WebUI --------------------------------------------
 export OPENAI_API_BASE_URL="${BACKEND_URL}"
 export OPENAI_API_KEY="local-no-auth"
-export DATA_DIR="${DATA_DIR}"
+# DATA_DIR is already set above; readonly forbids reassignment, just mark for export.
+export DATA_DIR
 export ENABLE_OLLAMA_API="False"
 export WEBUI_AUTH="True"
 # Pending: operator must explicitly promote each new account to admin.
