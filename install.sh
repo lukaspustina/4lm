@@ -3,16 +3,16 @@
 #
 # What it does:
 #   1. Verifies prerequisites (macOS arm64, Python 3.11+)
-#   2. Migrates ~/.llm-stack → ~/.4lm if present
-#   3. Boots out any old legacy.llm-*, legacy.4lm-*, and com.4lm.* labels
-#   4. Creates ~/.4lm/{bin,config/profiles,launchd,logs}
-#   5. Installs scripts, profile YAMLs, plists (plists in ~/.4lm/launchd/, NOT ~/Library/LaunchAgents/)
-#   6. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent
-#   7. pip install -r requirements.txt
-#   8. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
-#   9. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
+#   2. Creates ~/.4lm/{bin,config/profiles,launchd,logs}
+#   3. Installs scripts, profile YAMLs, plists (plists in ~/.4lm/launchd/, NOT ~/Library/LaunchAgents/)
+#   4. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent
+#   5. pip install -r requirements.txt
+#   6. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
+#   7. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
 #
 # Idempotent. Re-run after updates is safe. Does NOT bootstrap services.
+# Stop running agents with `4lm stop` before re-running this script if the
+# plist contents have changed.
 # After install, run: 4lm start
 
 set -euo pipefail
@@ -25,10 +25,6 @@ readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
 readonly BIN_DIR="${HOME}/.local/bin"
 
 readonly SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly OLD_HOME="${HOME}/.llm-stack"
-
-UID_NUM="$(id -u)"
-readonly UID_NUM
 
 # Colors
 if [[ -t 1 ]]; then
@@ -67,35 +63,7 @@ if ! command -v python3 >/dev/null; then die "python3 not found"; fi
 PY_VER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 ok "Python ${PY_VER}"
 
-# ---- 2. Migrate ~/.llm-stack → ~/.4lm if needed ---------------------------
-if [[ -d "${OLD_HOME}" && ! -d "${LLM_HOME}" ]]; then
-  info "Migrating ${OLD_HOME} → ${LLM_HOME}"
-  mv "${OLD_HOME}" "${LLM_HOME}"
-
-  # Rewrite mlx-active symlink target if it still points into the old tree.
-  local_active="${CONFIG_DIR}/mlx-active"
-  legacy_active="${CONFIG_DIR}/mlx-active.yaml"
-  if [[ -L "${legacy_active}" ]]; then
-    target="$(readlink "${legacy_active}")"
-    new_target="${target/\.llm-stack/.4lm}"
-    ln -sfn "${new_target}" "${local_active}"
-    rm -f "${legacy_active}"
-    ok "Renamed mlx-active.yaml → mlx-active and rewrote target"
-  elif [[ -L "${local_active}" ]]; then
-    target="$(readlink "${local_active}")"
-    new_target="${target/\.llm-stack/.4lm}"
-    ln -sfn "${new_target}" "${local_active}"
-  fi
-  ok "Migration complete"
-fi
-
-# ---- 3. Bootout any stale agents ------------------------------------------
-info "Booting out any previously loaded agents…"
-for label in legacy.llm-backend legacy.llm-webui legacy.4lm-backend legacy.4lm-webui com.4lm.backend com.4lm.webui; do
-  launchctl bootout "gui/${UID_NUM}/${label}" 2>/dev/null || true
-done
-
-# ---- 4. Directories --------------------------------------------------------
+# ---- 2. Directories --------------------------------------------------------
 info "Creating ${LLM_HOME}/…"
 mkdir -p "${LLM_HOME}/bin" \
   "${PROFILES_DIR}" \
@@ -103,7 +71,7 @@ mkdir -p "${LLM_HOME}/bin" \
   "${LOG_DIR}" \
   "${BIN_DIR}"
 
-# ---- 5. Install scripts ---------------------------------------------------
+# ---- 3. Install scripts ---------------------------------------------------
 info "Installing scripts…"
 for script in 4lm 4lm-backend-start.sh 4lm-webui-start.sh; do
   cp "${SOURCE_DIR}/bin/${script}" "${LLM_HOME}/bin/${script}"
@@ -111,7 +79,7 @@ for script in 4lm 4lm-backend-start.sh 4lm-webui-start.sh; do
 done
 ok "Scripts → ${LLM_HOME}/bin/"
 
-# ---- 6. Install profile YAMLs (don't overwrite local edits) ---------------
+# ---- 4. Install profile YAMLs (don't overwrite local edits) ---------------
 info "Installing profile templates…"
 for profile in "${SOURCE_DIR}"/config/profiles/*.yaml; do
   [[ -f "${profile}" ]] || continue
@@ -124,7 +92,7 @@ for profile in "${SOURCE_DIR}"/config/profiles/*.yaml; do
   fi
 done
 
-# ---- 7. Active profile default --------------------------------------------
+# ---- 5. Active profile default --------------------------------------------
 ACTIVE="${CONFIG_DIR}/mlx-active"
 if [[ ! -L "${ACTIVE}" && ! -f "${ACTIVE}" ]]; then
   ln -sfn "${PROFILES_DIR}/default.yaml" "${ACTIVE}"
@@ -133,7 +101,7 @@ else
   info "Active profile already set: $(readlink "${ACTIVE}" 2>/dev/null || echo "${ACTIVE}")"
 fi
 
-# ---- 8. Seed network.yaml from example ------------------------------------
+# ---- 6. Seed network.yaml from example ------------------------------------
 NETWORK_YAML="${CONFIG_DIR}/network.yaml"
 NETWORK_EXAMPLE_SRC="${SOURCE_DIR}/config/network.example.yaml"
 if [[ ! -f "${NETWORK_YAML}" ]]; then
@@ -143,7 +111,7 @@ else
   info "network.yaml exists, not overwriting"
 fi
 
-# ---- 9. Install plists into ~/.4lm/launchd/ -------------------------------
+# ---- 7. Install plists into ~/.4lm/launchd/ -------------------------------
 info "Installing launchd plists into ${LAUNCHD_DIR}/ (not ~/Library/LaunchAgents/)…"
 for plist_src in "${SOURCE_DIR}"/launchd/*.plist; do
   [[ -f "${plist_src}" ]] || continue
@@ -152,7 +120,7 @@ for plist_src in "${SOURCE_DIR}"/launchd/*.plist; do
   ok "Plist → $(basename "${plist_src}")"
 done
 
-# ---- 10. Symlink CLI ------------------------------------------------------
+# ---- 8. Symlink CLI ------------------------------------------------------
 info "Linking 4lm command…"
 ln -sfn "${LLM_HOME}/bin/4lm" "${BIN_DIR}/4lm"
 # Remove legacy llm symlink if present and points at us.
@@ -172,7 +140,7 @@ if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
   echo "    Add to ~/.zshrc:  export PATH=\"\${HOME}/.local/bin:\${PATH}\""
 fi
 
-# ---- 11. pip install ------------------------------------------------------
+# ---- 9. pip install ------------------------------------------------------
 info "Installing Python deps from requirements.txt…"
 if command -v pip3 >/dev/null; then
   pip3 install -r "${SOURCE_DIR}/requirements.txt"
@@ -182,7 +150,7 @@ else
   warn "pip not found — install mlx-openai-server and open-webui manually"
 fi
 
-# ---- 12. newsyslog log rotation ------------------------------------------
+# ---- 10. newsyslog log rotation ------------------------------------------
 NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
 NEWSYSLOG_BODY="${HOME}/.4lm/logs/backend.log               600  7     10240 *     J
 ${HOME}/.4lm/logs/webui.log                 600  7     10240 *     J"
@@ -195,7 +163,7 @@ else
   ok "newsyslog rotation → ${NEWSYSLOG_CONF}"
 fi
 
-# ---- 13. Wired memory hint ------------------------------------------------
+# ---- 11. Wired memory hint ------------------------------------------------
 CURRENT="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
 if [[ "${CURRENT}" -lt 98304 ]]; then
   warn "iogpu.wired_limit_mb is ${CURRENT} (recommend ≥98304)"
@@ -204,7 +172,7 @@ else
   ok "iogpu.wired_limit_mb = ${CURRENT}"
 fi
 
-# ---- 14. Final summary ----------------------------------------------------
+# ---- 12. Final summary ----------------------------------------------------
 echo
 echo "${C_GRN}════════════════════════════════════${C_RST}"
 echo "${C_GRN} Installation complete${C_RST}"
