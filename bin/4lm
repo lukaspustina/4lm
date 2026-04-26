@@ -29,6 +29,9 @@ readonly WEBUI_PLIST="${LAUNCHD_DIR}/${WEBUI_LABEL}.plist"
 
 readonly REQUIRED_WIRED_LIMIT_MB=98304
 
+# Profile-switch /v1/models poll budget in seconds. Tests override via env.
+readonly BACKEND_POLL_SECS="${BACKEND_POLL_SECS:-30}"
+
 # Cache uid once.
 UID_NUM="$(id -u)"
 readonly UID_NUM
@@ -279,7 +282,7 @@ cmd_profile() {
       ;;
     current|show)
       if [[ -L "${ACTIVE_CONFIG}" ]]; then
-        echo "$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+        basename "$(readlink "${ACTIVE_CONFIG}")" .yaml
       else
         echo "(none)"
       fi
@@ -325,7 +328,7 @@ cmd_profile_set() {
     # (e) Poll /v1/models for up to 30 s.
     local url="$(backend_url)/v1/models"
     local ok_load=0
-    for _ in $(seq 1 30); do
+    for _ in $(seq 1 "${BACKEND_POLL_SECS}"); do
       if curl --max-time 1 --silent --fail "${url}" >/dev/null 2>&1; then
         ok_load=1
         break
@@ -565,4 +568,9 @@ main() {
   esac
 }
 
-main "$@"
+# Allow this file to be sourced by tests/scripts (e.g. profile linter) without
+# triggering main. When executed directly, BASH_SOURCE[0] == $0; when sourced,
+# they differ.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

@@ -56,14 +56,13 @@ setup() {
 }
 
 @test "switch fails to load and rolls back when backend loaded but /v1/models never responds" {
-  # Force is_loaded true so the poll path is exercised.
+  # Force is_loaded true so the poll path is exercised. curl stub returns failure
+  # (default), so the poll times out and rollback should fire. BACKEND_POLL_SECS
+  # caps the wait so the test runs in seconds rather than minutes.
   export LAUNCHCTL_PRINT_OUTPUT="state = running
 pid = 12345"
-  # curl stub returns failure (default), so poll will time out. Use short delay.
-  # We can't easily bound 30s polling in CI; smoke test the rollback path instead
-  # by seeding mlx-previous and verifying the symlink reverts.
   echo "default" > "${HOME}/.4lm/config/mlx-previous"
-  run timeout 35 "${REPO_ROOT}/bin/4lm" profile set coding-only
+  BACKEND_POLL_SECS=2 run "${REPO_ROOT}/bin/4lm" profile set coding-only
   [ "$status" -eq 1 ]
   target="$(readlink "${HOME}/.4lm/config/mlx-active")"
   [[ "${target}" == *"default.yaml" ]]

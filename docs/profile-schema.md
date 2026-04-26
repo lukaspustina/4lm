@@ -58,6 +58,16 @@ The pre-rework profiles also used `context_window` (not in the schema) and
 `max_concurrency` (not in the schema). Both were silently ignored. The current
 profiles use `context_length`.
 
+### KV-cache size
+
+Per-model KV-cache memory is roughly `n_layers × n_kv_heads × head_dim ×
+bytes_per_element × context_length × 2` (×2 for K and V). MLX quants don't
+expose `n_kv_heads`/`head_dim` uniformly, and quantisation may compact the
+cache, so a static estimate is unreliable across the model set in
+`default.yaml`. Measure at runtime once models are loaded — `4lm status` shows
+backend RSS, and Activity Monitor / `vm_stat` reflect the unified-memory
+working set.
+
 ## Parser values
 
 `tool_call_parser` is a free-form string at the schema level. Valid parsers in
