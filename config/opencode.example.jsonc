@@ -1,0 +1,22 @@
+// Template OpenCode config for the 4lm backend.
+// install.sh copies this to ~/.config/opencode/opencode.jsonc on first run.
+// Edit the installed copy; this file is the template.
+//
+// Schema reference: https://opencode.ai/config.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "mlx-4lm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local MLX (4lm)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8000/v1"
+      },
+      "models": {
+        "glm-4.7-flash": { "name": "GLM-4.7-Flash (build/code)" },
+        "qwen3.6-35b": { "name": "Qwen3.6-35B (plan/knowledge)" },
+        "gpt-oss-120b": { "name": "GPT-OSS-120B (heavy reasoning, on-demand)" }
+      }
+    }
+  }
+}

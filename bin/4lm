@@ -452,13 +452,19 @@ cmd_doctor() {
   if command -v mlx-openai-server >/dev/null; then
     ok "mlx-openai-server: $(command -v mlx-openai-server)"
   else
-    warn "mlx-openai-server not in PATH (run: pip install -r requirements.txt)"
+    warn "mlx-openai-server not in PATH (run: make install)"
     fail=1
   fi
   if command -v open-webui >/dev/null; then
     ok "open-webui: $(command -v open-webui)"
   else
-    warn "open-webui not in PATH (run: pip install -r requirements.txt)"
+    warn "open-webui not in PATH (run: make install)"
+    fail=1
+  fi
+  if command -v opencode >/dev/null; then
+    ok "opencode: $(command -v opencode)"
+  else
+    warn "opencode not in PATH (run: make bootstrap)"
     fail=1
   fi
 
@@ -473,6 +479,15 @@ cmd_open() {
     backend | be) open "$(backend_url)/v1/models" ;;
     *) die "Unknown target: ${target}" ;;
   esac
+}
+
+# ---- OpenCode --------------------------------------------------------------
+cmd_opencode() {
+  command -v opencode >/dev/null || die "opencode not found — run: make bootstrap"
+  if ! curl --max-time 1 --silent --fail "$(backend_url)/v1/models" >/dev/null 2>&1; then
+    warn "backend not responding at $(backend_url) — run: 4lm start backend"
+  fi
+  exec opencode "$@"
 }
 
 # ---- Uninstall (runtime side: bootout + remove ~/.local/bin/4lm) ----------
@@ -550,9 +565,12 @@ ${C_DIM}Profiles:${C_RST}
 ${C_DIM}Network exposure:${C_RST}
   4lm expose local|lan [--confirm]   Change bind mode
 
+${C_DIM}Clients:${C_RST}
+  4lm opencode [args...]             Run OpenCode TUI against the local backend (alias: code)
+  4lm open [webui|backend]           Open URL in browser (default: webui)
+
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
-  4lm open [webui|backend]           Open URL in browser (default: webui)
   4lm uninstall                      Bootout agents, remove ~/.local/bin/4lm
 EOF
 }
@@ -572,6 +590,7 @@ main() {
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor ;;
     open) cmd_open "$@" ;;
+    opencode | code) cmd_opencode "$@" ;;
     uninstall | remove) cmd_uninstall ;;
     help | --help | -h) cmd_help ;;
     *) die "Unknown command: ${cmd}. Try \`4lm help\`." ;;

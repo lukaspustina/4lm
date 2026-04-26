@@ -21,6 +21,7 @@ make models
 
 # 5. Daily life
 4lm status             # see what's running
+4lm opencode           # OpenCode TUI bound to the local backend
 4lm logs backend       # tail backend log (uses tail -F, follows rotation)
 4lm restart            # after profile or config changes
 4lm stop               # shutdown
