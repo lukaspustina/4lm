@@ -73,6 +73,29 @@ Open the WebUI in private browsing **immediately** and register your account.
 to admin from the WebUI admin panel after registering. Until then the account
 has no privileges.
 
+## Step 5 — OpenCode TUI
+
+`make bootstrap` installs the homebrew/core `opencode` formula (anomalyco's
+distribution; sst/opencode no longer exists). `make install` seeds
+`~/.config/opencode/opencode.jsonc` from `config/opencode.example.jsonc` if
+absent — pre-wired with provider `mlx-4lm` pointing at
+`http://127.0.0.1:8000/v1` and the three default-profile models.
+
+```sh
+4lm opencode                     # cwd as project
+4lm opencode ~/projects/foo      # specific project
+4lm opencode run "fix lint"      # one-shot, no TUI
+4lm code                         # alias
+```
+
+The wrapper checks the backend with a 1 s curl before exec'ing opencode; if
+the backend isn't responding it warns but still runs (so `opencode providers`,
+`opencode models`, etc. work without a live backend).
+
+To customise (different models, additional providers like Z.ai or Anthropic),
+edit `~/.config/opencode/opencode.jsonc` directly — install.sh leaves it alone
+on subsequent runs.
+
 ## Network exposure
 
 Default bind is `127.0.0.1`. To expose to your LAN:

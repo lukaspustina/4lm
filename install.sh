@@ -11,6 +11,7 @@
 #   6. pipx install each pinned package from requirements.txt (python3.12)
 #   7. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
 #   8. Installs /etc/sudoers.d/4lm-stack and sets iogpu.wired_limit_mb=98304
+#   9. Seeds ~/.config/opencode/opencode.jsonc from the template if absent
 #
 # Idempotent. Re-run after updates is safe. Does NOT bootstrap services.
 # Stop running agents with `4lm stop` before re-running this script if the
@@ -225,7 +226,19 @@ else
   ok "iogpu.wired_limit_mb=${CURRENT}"
 fi
 
-# ---- 12. Final summary ----------------------------------------------------
+# ---- 12. OpenCode config --------------------------------------------------
+OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
+OPENCODE_CONFIG="${OPENCODE_CONFIG_DIR}/opencode.jsonc"
+OPENCODE_TEMPLATE="${SOURCE_DIR}/config/opencode.example.jsonc"
+mkdir -p "${OPENCODE_CONFIG_DIR}"
+if [[ ! -f "${OPENCODE_CONFIG}" ]]; then
+  cp "${OPENCODE_TEMPLATE}" "${OPENCODE_CONFIG}"
+  ok "opencode config seeded → ${OPENCODE_CONFIG}"
+else
+  info "opencode config exists, not overwriting: ${OPENCODE_CONFIG}"
+fi
+
+# ---- 13. Final summary ----------------------------------------------------
 echo
 echo "${C_GRN}════════════════════════════════════${C_RST}"
 echo "${C_GRN} Installation complete${C_RST}"
