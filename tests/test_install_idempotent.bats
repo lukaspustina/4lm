@@ -32,6 +32,10 @@ exit 0
 SH
   chmod +x "${STUB_BIN}/pipx"
 
+  # Stub python3.12 so the compat-Python check passes without brew install.
+  printf '#!/usr/bin/env bash\nexit 0\n' > "${STUB_BIN}/python3.12"
+  chmod +x "${STUB_BIN}/python3.12"
+
   export PATH="${STUB_BIN}:${PATH}"
 }
 
