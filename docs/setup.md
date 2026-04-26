@@ -13,63 +13,50 @@ local LLM stack on Apple Silicon.
 > mlx-openai-server 1.7.1 requires Python `>=3.11,<3.13`, so install.sh
 > creates pipx venvs with `python3.12` even if your system default is newer.
 
-## Step 1 — Pre-download model weights
-
-`mlx-openai-server` will pull on demand, but a 30+ GB model on residential fiber
-is 10-15 minutes of "is it broken or working?". Pre-pull:
+## Step 1 — Install
 
 ```sh
-huggingface-cli download mlx-community/GLM-4.7-Flash-8bit
-huggingface-cli download unsloth/Qwen3.6-35B-A3B-MLX-8bit
-huggingface-cli download LibraxisAI/gpt-oss-120b-mlx-mxfp4
+make install
 ```
 
-Cache lives at `~/.cache/huggingface/hub/`.
+The installer is idempotent and will:
 
-## Step 2 — Wired memory limit (Sudoers)
-
-macOS Metal allocates GPU memory from a "wired" pool that defaults to ~70 % of
-RAM. On a 128 GB Mac that's ~89 GB, which is *just* enough for two 8-bit MoE
-models but breaks the moment KV cache or the on-demand 120B model loads.
-
-Persist a higher cap and grant the backend wrapper passwordless access:
-
-```sh
-sudo /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
-echo "iogpu.wired_limit_mb=98304" | sudo tee -a /etc/sysctl.conf
-
-sudo visudo -f /etc/sudoers.d/4lm-stack
-# Add (literal must match the wrapper invocation EXACTLY):
-lukas ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
-```
-
-Without this, the backend wrapper will print
-`WARN: wired_limit_mb not set — run \`4lm doctor\` for fix` and continue
-with the lower cap.
-
-`4lm health` exits 0 if the limit is met, 1 otherwise.
-
-## Step 3 — Install
-
-```sh
-./install.sh
-```
-
-The installer is idempotent. It will:
-
-- Migrate `~/.llm-stack/` → `~/.4lm/` if present
-- Bootout any leftover `legacy.llm-*`, `legacy.4lm-*`, and `com.4lm.*` agents
 - Copy scripts, plists, profiles into `~/.4lm/`
 - Seed `~/.4lm/config/network.yaml` (mode: local) on first run
-- `pip install -r requirements.txt`
-- `sudo tee /etc/newsyslog.d/4lm.conf` for log rotation
 - Symlink `~/.local/bin/4lm` → `~/.4lm/bin/4lm`
+- `pipx install` each pinned package from `requirements.txt` using `python3.12`
+- Write `/etc/sudoers.d/4lm-stack` (validated via `visudo -c`, mode 0440,
+  root:wheel-owned) so the backend wrapper can call sysctl without a TTY
+- Set `iogpu.wired_limit_mb=98304` via sudo if currently lower
+- `sudo tee /etc/newsyslog.d/4lm.conf` for log rotation
+
+You'll see one or two sudo prompts during step 1. None on subsequent runs.
 
 It will **not** start any services and will **not** copy plists to
 `~/Library/LaunchAgents/`. Plists are stored in `~/.4lm/launchd/` so launchd
 does not auto-start them at login.
 
-## Step 4 — Start
+> §Sudoers: the literal in `/etc/sudoers.d/4lm-stack` must match the
+> wrapper's invocation exactly:
+> `lukas ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304`.
+> install.sh writes this verbatim. Don't hand-edit the file.
+
+## Step 2 — Pre-download model weights
+
+`mlx-openai-server` will pull on demand, but a 30+ GB model on residential
+fiber is 10-15 minutes of "is it broken or working?". Pre-pull all profile
+models in one shot:
+
+```sh
+make models           # download/update every model in config/profiles/
+make models-list      # see what's cached
+make models-clean     # prune orphaned revisions
+make models-rm MODEL=<repo>   # remove one specific model
+```
+
+Cache lives at `~/.cache/huggingface/hub/` (~140 GB for the default profile).
+
+## Step 3 — Start
 
 ```sh
 4lm start         # bootstrap and start backend + webui
@@ -79,7 +66,7 @@ does not auto-start them at login.
 
 After reboot, services are stopped. Run `4lm start` to bring them back.
 
-## Step 5 — Open WebUI first user
+## Step 4 — Open WebUI first user
 
 Open the WebUI in private browsing **immediately** and register your account.
 `DEFAULT_USER_ROLE` is set to `pending`, so you must explicitly promote yourself
@@ -110,18 +97,22 @@ provides authentication.
 iogpu.wired_limit_mb=<x> < 98304 — see docs/setup.md §Sudoers
 ```
 
-You haven't completed Step 2. Either set the limit interactively
-(`sudo /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304`) or add the sudoers line.
+Set it interactively or re-run `make install` — install.sh writes the
+sudoers rule and sets the limit when its check fails. The setting persists
+until reboot, after which the backend wrapper re-applies it via the sudoers
+NOPASSWD entry on next start.
 
 ### `sudo: a password is required` in backend.log
 
-Sudoers literal does not match the wrapper invocation. The wrapper calls:
+Sudoers literal does not match the wrapper invocation. install.sh writes
+the matching pair, so this only happens if `/etc/sudoers.d/4lm-stack` was
+edited or removed. Wrapper invokes:
 
 ```
 sudo -n /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
 ```
 
-The sudoers file must list **exactly** that command path and arguments.
+Re-run `make install` to restore the sudoers file.
 
 ### `newsyslog: cannot open` after install
 

@@ -81,9 +81,12 @@ if command -v pipx >/dev/null && [[ -f "${SOURCE_DIR}/requirements.txt" ]]; then
   while IFS= read -r line; do
     [[ -z "${line}" || "${line}" =~ ^# ]] && continue
     pkg="${line%%==*}"
-    if pipx list --short 2>/dev/null | grep -qE "^${pkg} "; then
-      pipx uninstall "${pkg}" >/dev/null
-      ok "pipx uninstall ${pkg}"
+    # `pipx list --short` normalises names: drops [extras], turns _ into -.
+    pkg_listed="${pkg%%[*}"
+    pkg_listed="${pkg_listed//_/-}"
+    if pipx list --short 2>/dev/null | grep -qE "^${pkg_listed} "; then
+      pipx uninstall "${pkg_listed}" >/dev/null
+      ok "pipx uninstall ${pkg_listed}"
     fi
   done <"${SOURCE_DIR}/requirements.txt"
 fi

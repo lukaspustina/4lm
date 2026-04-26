@@ -168,7 +168,10 @@ while IFS= read -r line; do
   [[ -z "${line}" || "${line}" =~ ^# ]] && continue
   pkg="${line%%==*}"
   ver="${line#*==}"
-  if pipx list --short 2>/dev/null | grep -qE "^${pkg} ${ver}( |$)"; then
+  # `pipx list --short` normalises names: drops [extras], turns _ into -.
+  pkg_listed="${pkg%%[*}"
+  pkg_listed="${pkg_listed//_/-}"
+  if pipx list --short 2>/dev/null | grep -qE "^${pkg_listed} ${ver}( |$)"; then
     info "${pkg}==${ver} already installed"
   else
     info "pipx install --python ${PIPX_PYTHON} ${pkg}==${ver}"
