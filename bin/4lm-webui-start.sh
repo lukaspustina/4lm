@@ -24,7 +24,7 @@ if [[ -f "${NETWORK_YAML}" ]]; then
 fi
 case "${NET_MODE}" in
   local) BIND_HOST="127.0.0.1" ;;
-  lan)   BIND_HOST="0.0.0.0" ;;
+  lan) BIND_HOST="0.0.0.0" ;;
   *)
     echo "[$(date -Iseconds)] FATAL: invalid mode '${NET_MODE}' in ${NETWORK_YAML}" >&2
     exit 78
@@ -70,7 +70,7 @@ export SCARF_NO_ANALYTICS="true"
 if [[ "${NET_MODE}" == "lan" ]]; then
   if [[ ! -f "${SECRET_KEY_FILE}" ]]; then
     umask 077
-    openssl rand -hex 32 > "${SECRET_KEY_FILE}"
+    openssl rand -hex 32 >"${SECRET_KEY_FILE}"
     chmod 600 "${SECRET_KEY_FILE}"
   fi
   WEBUI_SECRET_KEY="$(cat "${SECRET_KEY_FILE}")"

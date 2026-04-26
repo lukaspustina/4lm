@@ -32,15 +32,27 @@ readonly UID_NUM
 
 # Colors
 if [[ -t 1 ]]; then
-  C_RED=$'\033[0;31m'; C_GRN=$'\033[0;32m'; C_YEL=$'\033[0;33m'
-  C_BLU=$'\033[0;34m'; C_DIM=$'\033[2m'; C_RST=$'\033[0m'
+  C_RED=$'\033[0;31m'
+  C_GRN=$'\033[0;32m'
+  C_YEL=$'\033[0;33m'
+  C_BLU=$'\033[0;34m'
+  C_DIM=$'\033[2m'
+  C_RST=$'\033[0m'
 else
-  C_RED=""; C_GRN=""; C_YEL=""; C_BLU=""; C_DIM=""; C_RST=""
+  C_RED=""
+  C_GRN=""
+  C_YEL=""
+  C_BLU=""
+  C_DIM=""
+  C_RST=""
 fi
-ok()   { echo "${C_GRN}✓${C_RST} $*"; }
+ok() { echo "${C_GRN}✓${C_RST} $*"; }
 warn() { echo "${C_YEL}⚠${C_RST} $*" >&2; }
 info() { echo "${C_BLU}→${C_RST} $*"; }
-die()  { echo "${C_RED}✗${C_RST} $*" >&2; exit 1; }
+die() {
+  echo "${C_RED}✗${C_RST} $*" >&2
+  exit 1
+}
 
 echo "${C_DIM}════════════════════════════════════${C_RST}"
 echo " 4lm — Installer"
@@ -86,10 +98,10 @@ done
 # ---- 4. Directories --------------------------------------------------------
 info "Creating ${LLM_HOME}/…"
 mkdir -p "${LLM_HOME}/bin" \
-         "${PROFILES_DIR}" \
-         "${LAUNCHD_DIR}" \
-         "${LOG_DIR}" \
-         "${BIN_DIR}"
+  "${PROFILES_DIR}" \
+  "${LAUNCHD_DIR}" \
+  "${LOG_DIR}" \
+  "${BIN_DIR}"
 
 # ---- 5. Install scripts ---------------------------------------------------
 info "Installing scripts…"
@@ -136,7 +148,7 @@ info "Installing launchd plists into ${LAUNCHD_DIR}/ (not ~/Library/LaunchAgents
 for plist_src in "${SOURCE_DIR}"/launchd/*.plist; do
   [[ -f "${plist_src}" ]] || continue
   target="${LAUNCHD_DIR}/$(basename "${plist_src}")"
-  sed "s|__HOME__|${HOME}|g" "${plist_src}" > "${target}"
+  sed "s|__HOME__|${HOME}|g" "${plist_src}" >"${target}"
   ok "Plist → $(basename "${plist_src}")"
 done
 
@@ -147,7 +159,10 @@ ln -sfn "${LLM_HOME}/bin/4lm" "${BIN_DIR}/4lm"
 if [[ -L "${BIN_DIR}/llm" ]]; then
   legacy_target="$(readlink "${BIN_DIR}/llm")"
   case "${legacy_target}" in
-    *llm-stack*|*"/.4lm/"*) rm "${BIN_DIR}/llm"; ok "Removed legacy llm symlink" ;;
+    *llm-stack* | *"/.4lm/"*)
+      rm "${BIN_DIR}/llm"
+      ok "Removed legacy llm symlink"
+      ;;
   esac
 fi
 ok "4lm → ${BIN_DIR}/4lm"

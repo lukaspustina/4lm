@@ -15,7 +15,7 @@ mkdir -p "${LOG_DIR}"
 if [[ ! -L "${ACTIVE_CONFIG}" && ! -f "${ACTIVE_CONFIG}" ]]; then
   echo "[$(date -Iseconds)] FATAL: No active profile at ${ACTIVE_CONFIG}" >&2
   echo "  Run: 4lm profile set <profile-name>" >&2
-  exit 78  # EX_CONFIG
+  exit 78 # EX_CONFIG
 fi
 
 # ---- Bind host / port from network.yaml ------------------------------------
@@ -27,7 +27,7 @@ if [[ -f "${NETWORK_YAML}" ]]; then
 fi
 case "${NET_MODE}" in
   local) BIND_HOST="127.0.0.1" ;;
-  lan)   BIND_HOST="0.0.0.0" ;;
+  lan) BIND_HOST="0.0.0.0" ;;
   *)
     echo "[$(date -Iseconds)] FATAL: invalid mode '${NET_MODE}' in ${NETWORK_YAML}" >&2
     exit 78
