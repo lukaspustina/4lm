@@ -110,8 +110,11 @@ make install                    # detects drift, force-reinstalls via pipx
 4lm logs backend
 4lm restart backend
 
-# Sanity sweep
+# Sanity sweep (prereqs: sudoers, plists, CLI binaries)
 4lm doctor
+
+# Why are the fans on? (live clients, recent inference, top CPU consumers)
+4lm diag
 
 # Models
 make models                     # download/update everything in config/profiles/

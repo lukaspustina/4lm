@@ -114,6 +114,28 @@ provides authentication.
 
 ## Troubleshooting
 
+### "Why are the fans on?" — finding the workload
+
+`4lm diag` is the answer to the live-traffic question. It prints, in order:
+
+- Established TCP connections to backend (`:8000`) and WebUI (`:3000`),
+  with the client process name and PID. An active OpenCode session shows
+  up here as `opencode pid=… 127.0.0.1:NNNN→:8000`. Browser tabs show as
+  `com.apple.WebKit.Networking → :3000`.
+- The last 10 `BatchScheduler admitted/finished` log lines from
+  `~/.4lm/logs/backend.log`, with timestamps. If you see admits without
+  matching finishes, a request is still generating.
+- Top six CPU consumers system-wide (`ps -arc`). The mlx worker shows
+  here as `Python` with ~30 GB RSS when a model is in flight.
+- A copy-paste line for `sudo powermetrics --samplers gpu_power` for
+  the actual GPU activity (it doesn't run inside `diag` because it
+  needs sudo and prints a lot).
+
+`4lm doctor` is the *static* sweep (prereqs, file paths, sudoers,
+binaries on PATH). `4lm diag` is the *runtime* sweep (live traffic,
+recent activity, system load). Use `doctor` after install, `diag`
+when something feels off.
+
 ### `4lm health` exits 1
 
 ```
