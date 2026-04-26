@@ -70,7 +70,7 @@ echo "  binary: ${MLX_BIN}"
 echo "  config: $(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
 echo "  bind:   ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
 
-exec "${MLX_BIN}" \
+exec "${MLX_BIN}" launch \
   --config "${ACTIVE_CONFIG}" \
   --host "${BIND_HOST}" \
   --port "${NET_PORT}"
