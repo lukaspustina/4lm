@@ -18,9 +18,10 @@ config/network.example.yaml
 docs/                      # setup runbook + profile schema reference
 tests/                     # bats suite (helpers/ has launchctl + curl stubs)
 .github/workflows/         # macOS CI: shellcheck, shfmt, plutil, xmllint, bats
-install.sh                 # idempotent installer (no bootstrap)
+install.sh                 # idempotent installer (no bootstrap, no migration)
+uninstall.sh               # full removal (services, ~/.4lm, newsyslog)
 requirements.txt           # pinned mlx-openai-server + open-webui
-Makefile                   # lint / fmt / test / check
+Makefile                   # lint / fmt / test / check / install / uninstall
 specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
 ```
 
@@ -28,7 +29,8 @@ specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
 
 | Task | Command |
 |---|---|
-| Install / re-install | `./install.sh` |
+| Install / re-install | `./install.sh` (or `make install`) |
+| Full uninstall | `./uninstall.sh` (or `make uninstall`) — removes ~/.4lm |
 | Start everything | `4lm start` |
 | Stop everything | `4lm stop` |
 | Status | `4lm` (alias for `4lm status`) |

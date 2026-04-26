@@ -16,7 +16,7 @@ huggingface-cli download LibraxisAI/gpt-oss-120b-mlx-mxfp4
 sudo /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
 
 # 3. Install
-./install.sh
+./install.sh             # or: make install
 
 # 4. Start (does NOT auto-start at login)
 4lm start
@@ -126,10 +126,11 @@ pip install -r requirements.txt --upgrade
 # Doctor (prereq + config check)
 4lm doctor
 
-# Total uninstall
-4lm uninstall              # bootout agents + remove ~/.local/bin/4lm
-rm -rf ~/.4lm              # configs, profiles, openwebui-data
-sudo rm /etc/newsyslog.d/4lm.conf
+# Stop services and remove the CLI symlink (keeps ~/.4lm/)
+4lm uninstall
+
+# Full removal: bootout, ~/.4lm, ~/.local/bin/4lm, /etc/newsyslog.d/4lm.conf
+./uninstall.sh             # or: make uninstall
 ```
 
 ## Documentation
