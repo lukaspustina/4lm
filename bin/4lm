@@ -239,24 +239,72 @@ cmd_diag() {
   echo
   print_clients "$(net_webui_port)" "WebUI"
 
+  # Last 5 finished requests — actionable view, vs the older "mixed admit/finish
+  # last 10" which got dominated by admits in dense bursts.
   echo
-  echo "${C_DIM}Recent inference (last 10 BatchScheduler entries)${C_RST}"
+  echo "${C_DIM}Last 5 finished inference requests${C_RST}"
   if [[ -f "${LOG_DIR}/backend.log" ]]; then
-    local hits
-    hits="$(grep -aE 'BatchScheduler (admitted|finished)' "${LOG_DIR}/backend.log" 2>/dev/null | tail -10 || true)"
-    if [[ -z "${hits}" ]]; then
-      echo "  (no inference recorded yet)"
-    else
-      # Strip ANSI escapes the upstream logger emits, then trim to time + summary.
-      sed -E 's/\x1b\[[0-9;]*m//g; s/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]+).*BatchScheduler /  \1  /' <<<"${hits}"
-    fi
+    local fin
+    fin="$(grep -aE 'BatchScheduler uid=[0-9]+ finished' "${LOG_DIR}/backend.log" 2>/dev/null |
+      sed -E 's/\x1b\[[0-9;]*m//g' |
+      tail -5 |
+      sed -E 's/^([0-9-]+ [0-9:]+).*BatchScheduler (uid=[0-9]+) finished \(([^)]+)\).*/  \1  \2  \3/' || true)"
+    [[ -n "${fin}" ]] && echo "${fin}" || echo "  (none)"
   else
     echo "  (no backend.log yet — start the backend and try again)"
   fi
 
+  # In-flight: admits in the last 10 minutes without a matching finish line.
+  # Old admits (e.g. from a long-killed session) are excluded so the noise
+  # floor is zero on a clean idle backend.
+  echo
+  echo "${C_DIM}In-flight inference (admitted, not yet finished, last 10 min)${C_RST}"
+  if [[ -f "${LOG_DIR}/backend.log" ]]; then
+    local cutoff infl
+    cutoff="$(date -v-10M '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')"
+    infl="$(awk -v cut="${cutoff}" '
+      /BatchScheduler admitted uid=/ {
+        ts=$1" "$2
+        gsub(/\x1b\[[0-9;]*m/, "", ts)
+        if (ts >= cut) {
+          match($0, /uid=[0-9]+/); uid=substr($0, RSTART, RLENGTH)
+          admit[uid]=ts
+        }
+      }
+      /BatchScheduler.*finished/ {
+        match($0, /uid=[0-9]+/); uid=substr($0, RSTART, RLENGTH)
+        delete admit[uid]
+      }
+      END { for (u in admit) print "  " admit[u] "  " u }
+    ' "${LOG_DIR}/backend.log")"
+    [[ -n "${infl}" ]] && echo "${infl}" || echo "  (none)"
+  else
+    echo "  (no backend.log yet)"
+  fi
+
+  # Backend worker processes — surfaces "worker burning CPU with no in-flight"
+  # which is the wedged-1.8.0 scenario. mlx-openai-server forks model workers
+  # via multiprocessing.spawn, whose argv loses the 'mlx-openai-server' string,
+  # so we have to walk children of the master PID.
+  echo
+  echo "${C_DIM}Backend worker processes${C_RST}"
+  local master_pid
+  master_pid="$(pgrep -f 'mlx-openai-server launch' 2>/dev/null | head -1 || true)"
+  if [[ -z "${master_pid}" ]]; then
+    echo "  (no mlx-openai-server master process)"
+  else
+    local pids
+    pids="${master_pid} $(pgrep -P "${master_pid}" 2>/dev/null | tr '\n' ' ')"
+    for pid in ${pids}; do
+      ps -o pid,pcpu,rss,etime -p "${pid}" 2>/dev/null | awk -v master="${master_pid}" 'NR>1 {
+        role = ($1 == master) ? "master" : "worker"
+        printf "  %-6s pid=%-6s %5s%% CPU, %6.2f GB RSS, etime %s\n", role, $1, $2, $3/1024/1024, $4
+      }'
+    done
+  fi
+
   echo
   echo "${C_DIM}Top CPU consumers (system-wide)${C_RST}"
-  # Capture ps fully first so 'head' doesn't SIGPIPE ps under set -o pipefail.
   local ps_out
   ps_out="$(ps -arcwwwxo 'pid,pcpu,rss,etime,comm')"
   awk 'NR<=6 {printf "  %s\n", $0}' <<<"${ps_out}"
