@@ -5,13 +5,15 @@
 #   1. Boots out running agents (com.4lm.{backend,webui})
 #   2. Removes ~/.local/bin/4lm symlink
 #   3. Removes ~/.4lm/ (configs, profiles, launchd plists, logs, openwebui-data)
-#   4. Removes /etc/newsyslog.d/4lm.conf (requires sudo)
+#   4. pipx uninstall each package listed in requirements.txt
+#   5. Removes /etc/newsyslog.d/4lm.conf (requires sudo)
 #
 # DESTRUCTIVE. ~/.4lm/openwebui-data/ contains WebUI chat history, MCP
 # configs, and uploaded files. Back it up first if you want to keep any of it.
 
 set -euo pipefail
 
+readonly SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LLM_HOME="${HOME}/.4lm"
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
@@ -47,6 +49,7 @@ echo
 echo "${C_RED}Will remove:${C_RST}"
 echo "  - ~/.4lm/         (configs, profiles, logs, openwebui-data)"
 echo "  - ~/.local/bin/4lm"
+echo "  - pipx-installed packages from requirements.txt"
 echo "  - /etc/newsyslog.d/4lm.conf"
 echo
 echo "Press Ctrl-C within 3 s to abort."
@@ -73,7 +76,19 @@ if [[ -d "${LLM_HOME}" ]]; then
   ok "removed ${LLM_HOME}"
 fi
 
-# ---- 4. Remove newsyslog config -------------------------------------------
+# ---- 4. pipx uninstall packages -------------------------------------------
+if command -v pipx >/dev/null && [[ -f "${SOURCE_DIR}/requirements.txt" ]]; then
+  while IFS= read -r line; do
+    [[ -z "${line}" || "${line}" =~ ^# ]] && continue
+    pkg="${line%%==*}"
+    if pipx list --short 2>/dev/null | grep -qE "^${pkg} "; then
+      pipx uninstall "${pkg}" >/dev/null
+      ok "pipx uninstall ${pkg}"
+    fi
+  done <"${SOURCE_DIR}/requirements.txt"
+fi
+
+# ---- 5. Remove newsyslog config -------------------------------------------
 if [[ -f "${NEWSYSLOG_CONF}" ]]; then
   echo "Requires sudo: removing ${NEWSYSLOG_CONF}"
   sudo rm "${NEWSYSLOG_CONF}"

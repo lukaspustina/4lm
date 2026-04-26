@@ -17,16 +17,20 @@ exit 0
 SH
   chmod +x "${STUB_BIN}/sudo"
 
-  # Stub pip3/pip so install.sh doesn't try to install real packages.
-  cat > "${STUB_BIN}/pip3" <<'SH'
+  # Stub pipx so install.sh doesn't try to install real packages.
+  # `pipx list --short` returns the lines requirements.txt expects, so the
+  # idempotency check sees both pkgs as already-installed.
+  cat > "${STUB_BIN}/pipx" <<'SH'
 #!/usr/bin/env bash
+case "$1" in
+  list)
+    echo "mlx-openai-server 1.7.1"
+    echo "open-webui 0.6.43"
+    ;;
+esac
 exit 0
 SH
-  cat > "${STUB_BIN}/pip" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-  chmod +x "${STUB_BIN}/pip3" "${STUB_BIN}/pip"
+  chmod +x "${STUB_BIN}/pipx"
 
   export PATH="${STUB_BIN}:${PATH}"
 }
