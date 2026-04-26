@@ -143,11 +143,25 @@ fi
 # ---- 9. pipx install pinned deps ------------------------------------------
 # Homebrew's Python is PEP 668 "externally-managed", so plain `pip install`
 # fails. Both deps ship CLI entrypoints, so pipx (per-app venv) is the right
-# tool. Each line in requirements.txt is `pkg==version`.
+# tool. mlx-openai-server 1.7.1 requires Python >=3.11,<3.13, so we pin pipx
+# to python3.12 (or 3.11) regardless of the system default.
 info "Installing Python deps with pipx…"
 if ! command -v pipx >/dev/null; then
-  die "pipx not found — install with: brew install pipx && pipx ensurepath"
+  die "pipx not found — run: make bootstrap"
 fi
+
+PIPX_PYTHON=""
+for candidate in python3.12 python3.11; do
+  if command -v "${candidate}" >/dev/null; then
+    PIPX_PYTHON="${candidate}"
+    break
+  fi
+done
+if [[ -z "${PIPX_PYTHON}" ]]; then
+  die "no compatible Python found (need 3.11 or 3.12) — run: make bootstrap"
+fi
+info "using ${PIPX_PYTHON} for pipx venvs"
+
 while IFS= read -r line; do
   [[ -z "${line}" || "${line}" =~ ^# ]] && continue
   pkg="${line%%==*}"
@@ -155,8 +169,8 @@ while IFS= read -r line; do
   if pipx list --short 2>/dev/null | grep -qE "^${pkg} ${ver}( |$)"; then
     info "${pkg}==${ver} already installed"
   else
-    info "pipx install ${pkg}==${ver}"
-    pipx install --force "${pkg}==${ver}"
+    info "pipx install --python ${PIPX_PYTHON} ${pkg}==${ver}"
+    pipx install --python "${PIPX_PYTHON}" --force "${pkg}==${ver}"
   fi
 done <"${SOURCE_DIR}/requirements.txt"
 
