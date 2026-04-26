@@ -116,25 +116,53 @@ provides authentication.
 
 ### "Why are the fans on?" — finding the workload
 
-`4lm diag` is the answer to the live-traffic question. It prints, in order:
+`4lm diag` is the live-traffic view. It prints, in order:
 
-- Established TCP connections to backend (`:8000`) and WebUI (`:3000`),
-  with the client process name and PID. An active OpenCode session shows
-  up here as `opencode pid=… 127.0.0.1:NNNN→:8000`. Browser tabs show as
+- **Backend / WebUI clients** — established TCP connections to `:8000`
+  and `:3000`, with client process name and PID. An OpenCode session
+  shows as `opencode pid=… 127.0.0.1:NNNN→:8000`. Browser tabs show as
   `com.apple.WebKit.Networking → :3000`.
-- The last 10 `BatchScheduler admitted/finished` log lines from
-  `~/.4lm/logs/backend.log`, with timestamps. If you see admits without
-  matching finishes, a request is still generating.
-- Top six CPU consumers system-wide (`ps -arc`). The mlx worker shows
-  here as `Python` with ~30 GB RSS when a model is in flight.
-- A copy-paste line for `sudo powermetrics --samplers gpu_power` for
-  the actual GPU activity (it doesn't run inside `diag` because it
-  needs sudo and prints a lot).
+- **Last 5 finished inference requests** with timestamp, uid,
+  finish_reason, generated tokens.
+- **In-flight inference** — admits in the last 10 min without a
+  matching finish. A non-empty list here means a request is still
+  generating (or stuck).
+- **Backend worker processes** — master + each `multiprocessing.spawn`
+  worker, with %CPU, RSS in GB, etime. This is the section that catches
+  the wedged-scheduler scenario.
+- **Top CPU consumers** system-wide.
+- A copy-paste line for `sudo powermetrics --samplers gpu_power` (out
+  of `diag` because it needs sudo and prints a lot).
 
 `4lm doctor` is the *static* sweep (prereqs, file paths, sudoers,
-binaries on PATH). `4lm diag` is the *runtime* sweep (live traffic,
-recent activity, system load). Use `doctor` after install, `diag`
-when something feels off.
+binaries on PATH). `4lm diag` is the *runtime* sweep. Use `doctor`
+after install, `diag` when something feels off.
+
+### Worker burning CPU with no in-flight requests
+
+Symptom in `4lm diag`:
+
+```
+In-flight inference (admitted, not yet finished, last 10 min)
+  (none)
+
+Backend worker processes
+  master pid=XXXXX  0.0% CPU,   0.6 GB RSS, etime …
+  worker pid=YYYYY 44.0% CPU,  33.0 GB RSS, etime …    ← stuck
+```
+
+`mlx-openai-server` 1.8.0 has been observed to leave a worker spinning
+on Metal command-encoder dispatches after the last request finishes
+(seen 2026-04-26 immediately after the 1.7.1 → 1.8.0 bump). Fix:
+
+```sh
+4lm restart backend
+```
+
+After restart, the worker should drop to `0.0% CPU` and GPU idle
+residency rises to >90% (verify with the powermetrics line `4lm diag`
+prints). If the issue recurs, file upstream at
+<https://github.com/cubist38/mlx-openai-server/issues>.
 
 ### `4lm health` exits 1
 
