@@ -6,7 +6,10 @@ SCRIPTS    := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh
 PLISTS     := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
 SHFMT_OPTS := -i 2 -ci
 
-.PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint help
+# Models are sourced from every profile YAML — single source of truth.
+MODELS := $(shell awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $$3}' config/profiles/*.yaml | sort -u)
+
+.PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint models models-list models-clean models-rm help
 
 check: lint syntax plist-lint yaml-lint test ## Run all gates (default)
 
@@ -39,6 +42,23 @@ plist-lint: ## plutil -lint + xmllint --noout on all plists
 
 yaml-lint: ## Validate every profile YAML against the bin/4lm schema
 	tests/lint-profiles.sh
+
+models: ## Download/update all models referenced in config/profiles/ (idempotent)
+	@command -v hf >/dev/null || { echo "hf not found — run: make install" >&2; exit 1; }
+	@for m in $(MODELS); do echo "→ hf download $$m"; hf download "$$m"; done
+
+models-list: ## List cached HuggingFace repos (size + revisions)
+	@command -v hf >/dev/null || { echo "hf not found — run: make install" >&2; exit 1; }
+	hf cache ls
+
+models-clean: ## Prune orphaned revisions from the HF cache (safe housekeeping)
+	@command -v hf >/dev/null || { echo "hf not found — run: make install" >&2; exit 1; }
+	hf cache prune
+
+models-rm: ## Remove a cached model — pass MODEL=<repo> (e.g. mlx-community/GLM-4.7-Flash-8bit)
+	@command -v hf >/dev/null || { echo "hf not found — run: make install" >&2; exit 1; }
+	@[[ -n "$(MODEL)" ]] || { echo "Usage: make models-rm MODEL=<repo>" >&2; exit 1; }
+	hf cache rm "$(MODEL)"
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
