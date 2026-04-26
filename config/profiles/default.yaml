@@ -1,0 +1,36 @@
+# Default profile: GLM-4.7-Flash (Build) + Qwen3.6-35B-A3B (Plan/Knowledge)
+#
+# Slot 1 + 2 loaded permanently. Slot 3 (gpt-oss-120b) loads on demand
+# and unloads after on_demand_idle_timeout seconds idle.
+#
+# server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+models:
+  - model_path: mlx-community/GLM-4.7-Flash-8bit
+    served_model_name: glm-4.7-flash
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: glm4_moe
+    reasoning_parser: glm47_flash
+    context_length: 65536
+
+  - model_path: unsloth/Qwen3.6-35B-A3B-MLX-8bit
+    served_model_name: qwen3.6-35b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3
+    context_length: 65536
+
+  - model_path: LibraxisAI/gpt-oss-120b-mlx-mxfp4
+    served_model_name: gpt-oss-120b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: harmony
+    on_demand: true
+    on_demand_idle_timeout: 300
+    context_length: 32768

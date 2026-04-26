@@ -1,0 +1,2 @@
+mlx-openai-server==1.7.1
+open-webui==0.6.43

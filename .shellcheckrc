@@ -1,0 +1,5 @@
+shell=bash
+# SC2155: declare and assign separately — tolerated in this codebase for brevity.
+disable=SC2155
+# SC1091: not following sourced files — external pip-installed scripts.
+disable=SC1091

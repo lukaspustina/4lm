@@ -1,0 +1,16 @@
+# Knowledge-only profile: Qwen3.6-35B-A3B with maximum context for vault synthesis.
+#
+# server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+models:
+  - model_path: unsloth/Qwen3.6-35B-A3B-MLX-8bit
+    served_model_name: qwen3.6-35b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3
+    context_length: 262144

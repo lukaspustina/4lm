@@ -1,0 +1,569 @@
+#!/usr/bin/env bash
+# 4lm — Control script for the local LLM stack.
+#
+# Manages two launchd user agents (loaded only when started):
+#   com.4lm.backend  -- mlx-openai-server
+#   com.4lm.webui    -- Open WebUI
+#
+# Plists live in ~/.4lm/launchd/, NOT ~/Library/LaunchAgents/, so launchd does
+# not auto-start them at login. After reboot, all services are stopped.
+#
+# See `4lm help` for usage.
+
+set -euo pipefail
+
+# ---- Constants -------------------------------------------------------------
+readonly LLM_HOME="${HOME}/.4lm"
+readonly LAUNCHD_DIR="${LLM_HOME}/launchd"
+readonly LOG_DIR="${LLM_HOME}/logs"
+readonly CONFIG_DIR="${LLM_HOME}/config"
+readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
+readonly NETWORK_YAML="${CONFIG_DIR}/network.yaml"
+readonly NETWORK_EXAMPLE="${LLM_HOME}/network.example.yaml"
+readonly ACTIVE_CONFIG="${CONFIG_DIR}/mlx-active"
+readonly PREVIOUS_PROFILE_FILE="${CONFIG_DIR}/mlx-previous"
+
+readonly BACKEND_LABEL="com.4lm.backend"
+readonly WEBUI_LABEL="com.4lm.webui"
+readonly BACKEND_PLIST="${LAUNCHD_DIR}/${BACKEND_LABEL}.plist"
+readonly WEBUI_PLIST="${LAUNCHD_DIR}/${WEBUI_LABEL}.plist"
+
+readonly REQUIRED_WIRED_LIMIT_MB=98304
+
+# Cache uid once.
+UID_NUM="$(id -u)"
+readonly UID_NUM
+
+# ---- Colors (only if stdout is a TTY) --------------------------------------
+if [[ -t 1 ]]; then
+  C_RED=$'\033[0;31m'
+  C_GRN=$'\033[0;32m'
+  C_YEL=$'\033[0;33m'
+  C_BLU=$'\033[0;34m'
+  C_DIM=$'\033[2m'
+  C_RST=$'\033[0m'
+else
+  C_RED="" C_GRN="" C_YEL="" C_BLU="" C_DIM="" C_RST=""
+fi
+readonly C_RED C_GRN C_YEL C_BLU C_DIM C_RST
+
+# ---- Helpers ---------------------------------------------------------------
+die()  { echo "${C_RED}error:${C_RST} $*" >&2; exit 1; }
+warn() { echo "${C_YEL}warn:${C_RST} $*" >&2; }
+ok()   { echo "${C_GRN}✓${C_RST} $*"; }
+info() { echo "${C_BLU}→${C_RST} $*"; }
+
+is_loaded()  { launchctl print "gui/${UID_NUM}/$1" >/dev/null 2>&1; }
+is_running() { launchctl print "gui/${UID_NUM}/$1" 2>/dev/null | grep -q "state = running"; }
+
+# Read mode from network.yaml; default `local` if missing.
+net_mode() {
+  if [[ -f "${NETWORK_YAML}" ]]; then
+    grep '^mode:' "${NETWORK_YAML}" | awk '{print $2}'
+  else
+    echo "local"
+  fi
+}
+net_backend_port() {
+  if [[ -f "${NETWORK_YAML}" ]]; then
+    grep '^backend_port:' "${NETWORK_YAML}" | awk '{print $2}'
+  else
+    echo "8000"
+  fi
+}
+net_webui_port() {
+  if [[ -f "${NETWORK_YAML}" ]]; then
+    grep '^webui_port:' "${NETWORK_YAML}" | awk '{print $2}'
+  else
+    echo "3000"
+  fi
+}
+
+backend_url() { echo "http://127.0.0.1:$(net_backend_port)"; }
+webui_url()   { echo "http://127.0.0.1:$(net_webui_port)"; }
+
+# ---- Service control -------------------------------------------------------
+service_start() {
+  local label="$1" plist="$2"
+  [[ -f "${plist}" ]] || die "plist not found: ${plist} — run install.sh first"
+  if is_loaded "${label}"; then
+    info "${label} already loaded, kickstarting…"
+    launchctl kickstart -k "gui/${UID_NUM}/${label}" >/dev/null 2>&1 || true
+  else
+    launchctl bootstrap "gui/${UID_NUM}" "${plist}"
+  fi
+  ok "${label} started"
+
+  # Backend-only readiness poll: 500 ms × 10 attempts = 5 s budget.
+  if [[ "${label}" == "${BACKEND_LABEL}" ]]; then
+    local url="$(backend_url)/v1/models"
+    local start
+    start="$(date +%s)"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if curl --max-time 1 --silent --fail "${url}" >/dev/null 2>&1; then
+        ok "backend: ready"
+        return 0
+      fi
+      sleep 0.5
+    done
+    local elapsed=$(( $(date +%s) - start ))
+    info "backend: started, awaiting model load (${elapsed}s)"
+  fi
+}
+
+service_stop() {
+  local label="$1"
+  if ! is_loaded "${label}"; then
+    info "${label} not loaded"
+    return 0
+  fi
+  launchctl bootout "gui/${UID_NUM}/${label}" >/dev/null 2>&1 || true
+  ok "${label} stopped"
+}
+
+service_restart() {
+  local label="$1" plist="$2"
+  if is_loaded "${label}"; then
+    launchctl kickstart -k "gui/${UID_NUM}/${label}"
+    ok "${label} restarted"
+  else
+    service_start "${label}" "${plist}"
+  fi
+}
+
+# ---- Status ----------------------------------------------------------------
+# Parse `launchctl print gui/<uid>/<label>` for state, last exit, restarts.
+print_service_status() {
+  local label="$1" name="$2"
+  if ! is_loaded "${label}"; then
+    printf "%-8s %s\n" "${name}:" "${C_RED}stopped${C_RST}"
+    return
+  fi
+
+  local detail
+  detail="$(launchctl print "gui/${UID_NUM}/${label}" 2>/dev/null || true)"
+  local state pid last_exit last_signal restarts started_seconds
+  state="$(awk -F' = ' '/^[[:space:]]*state =/{print $2; exit}' <<<"${detail}")"
+  pid="$(awk -F' = ' '/^[[:space:]]*pid =/{print $2; exit}' <<<"${detail}")"
+  last_exit="$(awk -F' = ' '/^[[:space:]]*last exit code =/{print $2; exit}' <<<"${detail}")"
+  last_signal="$(awk -F' = ' '/^[[:space:]]*last exit signal =/{print $2; exit}' <<<"${detail}")"
+  restarts="$(awk -F' = ' '/^[[:space:]]*runs =/{print $2; exit}' <<<"${detail}")"
+
+  case "${state}" in
+    running)
+      if [[ -n "${pid:-}" ]]; then
+        # Approximate uptime via process start time.
+        started_seconds="$(ps -o etime= -p "${pid}" 2>/dev/null | tr -d ' ' || true)"
+      fi
+      printf "%-8s %s  (pid %s%s)\n" \
+        "${name}:" "${C_GRN}running${C_RST}" "${pid:-?}" \
+        "${started_seconds:+, up ${started_seconds}}"
+      ;;
+    waiting)
+      printf "%-8s %s  (last exit: %s, signal: %s, runs: %s)\n" \
+        "${name}:" "${C_YEL}respawning${C_RST}" \
+        "${last_exit:-?}" "${last_signal:--}" "${restarts:-?}"
+      ;;
+    *)
+      printf "%-8s %s  (state=%s)\n" "${name}:" "${C_YEL}${state:-unknown}${C_RST}" "${state:-unknown}"
+      ;;
+  esac
+}
+
+cmd_status() {
+  echo "${C_DIM}─── 4lm Status ───${C_RST}"
+
+  # Active profile
+  local profile="(none)"
+  if [[ -L "${ACTIVE_CONFIG}" ]]; then
+    profile="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+  fi
+  printf "%-8s %s\n" "Profile:" "${profile}"
+
+  local mode; mode="$(net_mode)"
+  printf "%-8s %s\n" "Network:" "${mode}"
+
+  print_service_status "${BACKEND_LABEL}" "Backend"
+  print_service_status "${WEBUI_LABEL}"   "WebUI"
+}
+
+# ---- Logs ------------------------------------------------------------------
+cmd_logs() {
+  local target="${1:-backend}"
+  case "${target}" in
+    backend|be) tail -F "${LOG_DIR}/backend.log" ;;
+    webui|ui)   tail -F "${LOG_DIR}/webui.log" ;;
+    *)          die "Unknown log target: ${target}. Use: backend or webui" ;;
+  esac
+}
+
+# ---- Health ----------------------------------------------------------------
+cmd_health() {
+  local current
+  current="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
+  if [[ "${current}" -lt "${REQUIRED_WIRED_LIMIT_MB}" ]]; then
+    echo "iogpu.wired_limit_mb=${current} < ${REQUIRED_WIRED_LIMIT_MB} — see docs/setup.md §Sudoers" >&2
+    exit 1
+  fi
+  ok "iogpu.wired_limit_mb=${current}"
+}
+
+# ---- Profile management ----------------------------------------------------
+# Validate a profile YAML. Returns 0 valid, 1 invalid (reason on stderr).
+validate_profile() {
+  local yaml_path="$1"
+  [[ -r "${yaml_path}" ]] || { echo "profile not readable: ${yaml_path}" >&2; return 1; }
+
+  # models: top-level key must be present with at least one entry.
+  if ! grep -q '^models:' "${yaml_path}"; then
+    echo "missing top-level 'models:' key" >&2; return 1
+  fi
+  if ! grep -qE '^[[:space:]]*-[[:space:]]*model_path:' "${yaml_path}"; then
+    echo "no model entries (expected at least one '- model_path:')" >&2; return 1
+  fi
+
+  # Every model entry needs a non-empty served_model_name.
+  # If model_path entries count != served_model_name count, fail.
+  local n_paths n_names
+  n_paths="$(grep -cE '^[[:space:]]*-[[:space:]]*model_path:[[:space:]]*\S' "${yaml_path}" || true)"
+  n_names="$(grep -cE '^[[:space:]]*served_model_name:[[:space:]]*\S' "${yaml_path}" || true)"
+  if [[ "${n_paths}" -ne "${n_names}" ]]; then
+    echo "every model entry must define served_model_name (paths=${n_paths}, names=${n_names})" >&2
+    return 1
+  fi
+
+  # context_length present and positive integer per entry.
+  local n_ctx
+  n_ctx="$(grep -cE '^[[:space:]]*context_length:[[:space:]]*[0-9]+' "${yaml_path}" || true)"
+  if [[ "${n_ctx}" -ne "${n_paths}" ]]; then
+    echo "every model entry must define context_length as a positive integer" >&2
+    return 1
+  fi
+
+  # tool_call_parser, if present, must be in the allowed enum.
+  # Source: app/parsers/ in mlx-openai-server v1.7.1.
+  local allowed_parsers="functiongemma gemma4 glm4_moe harmony hermes kimi_k2 longcat_flash_lite minimax_m2 qwen3 qwen3_5 qwen3_coder qwen3_moe solar_open step35"
+  while IFS= read -r line; do
+    local val
+    val="$(awk -F': ' '{print $2}' <<<"${line}" | tr -d '"' | tr -d "'" | tr -d ' ')"
+    [[ -z "${val}" ]] && continue
+    if ! grep -qw "${val}" <<<"${allowed_parsers}"; then
+      echo "invalid tool_call_parser '${val}'; allowed: ${allowed_parsers}" >&2
+      return 1
+    fi
+  done < <(grep -E '^[[:space:]]*tool_call_parser:[[:space:]]*' "${yaml_path}" || true)
+
+  return 0
+}
+
+cmd_profile() {
+  local subcmd="${1:-list}"
+  case "${subcmd}" in
+    list|ls)
+      [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
+      local current=""
+      [[ -L "${ACTIVE_CONFIG}" ]] && current="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+      echo "Available profiles in ${PROFILES_DIR}:"
+      for p in "${PROFILES_DIR}"/*.yaml; do
+        [[ -f "${p}" ]] || continue
+        local name
+        name="$(basename "${p}" .yaml)"
+        if [[ "${name}" == "${current}" ]]; then
+          printf "  ${C_GRN}* %s${C_RST} ${C_DIM}(active)${C_RST}\n" "${name}"
+        else
+          printf "    %s\n" "${name}"
+        fi
+      done
+      ;;
+    set|use)
+      cmd_profile_set "${2:-}"
+      ;;
+    current|show)
+      if [[ -L "${ACTIVE_CONFIG}" ]]; then
+        echo "$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+      else
+        echo "(none)"
+      fi
+      ;;
+    *)
+      die "Unknown profile subcommand: ${subcmd}. Use: list | set <name> | current"
+      ;;
+  esac
+}
+
+cmd_profile_set() {
+  local name="${1:-}"
+  [[ -n "${name}" ]] || die "Usage: 4lm profile set <name>"
+
+  # (a) Whitelist regex BEFORE any path construction.
+  [[ "${name}" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || die "invalid profile name: ${name}"
+
+  local target="${PROFILES_DIR}/${name}.yaml"
+  [[ -f "${target}" ]] || die "profile not found: ${target}"
+
+  # (a continued) Validate YAML schema.
+  if ! validate_profile "${target}"; then
+    echo "Profile validation failed; active profile unchanged" >&2
+    exit 1
+  fi
+
+  # (b) Save previous profile name.
+  local previous=""
+  if [[ -L "${ACTIVE_CONFIG}" ]]; then
+    previous="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+  fi
+  if [[ -n "${previous}" && "${previous}" != "${name}" ]]; then
+    echo "${previous}" > "${PREVIOUS_PROFILE_FILE}"
+  fi
+
+  # (c) Rewrite active symlink atomically.
+  ln -sfn "${target}" "${ACTIVE_CONFIG}"
+
+  # (d) Kickstart backend (no-op if not loaded — switch is for next start).
+  if is_loaded "${BACKEND_LABEL}"; then
+    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
+
+    # (e) Poll /v1/models for up to 30 s.
+    local url="$(backend_url)/v1/models"
+    local ok_load=0
+    for _ in $(seq 1 30); do
+      if curl --max-time 1 --silent --fail "${url}" >/dev/null 2>&1; then
+        ok_load=1
+        break
+      fi
+      sleep 1
+    done
+
+    if [[ "${ok_load}" -eq 0 ]]; then
+      # (g) Roll back.
+      if [[ -n "${previous}" && -f "${PROFILES_DIR}/${previous}.yaml" ]]; then
+        ln -sfn "${PROFILES_DIR}/${previous}.yaml" "${ACTIVE_CONFIG}"
+        if ! launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1; then
+          echo "WARN: rollback kickstart failed — backend may be in unknown state. Run: 4lm logs backend" >&2
+          exit 1
+        fi
+        echo "Profile switch failed; reverted to ${previous}" >&2
+        exit 1
+      else
+        echo "Profile switch failed and no previous profile to revert to" >&2
+        exit 1
+      fi
+    fi
+  fi
+
+  # (f) Success.
+  ok "Switched to ${name}"
+}
+
+# ---- Network exposure ------------------------------------------------------
+cmd_expose() {
+  local mode="${1:-}" confirm="${2:-}"
+  case "${mode}" in
+    local|lan) ;;
+    *) die "expose: mode must be 'local' or 'lan'" ;;
+  esac
+
+  if [[ "${mode}" == "lan" && "${confirm}" != "--confirm" ]]; then
+    echo "LAN exposure requires --confirm. Risks: no auth on backend, WebUI first-user race. Prefer a host firewall rule or external VPN." >&2
+    exit 1
+  fi
+
+  # Write network.yaml in place.
+  local backend_port webui_port
+  backend_port="$(net_backend_port)"
+  webui_port="$(net_webui_port)"
+  cat > "${NETWORK_YAML}" <<EOF
+# Bind mode for backend (mlx-openai-server) and webui (open-webui).
+# Values: local (127.0.0.1) | lan (0.0.0.0)
+mode: ${mode}
+
+# Ports — normally left as defaults.
+backend_port: ${backend_port}
+webui_port: ${webui_port}
+EOF
+  ok "network.yaml mode=${mode}"
+
+  # Restart only services currently running.
+  if is_running "${BACKEND_LABEL}"; then
+    info "Restarting backend…"
+    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
+  fi
+  if is_running "${WEBUI_LABEL}"; then
+    info "Restarting WebUI…"
+    launchctl kickstart -k "gui/${UID_NUM}/${WEBUI_LABEL}" >/dev/null 2>&1 || true
+  fi
+}
+
+# ---- Doctor ----------------------------------------------------------------
+cmd_doctor() {
+  echo "${C_DIM}─── 4lm Doctor ───${C_RST}"
+  local fail=0
+
+  # Wired memory
+  local wired
+  wired="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
+  if [[ "${wired}" -ge "${REQUIRED_WIRED_LIMIT_MB}" ]]; then
+    ok "iogpu.wired_limit_mb=${wired}"
+  else
+    warn "iogpu.wired_limit_mb=${wired} < ${REQUIRED_WIRED_LIMIT_MB}"
+    echo "    Fix: see docs/setup.md §Sudoers"
+    fail=1
+  fi
+
+  # Plists installed
+  for plist in "${BACKEND_PLIST}" "${WEBUI_PLIST}"; do
+    if [[ -f "${plist}" ]]; then
+      ok "$(basename "${plist}") present"
+    else
+      warn "missing ${plist}"
+      fail=1
+    fi
+  done
+
+  # network.yaml
+  if [[ -f "${NETWORK_YAML}" ]]; then
+    ok "network.yaml mode=$(net_mode)"
+  else
+    warn "missing ${NETWORK_YAML}"
+    fail=1
+  fi
+
+  # Active profile
+  if [[ -L "${ACTIVE_CONFIG}" ]]; then
+    ok "active profile: $(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+  else
+    warn "no active profile (run: 4lm profile set default)"
+    fail=1
+  fi
+
+  # CLIs
+  if command -v mlx-openai-server >/dev/null; then
+    ok "mlx-openai-server: $(command -v mlx-openai-server)"
+  else
+    warn "mlx-openai-server not in PATH (run: pip install -r requirements.txt)"
+    fail=1
+  fi
+  if command -v open-webui >/dev/null; then
+    ok "open-webui: $(command -v open-webui)"
+  else
+    warn "open-webui not in PATH (run: pip install -r requirements.txt)"
+    fail=1
+  fi
+
+  return "${fail}"
+}
+
+# ---- Open ------------------------------------------------------------------
+cmd_open() {
+  local target="${1:-webui}"
+  case "${target}" in
+    webui|ui)   open "$(webui_url)" ;;
+    backend|be) open "$(backend_url)/v1/models" ;;
+    *)          die "Unknown target: ${target}" ;;
+  esac
+}
+
+# ---- Uninstall (runtime side: bootout + remove ~/.local/bin/4lm) ----------
+cmd_uninstall() {
+  echo "${C_DIM}─── Uninstalling 4lm services ───${C_RST}"
+  service_stop "${WEBUI_LABEL}"
+  service_stop "${BACKEND_LABEL}"
+  if [[ -L "${HOME}/.local/bin/4lm" ]]; then
+    rm "${HOME}/.local/bin/4lm"
+    ok "removed ${HOME}/.local/bin/4lm"
+  fi
+  info "configs and data in ${LLM_HOME} preserved. Remove manually if desired."
+}
+
+# ---- Service-level command dispatch ---------------------------------------
+cmd_start() {
+  local target="${1:-all}"
+  case "${target}" in
+    backend|be) service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}" ;;
+    webui|ui)   service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}" ;;
+    all)
+      service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}"
+      service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}"
+      ;;
+    *) die "Unknown target: ${target}" ;;
+  esac
+}
+
+cmd_stop() {
+  local target="${1:-all}"
+  case "${target}" in
+    backend|be) service_stop "${BACKEND_LABEL}" ;;
+    webui|ui)   service_stop "${WEBUI_LABEL}" ;;
+    all)
+      service_stop "${WEBUI_LABEL}"
+      service_stop "${BACKEND_LABEL}"
+      ;;
+    *) die "Unknown target: ${target}" ;;
+  esac
+}
+
+cmd_restart() {
+  local target="${1:-all}"
+  case "${target}" in
+    backend|be) service_restart "${BACKEND_LABEL}" "${BACKEND_PLIST}" ;;
+    webui|ui)   service_restart "${WEBUI_LABEL}" "${WEBUI_PLIST}" ;;
+    all)
+      service_restart "${BACKEND_LABEL}" "${BACKEND_PLIST}"
+      service_restart "${WEBUI_LABEL}" "${WEBUI_PLIST}"
+      ;;
+    *) die "Unknown target: ${target}" ;;
+  esac
+}
+
+# ---- Help ------------------------------------------------------------------
+cmd_help() {
+  cat <<EOF
+${C_BLU}4lm${C_RST} — control the local LLM stack (mlx-openai-server + Open WebUI)
+
+${C_DIM}Service control:${C_RST}
+  4lm start [backend|webui|all]      Start service(s) (default: all)
+  4lm stop  [backend|webui|all]      Stop service(s)
+  4lm restart [backend|webui|all]    Restart service(s)
+  4lm status                         Show service state with launchd detail
+  4lm health                         Check iogpu.wired_limit_mb (exit 1 if low)
+
+${C_DIM}Logs:${C_RST}
+  4lm logs [backend|webui]           tail -F log file (default: backend)
+
+${C_DIM}Profiles:${C_RST}
+  4lm profile list                   List profiles
+  4lm profile set <name>             Atomic switch with rollback
+  4lm profile current                Print active profile name
+
+${C_DIM}Network exposure:${C_RST}
+  4lm expose local|lan [--confirm]   Change bind mode
+
+${C_DIM}Other:${C_RST}
+  4lm doctor                         Check prerequisites
+  4lm open [webui|backend]           Open URL in browser (default: webui)
+  4lm uninstall                      Bootout agents, remove ~/.local/bin/4lm
+EOF
+}
+
+# ---- Main dispatch ---------------------------------------------------------
+main() {
+  local cmd="${1:-status}"
+  shift || true
+  case "${cmd}" in
+    start)            cmd_start "$@" ;;
+    stop)             cmd_stop "$@" ;;
+    restart)          cmd_restart "$@" ;;
+    status|st|"")     cmd_status ;;
+    logs|log)         cmd_logs "$@" ;;
+    health|check)     cmd_health ;;
+    profile|prof|p)   cmd_profile "$@" ;;
+    expose)           cmd_expose "$@" ;;
+    doctor)           cmd_doctor ;;
+    open)             cmd_open "$@" ;;
+    uninstall|remove) cmd_uninstall ;;
+    help|--help|-h)   cmd_help ;;
+    *)                die "Unknown command: ${cmd}. Try \`4lm help\`." ;;
+  esac
+}
+
+main "$@"

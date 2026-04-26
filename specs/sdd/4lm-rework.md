@@ -1,0 +1,773 @@
+# SDD: 4lm — Local LLM Control Plane Rework
+
+**Status**: Ready for Implementation
+**Original**: specs/sdd/4lm-rework.md
+**Refined**: 2026-04-26
+
+---
+
+## Overview
+
+Rework the `llm-stack` Bash control plane into `4lm`: rename the CLI and all internal paths, change launchd activation so services never auto-start at login (plists live outside `~/Library/LaunchAgents/`), add a first-class `expose` command for network-bind switching, and close all HIGH findings from the dev-review (security hardening, profile validation, atomic switching, observability, missing tests, doc drift).
+
+The result is a personal local-LLM stack that survives reboots in a stopped state, refuses to bind beyond loopback without explicit confirmation, validates profiles before activation with automatic rollback on failure, and ships with a bats smoke suite and GitHub Actions CI.
+
+---
+
+## Context & Constraints
+
+- **Stack**: Bash 5.x, launchd user agents, YAML model profiles parsed by `mlx-openai-server` v1.7.1. macOS Apple Silicon only; `install.sh` verifies `uname -m == arm64`.
+- **External services**: `mlx-openai-server` and `open-webui` are pip-installed externally. The repo ships `requirements.txt` to pin them.
+- **Hardware**: M5 Max, 128 GB unified memory, ~96 GB usable budget. Slot-3 RAM math depends on `on_demand`/`idle_timeout` working — Phase 1 must verify this before any profile changes.
+- **Single user**: `lukas`. No multi-user support. Labels and paths are personal-stack-scoped.
+- **No CI today**, no tests, no shellcheck, no pre-commit hooks.
+- **`BRIEFING.md`** is the design-rationale source of truth. Canonical copy lives at repo root. The duplicate at `llm-stack/BRIEFING.md` is deleted in Phase 1.
+- **Hard constraint**: launchd MUST NOT auto-start services on login or boot. Plists are stored in `~/.4lm/launchd/` (not `~/Library/LaunchAgents/`). `4lm start` calls `launchctl bootstrap gui/$(id -u) <plist-path>` explicitly; `4lm stop` calls `launchctl bootout`. After reboot, no plist is loaded, so `RunAtLoad=true` in the plist is safe and idiomatic.
+- **YAGNI**: env-var overrides (`LLM_BACKEND_HOST`, etc.) are removed. `network.yaml` is the single config channel. No `LLM_ALLOW_PUBLIC_BIND` bypass — this is a single-user personal stack with no automation consumers.
+- **Conventions**: KISS/YAGNI/SRP/Fail Fast; conventional-commit prefixes; subject ≤72 chars; no `Co-Authored-By: Claude`.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ install.sh                                                           │
+│   – verifies prereqs (macOS arm64, Python 3.11+)                    │
+│   – migrates ~/.llm-stack → ~/.4lm if present                       │
+│   – bootout old legacy.llm-* labels if loaded                    │
+│   – creates ~/.4lm/{bin,config/profiles,launchd,logs}               │
+│   – installs scripts + profile YAMLs                                │
+│   – installs ~/.4lm/launchd/*.plist (NOT ~/Library/LaunchAgents/)   │
+│   – seeds ~/.4lm/config/network.yaml (mode: local) if absent        │
+│   – pip install -r requirements.txt                                  │
+│   – sudo tee /etc/newsyslog.d/4lm.conf (prompts once for password)  │
+│   – symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm                      │
+└──────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+            ┌──────────────────────────────────────┐
+            │ 4lm  (single control command)        │
+            │   start [backend|webui|all]          │
+            │   stop  [backend|webui|all]          │
+            │   restart [backend|webui|all]        │
+            │   status                             │
+            │   health                             │
+            │   logs [backend|webui]               │
+            │   profile list|set <name>|current   │
+            │   expose local|lan [--confirm]       │
+            │   doctor                             │
+            │   open [webui|backend]               │
+            │   uninstall                          │
+            └──────────────────────────────────────┘
+                  │ bootstrap/bootout/kickstart
+                  ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ legacy.4lm-backend    │    │ legacy.4lm-webui      │
+   │ RunAtLoad=true           │    │ RunAtLoad=true           │
+   │ KeepAlive Crashed=true   │    │ KeepAlive Crashed=true   │
+   │ Umask=0077               │    │ Umask=0077               │
+   │ plist: ~/.4lm/launchd/   │    │ plist: ~/.4lm/launchd/   │
+   └──────────────────────────┘    └──────────────────────────┘
+                  │                            │
+                  ▼                            ▼
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │ 4lm-backend-start.sh     │    │ 4lm-webui-start.sh       │
+   │  – reads network.yaml    │    │  – reads network.yaml    │
+   │  – derives bind host     │    │  – derives bind host     │
+   │  – sudo /usr/sbin/sysctl │    │  – reads/generates       │
+   │  – exec mlx-openai-server│    │    webui_secret_key       │
+   │                          │    │  – exec open-webui serve │
+   └──────────────────────────┘    └──────────────────────────┘
+```
+
+**Activation model**: Plists live in `~/.4lm/launchd/`. Since they are NOT in `~/Library/LaunchAgents/`, launchd does not scan them at login. `RunAtLoad=true` is safe: it only fires when `4lm start` explicitly calls `launchctl bootstrap`. After reboot, agents are unloaded and `RunAtLoad` never fires. This gives manual-activation semantics without inventing an `enable`/`disable` layer.
+
+---
+
+## Requirements
+
+### Naming & paths
+
+1. The control command shall be `4lm`, renamed from `llm`.
+2. `~/.local/bin/4lm` shall be the user-facing entry point, symlinked to `~/.4lm/bin/4lm`.
+3. All internal data shall live under `~/.4lm/` (renamed from `~/.llm-stack/`).
+4. Log files shall live at `~/.4lm/logs/backend.log` and `~/.4lm/logs/webui.log` (merged stdout+stderr per service; no separate `.out`/`.err` split).
+5. `install.sh` shall migrate `~/.llm-stack/` to `~/.4lm/` if the former exists and the latter does not: `mv ~/.llm-stack ~/.4lm`, then rewrite the `mlx-active` symlink target.
+
+### launchd activation
+
+6. launchd agents shall not auto-start on login or boot.
+7. Plist files shall be installed to `~/.4lm/launchd/` and shall NOT be copied to `~/Library/LaunchAgents/`.
+8. `install.sh` shall NOT call `launchctl bootstrap`; bootstrap is the exclusive responsibility of `4lm start`.
+9. `4lm start` shall call `launchctl bootstrap gui/$(id -u) <plist-path>` to load-and-start each agent.
+10. `4lm stop` shall call `launchctl bootout gui/$(id -u)/<label>` to stop-and-unload each agent.
+11. After `4lm stop` and a reboot, no `legacy.4lm-*` agent shall be loaded and no process shall be bound to :8000 or :3000.
+12. `install.sh` shall call `launchctl bootout gui/$(id -u)/legacy.llm-backend` and `launchctl bootout gui/$(id -u)/legacy.llm-webui` (ignoring errors) if those old labels are loaded, before installing the new plists.
+
+### Network exposure
+
+13. The system shall support exactly two bind modes: `local` (127.0.0.1, default) and `lan` (0.0.0.0).
+14. Bind mode shall be persisted in `~/.4lm/config/network.yaml` (see Data Models). Both wrapper start scripts shall read this file at process launch.
+15. `4lm expose <mode> [--confirm]` shall be the only supported way to change bind mode.
+16. `4lm expose lan` without `--confirm` shall exit 1 and print: `LAN exposure requires --confirm. Risks: no auth on backend, WebUI first-user race. Prefer a host firewall rule or external VPN.`
+17. `4lm expose lan --confirm` shall write `mode: lan` to `network.yaml` then restart only services that are currently running (stopped services shall pick up the new config on next `4lm start`).
+18. When bind mode is `lan`, `4lm-webui-start.sh` shall read `~/.4lm/config/webui_secret_key`; if the file is absent, generate it with `openssl rand -hex 32` (mode 0600) and write it there; pass the value as `WEBUI_SECRET_KEY` env var.
+19. When bind mode is `lan`, `WEBUI_REGISTRATION_ENABLED=false` shall be set unconditionally. The operator must complete first-user registration immediately after `expose lan`.
+20. The README instruction `LLM_BACKEND_HOST=0.0.0.0 llm restart backend` shall be removed; `4lm expose lan --confirm` is the only supported path.
+
+### Security hardening
+
+21. `DEFAULT_USER_ROLE` passed to `open-webui` shall be `pending`; the operator promotes the first account manually.
+22. `requirements.txt` shall be shipped in the repo root and shall pin `mlx-openai-server==1.7.1` and `open-webui==0.6.43`; `install.sh` shall run `pip install -r requirements.txt` on every invocation (idempotent via pip's version-check).
+23. The `sudo` invocation in `4lm-backend-start.sh` shall use the absolute path: `sudo -n /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304` (matches the sudoers literal exactly).
+24. Profile name input to `4lm profile set <name>` shall be validated against `^[a-zA-Z0-9_-]{1,64}$` before any path construction. Input failing this regex shall cause exit 1 with message `invalid profile name: <input>`.
+25. launchd plist files shall include `<key>Umask</key><integer>63</integer>` (octal 0077); log files created after this change shall have mode 0600.
+
+### Architecture
+
+26. Phase 1 shall verify `mlx-openai-server` v1.7.1 support for the YAML keys `on_demand` and `idle_timeout` by reading the installed package source at `$(pip show mlx-openai-server | grep Location)/mlx_openai_server/`. If these keys are parsed and honoured, keep them in `default.yaml`. If unsupported, remove them from `default.yaml`, add a comment block documenting Slot 3 as load-on-demand via `POST /v1/chat/completions`, and document this in `BRIEFING.md`.
+27. Phase 1 shall reconcile the `BRIEFING.md` "12 GB KV-Cache @ 32k" claim with the YAML `context_window: 65536` values. The YAML runtime values are authoritative. Compute the correct KV-cache size using the formula: `KV_GB = (context_window * n_heads * head_dim * 2 * bytes_per_element) / 1e9` for each model and update BRIEFING accordingly.
+28. `4lm profile set <name>` shall execute the following atomic sequence: (a) validate YAML schema; (b) save previous profile name to `~/.4lm/config/mlx-previous` (one line, plain text); (c) rewrite the `~/.4lm/config/mlx-active` symlink to point at `~/.4lm/config/profiles/<name>.yaml`; (d) kickstart the backend agent; (e) poll `http://127.0.0.1:8000/v1/models` via `curl --max-time 1 --silent --fail` every 1 s for up to 30 s; (f) on success print `Switched to <name>`; (g) on poll timeout, restore `mlx-active` symlink to the profile named in `mlx-previous`, kickstart the backend agent again, and print `Profile switch failed; reverted to <previous>` to stderr, exit 1. If rollback kickstart also fails, print `WARN: rollback kickstart failed — backend may be in unknown state. Run: 4lm logs backend` and exit 1.
+29. `4lm-webui-start.sh` shall not check or wait for backend availability; it shall start Open WebUI immediately and let WebUI surface "no models" at request time.
+30. `cmd_install` (the `4lm install` subcommand) shall be removed from `bin/4lm`; `install.sh` is the single canonical installer.
+31. `service_start` shall poll `http://127.0.0.1:8000/v1/models` for the backend agent only: poll every 500 ms, up to 10 attempts (5 s total). On success, print `backend: ready`. On timeout, print `backend: started, awaiting model load (<elapsed>s)`.
+
+### Observability
+
+32. `4lm status` shall report per-service: running state, last exit code (from `launchctl print`), last exit reason, whether the agent is throttle-waiting (`state = waiting`), and restart counter for the current session. Output format:
+    ```
+    Backend: running  (pid 12345, started 47s ago)
+    WebUI:   respawning  (last exit: 1, signal: -, restarts: 3)
+    ```
+33. `4lm health` shall read `iogpu.wired_limit_mb` via `/usr/sbin/sysctl -n iogpu.wired_limit_mb`, compare to the required threshold of 98304, and exit 0 if met or exit 1 with message `iogpu.wired_limit_mb=<actual> < 98304 — see docs/setup.md §Sudoers`.
+34. `install.sh` shall install `/etc/newsyslog.d/4lm.conf` using `sudo tee`; this is the only step requiring privilege escalation. `install.sh` shall print `Requires sudo: installing /etc/newsyslog.d/4lm.conf` before the prompt.
+35. `4lm logs` shall use `tail -F` (capital F, follows renamed/rotated files). The default target (when no argument given) shall be `backend`. Help text shall state `logs [backend|webui]  default: backend`.
+
+### Testing & CI
+
+36. The repo shall ship a `Makefile` with targets: `lint` (shellcheck + shfmt -d), `test` (bats), `fmt` (shfmt -w), `check` (lint + test + plutil + xmllint + YAML schema validation).
+37. `.github/workflows/ci.yml` shall run on `macos-latest` on every PR and execute: `shellcheck`, `shfmt -d`, `bash -n` for all scripts, `plutil -lint` for all plists, `xmllint --noout` for all plists, YAML schema validation for all `config/profiles/*.yaml`, and the bats suite.
+38. The bats suite shall cover exactly these four scenarios:
+    a. `install.sh` idempotency: running twice produces byte-identical `~/.4lm/`, plists, and `~/.local/bin/4lm` symlink target.
+    b. `__HOME__` plist substitution: no literal `__HOME__` remains; processed plist passes `plutil -lint`.
+    c. `4lm` command dispatch: every documented subcommand and alias resolves without error (stubs prevent real service calls).
+    d. Profile-set state machine: valid switch succeeds; invalid YAML rejected before symlink swap; failed poll triggers rollback.
+39. The bats suite shall stub `launchctl` and `curl` via PATH shimming: place stub executables in `tests/helpers/` and prepend `tests/helpers` to `PATH` in each test file's `setup()`.
+
+### Docs
+
+40. `BRIEFING.md` shall exist only at the repo root; `llm-stack/BRIEFING.md` shall be deleted.
+41. `docs/setup.md` shall be created containing: the wired-memory limit explanation, the sudoers snippet, troubleshooting steps for common failures (sysctl permission denied, newsyslog not found), and the model pre-download commands.
+42. `docs/profile-schema.md` shall document every YAML key consumed by `mlx-openai-server` v1.7.1: key name, type, required/optional, valid values, and a note on `on_demand`/`idle_timeout` support status (filled in after Phase 1 verification).
+43. `README.md` TL;DR shall include: model pre-download commands, wired-memory setup pointer (`docs/setup.md §Sudoers`), and `4lm start` as the start command; shall remove all references to `llm`.
+44. A `CLAUDE.md` shall be added at the repo root describing: repo structure, key commands (`install.sh`, `4lm`, `make check`), and a pointer to `BRIEFING.md` for design rationale.
+
+---
+
+## File & Module Structure
+
+### New files
+
+| Path | Purpose |
+|---|---|
+| `bin/4lm` | Renamed from `bin/llm`. Single control command. |
+| `bin/4lm-backend-start.sh` | Renamed wrapper; reads `network.yaml`; uses absolute `/usr/sbin/sysctl`. |
+| `bin/4lm-webui-start.sh` | Renamed wrapper; reads `network.yaml`; generates secret key; no wait loop. |
+| `launchd/legacy.4lm-backend.plist` | Renamed; `Umask=63`; merged log path; no `~/Library/LaunchAgents/` install. |
+| `launchd/legacy.4lm-webui.plist` | Same. |
+| `config/network.example.yaml` | Documents bind-mode schema. Committed to repo. |
+| `requirements.txt` | Pinned: `mlx-openai-server==1.7.1`, `open-webui==0.6.43`. |
+| `Makefile` | Targets: `lint`, `test`, `fmt`, `check`. |
+| `.github/workflows/ci.yml` | macOS CI. |
+| `.shellcheckrc` | `shell=bash`, `disable=SC2155,SC1091` (document each disabled check). |
+| `tests/test_install_idempotent.bats` | Bats test: idempotency. |
+| `tests/test_home_substitution.bats` | Bats test: `__HOME__` substitution. |
+| `tests/test_4lm_dispatch.bats` | Bats test: command dispatch. |
+| `tests/test_profile_state_machine.bats` | Bats test: profile-set state machine. |
+| `tests/helpers/launchctl` | Stub: records calls, returns 0. |
+| `tests/helpers/curl` | Stub: configurable response per test. |
+| `docs/setup.md` | Wired-memory, sudoers, troubleshooting. |
+| `docs/profile-schema.md` | YAML key reference for `mlx-openai-server`. |
+| `CLAUDE.md` | Repo structure, key commands, pointer to BRIEFING. |
+
+### Modified files
+
+| Path | Change |
+|---|---|
+| `install.sh` | Remove bootstrap; install to `~/.4lm/launchd/` not `~/Library/LaunchAgents/`; add migration from `~/.llm-stack`; add bootout of old labels; add `pip install -r requirements.txt`; add `sudo tee /etc/newsyslog.d/4lm.conf`; seed `network.yaml`; update all path references. |
+| `config/profiles/default.yaml` | Update `server.host` to read dynamically (host set by wrapper, not YAML); reconcile `context_window` with BRIEFING; remove `on_demand`/`idle_timeout` if Phase 1 shows unsupported. |
+| `config/profiles/coding-only.yaml` | Same reconciliation. |
+| `config/profiles/knowledge-only.yaml` | Same reconciliation. |
+| `README.md` | Rename `llm` → `4lm` throughout; update TL;DR; add model pre-download and wired-mem steps; add `expose` docs; remove `LLM_BACKEND_HOST=0.0.0.0 llm restart` advice. |
+| `BRIEFING.md` (root) | Reconcile context-window/KV-cache numbers; update command references from `llm` to `4lm`. |
+
+### Deleted files
+
+| Path | Reason |
+|---|---|
+| `llm-stack/BRIEFING.md` | Duplicate of root `BRIEFING.md`. |
+| `llm-stack/bin/llm` | Replaced by `bin/4lm`. |
+| `llm-stack/bin/llm-backend-start.sh` | Replaced by `bin/4lm-backend-start.sh`. |
+| `llm-stack/bin/llm-webui-start.sh` | Replaced by `bin/4lm-webui-start.sh`. |
+| `llm-stack/launchd/legacy.llm-backend.plist` | Replaced; label renamed. |
+| `llm-stack/launchd/legacy.llm-webui.plist` | Replaced; label renamed. |
+
+### Functions removed from `bin/4lm`
+
+| Function | Reason |
+|---|---|
+| `cmd_install` | Drift risk vs `install.sh`; partial coverage. |
+| `cmd_webui` (if present) | Duplication of `start\|stop\|restart\|logs webui`. |
+
+---
+
+## Data Models
+
+### `~/.4lm/config/network.yaml`
+
+```yaml
+# Bind mode for backend (mlx-openai-server) and webui (open-webui).
+# Values: local (127.0.0.1) | lan (0.0.0.0)
+mode: local
+
+# Ports — normally left as defaults.
+backend_port: 8000
+webui_port: 3000
+```
+
+`network.example.yaml` is committed to the repo root with identical content. `install.sh` writes `~/.4lm/config/network.yaml` from this template only if the file does not exist.
+
+**Bash parsing** (no `yq` dependency):
+```bash
+# Read mode from network.yaml
+_net_mode() {
+  grep '^mode:' "${HOME}/.4lm/config/network.yaml" | awk '{print $2}'
+}
+_net_backend_port() {
+  grep '^backend_port:' "${HOME}/.4lm/config/network.yaml" | awk '{print $2}'
+}
+```
+
+### Profile YAML schema (consumed by `mlx-openai-server`)
+
+```yaml
+server:
+  host: "<set by wrapper, not validated here>"
+  port: <integer, 1–65535>
+
+models:
+  - model_path: <string, required>         # HF repo or local path
+    served_model_name: <string, required>  # API model ID
+    model_type: lm                         # always "lm" for text models
+    enable_auto_tool_choice: <bool>        # optional, default false
+    tool_call_parser: <enum, optional>     # see valid values below
+    reasoning_parser: <string, optional>   # model-specific parser
+    max_concurrency: <int, ≥1>             # optional
+    context_window: <int, ≥1, required>    # tokens
+    on_demand: <bool, optional>            # Phase 1: verify support
+    idle_timeout: <int, seconds, optional> # Phase 1: verify support
+```
+
+`tool_call_parser` valid values (as of mlx-openai-server v1.7.1): `hermes`, `mistral`, `llama`, `qwen`, `qwen3_coder`, `glm4_moe`, `harmony`. Implementing agent shall enumerate these in the validator function and in `docs/profile-schema.md`.
+
+**Profile YAML validator** — Bash function signature:
+```bash
+# validate_profile <yaml_path>
+# Returns 0 on valid, 1 on invalid (prints reason to stderr).
+validate_profile() {
+  local yaml_path="$1"
+  ...
+}
+```
+
+Validation checks (minimum required):
+1. File exists and is readable.
+2. Top-level `models:` key is present and has at least one entry.
+3. Each entry has non-empty `model_path` and `served_model_name`.
+4. If `tool_call_parser` is present, value is in the allowed enum.
+5. `context_window` is present and is a positive integer.
+
+### `~/.4lm/config/mlx-active` (symlink)
+
+Points to `~/.4lm/config/profiles/<name>.yaml`. Set by `install.sh` (default: `default.yaml`) and updated by `4lm profile set`.
+
+### `~/.4lm/config/mlx-previous` (plain text)
+
+One line: the profile name (not path) active before the last `4lm profile set` call. Read by rollback in `4lm profile set`. Created/overwritten by step (b) of the profile-set sequence.
+
+### `~/.4lm/config/webui_secret_key` (plain text, mode 0600)
+
+32-byte hex string generated by `openssl rand -hex 32`. Created by `4lm-webui-start.sh` on first `lan`-mode start. Never overwritten once created.
+
+### Plist key set (both agents)
+
+| Key | Value |
+|---|---|
+| `Label` | `legacy.4lm-backend` / `legacy.4lm-webui` |
+| `ProgramArguments` | `["__HOME__/.4lm/bin/4lm-backend-start.sh"]` |
+| `RunAtLoad` | `true` |
+| `KeepAlive / Crashed` | `true` |
+| `KeepAlive / SuccessfulExit` | `false` |
+| `ThrottleInterval` | `30` |
+| `ExitTimeOut` | `60` |
+| `ProcessType` | `Interactive` |
+| `SoftResourceLimits / NumberOfFiles` | `4096` |
+| `StandardOutPath` | `__HOME__/.4lm/logs/backend.log` |
+| `StandardErrorPath` | `__HOME__/.4lm/logs/backend.log` (same file — merged) |
+| `WorkingDirectory` | `__HOME__/.4lm` |
+| `EnvironmentVariables / PATH` | `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:__HOME__/.local/bin` |
+| `EnvironmentVariables / HOME` | `__HOME__` |
+| `EnvironmentVariables / PYTHONUNBUFFERED` | `1` |
+| `Umask` | `63` (octal 0077) |
+
+`__HOME__` is substituted by `install.sh` using `sed "s|__HOME__|${HOME}|g"`.
+
+### `/etc/newsyslog.d/4lm.conf`
+
+```
+# logfilename          [owner:group]  mode count size  when  flags [/pidfile] [sig]
+~/.4lm/logs/backend.log               600  7     10240 *     J
+~/.4lm/logs/webui.log                 600  7     10240 *     J
+```
+
+Installed by `install.sh` via `sudo tee /etc/newsyslog.d/4lm.conf`.
+
+### `.shellcheckrc`
+
+```
+shell=bash
+disable=SC2155  # declare and assign separately — tolerated in this codebase
+disable=SC1091  # not following sourced files — external pip scripts
+```
+
+---
+
+## CLI Surface
+
+```
+4lm [command] [target] [flags]
+
+Commands:
+  start   [backend|webui|all]    Bootstrap and start agents (default: all)
+  stop    [backend|webui|all]    Bootout and stop agents (default: all)
+  restart [backend|webui|all]    Kickstart running agents (default: all)
+  status                         Show per-service state with launchd detail
+  health                         Check iogpu.wired_limit_mb; exit 1 if below threshold
+  logs    [backend|webui]        Tail -F log file (default: backend)
+  profile list                   List available profiles
+  profile set <name>             Atomic profile switch with rollback
+  profile current                Print active profile name
+  expose  local|lan [--confirm]  Change bind mode; restart running services
+  doctor                         Check prerequisites and config; print remediation
+  open    [webui|backend]        Open URL in default browser (default: webui)
+  uninstall                      Bootout agents, remove symlink (keeps ~/.4lm/)
+
+Exit codes:
+  0  success
+  1  user-facing error or refusal (invalid args, validation failure, poll timeout)
+  2  internal error (unexpected state, missing required file)
+```
+
+`4lm` with no arguments is equivalent to `4lm status`.
+
+---
+
+## Configuration
+
+### `requirements.txt` (repo root)
+
+```
+mlx-openai-server==1.7.1
+open-webui==0.6.43
+```
+
+### Sudoers (unchanged from current)
+
+File: `/etc/sudoers.d/4lm-stack` (or appended to existing `/etc/sudoers.d/llm-stack`)
+```
+lukas ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
+```
+
+The wrapper invocation shall match the literal exactly: `sudo -n /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304`. If this call returns non-zero, the wrapper prints `WARN: wired_limit_mb not set — run \`4lm doctor\` for fix` and continues.
+
+---
+
+## Error Handling
+
+| Failure | Trigger | Behaviour | User-visible message |
+|---|---|---|---|
+| Profile name fails regex | `4lm profile set <name>` | Exit 1 before any FS operation | `invalid profile name: <input>` |
+| Profile YAML invalid | `4lm profile set <name>` validation | Exit 1, no symlink swap | `Profile validation failed: <reason>; active profile unchanged` |
+| New profile: no `/v1/models` response in 30 s | `4lm profile set` poll | Restore `mlx-active` symlink to `mlx-previous` value, kickstart backend | `Profile switch failed; reverted to <previous>` (stderr, exit 1) |
+| Rollback kickstart also fails | `4lm profile set` rollback | Print extended warning, exit 1 | `WARN: rollback kickstart failed — backend may be in unknown state. Run: 4lm logs backend` |
+| `4lm expose lan` without `--confirm` | CLI dispatch | Exit 1, network.yaml unchanged | `LAN exposure requires --confirm. Risks: no auth on backend, WebUI first-user race. Prefer a host firewall rule or external VPN.` |
+| Plist not found at `4lm start` | `service_start` | Exit 2 with remediation | `plist not found: ~/.4lm/launchd/<label>.plist — run install.sh first` |
+| Backend mid-cold-load | `4lm status` | Show `loading` with elapsed seconds from launchd start time | `Backend: loading (32s elapsed)` |
+| Backend respawn-throttled | `4lm status` detects `state = waiting` | Show `respawning` with last exit code and reason | `Backend: respawning — last exit 1. Run: 4lm logs backend` |
+| `sudo -n /usr/sbin/sysctl` fails | Backend wrapper startup | Best-effort skip, continue | `WARN: wired_limit_mb not set — run \`4lm doctor\` for fix` |
+| `iogpu.wired_limit_mb < 98304` | `4lm health` | Exit 1 | `iogpu.wired_limit_mb=<actual> < 98304 — see docs/setup.md §Sudoers` |
+
+---
+
+## Implementation Phases
+
+Each phase is a single PR, independently committable and testable.
+
+### Phase 1 — Research + docs reconciliation
+
+**Goal**: Establish ground truth before any code rewrite.
+
+1. Read `$(pip show mlx-openai-server | grep Location)/mlx_openai_server/` to determine if `on_demand` and `idle_timeout` are parsed YAML keys. Document finding in a comment block in `default.yaml`.
+2. Compute correct KV-cache GB for each model in `default.yaml` using `context_window` and model architecture parameters. Update `BRIEFING.md` to replace "12 GB KV-Cache @ 32k" with the correct values.
+3. Delete `llm-stack/BRIEFING.md`.
+
+**Commit**: `docs: reconcile BRIEFING context-window numbers; delete duplicate`
+
+**Gate**: `BRIEFING.md` exists only at root; YAML and BRIEFING agree on context-window and KV-cache numbers; `on_demand`/`idle_timeout` support status is documented.
+
+---
+
+### Phase 2 — Rename llm → 4lm (pure rename, no behaviour change)
+
+**Goal**: All paths, labels, and references use the new names before any new logic lands.
+
+1. Copy `llm-stack/bin/llm` → `bin/4lm`, `llm-stack/bin/llm-backend-start.sh` → `bin/4lm-backend-start.sh`, `llm-stack/bin/llm-webui-start.sh` → `bin/4lm-webui-start.sh`. Remove the `llm-stack/bin/` originals.
+2. Rename plist files: `legacy.llm-backend.plist` → `launchd/legacy.4lm-backend.plist`; same for webui. Update `Label` keys inside. Remove `llm-stack/launchd/` originals.
+3. Move `llm-stack/install.sh` → `install.sh`. Move `llm-stack/config/` → `config/`. Remove `llm-stack/README.md` (content merged into root README).
+4. In `bin/4lm`: update `LLM_HOME="${HOME}/.4lm"`, `BACKEND_LABEL="legacy.4lm-backend"`, `WEBUI_LABEL="legacy.4lm-webui"`, log path, all plist paths.
+5. In `install.sh`: update all path references from `~/.llm-stack` to `~/.4lm`; update symlink target to `~/.local/bin/4lm`.
+6. Update `README.md` and `BRIEFING.md` (root): `llm` → `4lm` in commands and paths.
+
+**Commit**: `refactor: rename llm → 4lm; update all paths and labels`
+
+**Gate**: `./install.sh` on a clean system produces a working `4lm help`; `grep -r 'llm-stack\|bin/llm\b\|\.llm-stack\|llm-backend\|llm-webui\|com\.lukas\.llm' bin/ launchd/ install.sh` returns empty; old `llm` symlink removed.
+
+---
+
+### Phase 3 — Manual activation model
+
+**Goal**: Services never auto-start at login.
+
+1. In `install.sh`: change plist destination from `~/Library/LaunchAgents/` to `~/.4lm/launchd/`. Remove the `mkdir -p ~/Library/LaunchAgents` step for plists.
+2. In `install.sh`: add bootout of old labels before installing new plists:
+   ```bash
+   launchctl bootout "gui/$(id -u)/legacy.llm-backend" 2>/dev/null || true
+   launchctl bootout "gui/$(id -u)/legacy.llm-webui" 2>/dev/null || true
+   launchctl bootout "gui/$(id -u)/legacy.4lm-backend" 2>/dev/null || true
+   launchctl bootout "gui/$(id -u)/legacy.4lm-webui" 2>/dev/null || true
+   ```
+3. In `install.sh`: remove any `launchctl bootstrap` call. Remove the "Services will auto-start on next login" footer message.
+4. In `bin/4lm`: update `BACKEND_PLIST` and `WEBUI_PLIST` to point to `~/.4lm/launchd/*.plist`.
+5. In `service_start`: change bootstrap call to use the plist path from `~/.4lm/launchd/`.
+6. Add migration step to `install.sh` (runs before anything else): if `~/.llm-stack` exists and `~/.4lm` does not, run `mv "${HOME}/.llm-stack" "${HOME}/.4lm"` and update the `mlx-active` symlink target.
+7. Update `README.md` and `docs/setup.md` (create if absent) with the new lifecycle: install → `4lm start` → `4lm stop` (persists across reboots).
+
+**Commit**: `feat: store plists in ~/.4lm/launchd/; disable auto-start on login`
+
+**Gate**: `install.sh` completes; `launchctl print gui/$(id -u)/legacy.4lm-backend` exits non-zero immediately after install; `4lm start` loads and starts both agents; `4lm stop` unloads both; after a simulated reboot (bootout all labels manually), `4lm status` shows both stopped.
+
+---
+
+### Phase 4 — Network exposure
+
+**Goal**: `4lm expose` as the only supported bind-mode switch.
+
+1. Create `config/network.example.yaml` with schema documented (committed to repo).
+2. In `install.sh`: write `~/.4lm/config/network.yaml` from the example file if absent.
+3. In `bin/4lm-backend-start.sh`: read `network.yaml` to derive `BIND_HOST` (`local` → `127.0.0.1`, `lan` → `0.0.0.0`) and `BIND_PORT`. Pass to `mlx-openai-server` via `--host` and `--port` flags.
+4. In `bin/4lm-webui-start.sh`: same for WebUI host/port. In `lan` mode: read/generate `~/.4lm/config/webui_secret_key`; set `WEBUI_SECRET_KEY`, `WEBUI_REGISTRATION_ENABLED=false`, `DEFAULT_USER_ROLE=pending`.
+5. Implement `cmd_expose` in `bin/4lm`:
+   ```bash
+   cmd_expose() {
+     local mode="$1" confirm="${2:-}"
+     [[ "$mode" == "local" || "$mode" == "lan" ]] || die "expose: mode must be 'local' or 'lan'"
+     if [[ "$mode" == "lan" && "$confirm" != "--confirm" ]]; then
+       echo "LAN exposure requires --confirm. Risks: no auth on backend, WebUI first-user race. Prefer a host firewall rule or external VPN." >&2
+       exit 1
+     fi
+     # Write network.yaml
+     # Restart running services
+   }
+   ```
+6. Remove all env-var override paths (`LLM_BACKEND_HOST`, `LLM_WEBUI_HOST`, etc.) from wrappers — `network.yaml` is the single config channel.
+7. Remove `LLM_BACKEND_HOST=0.0.0.0 llm restart backend` from README.
+
+**Commit**: `feat: add 4lm expose command; read bind mode from network.yaml`
+
+**Gate**: `4lm expose lan` without `--confirm` exits 1 and prints the risk message; `4lm expose lan --confirm` updates `network.yaml` and restarts running services bound to 0.0.0.0; `4lm expose local --confirm` reverts; WebUI started in `lan` mode has a persistent `webui_secret_key`.
+
+---
+
+### Phase 5 — Security hardening
+
+**Goal**: Close all HIGH security findings.
+
+1. Set `DEFAULT_USER_ROLE=pending` in `4lm-webui-start.sh` (unconditionally, not just in `lan` mode).
+2. Create `requirements.txt` at repo root with pinned versions. In `install.sh`: replace the `command -v mlx-openai-server` check with `pip install -r "${SOURCE_DIR}/requirements.txt"`.
+3. In `bin/4lm-backend-start.sh`: change `sudo -n sysctl` to `sudo -n /usr/sbin/sysctl`.
+4. In `cmd_profile_set` (inside `bin/4lm`): add input validation before any path construction:
+   ```bash
+   [[ "$name" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || die "invalid profile name: ${name}"
+   ```
+5. Add `<key>Umask</key><integer>63</integer>` to both plist templates.
+
+**Commit**: `fix: security hardening — pinned deps, sysctl path, profile whitelist, umask`
+
+**Gate**: Fresh install produces log files with `stat -f %Mp%Lp ~/.4lm/logs/backend.log` = `0600`; `pip show open-webui mlx-openai-server` returns pinned versions; `4lm profile set '../foo'` exits 1 with `invalid profile name`.
+
+---
+
+### Phase 6 — Profile validation, atomic switch, WebUI dependency removal
+
+**Goal**: Safe profile switching; fast WebUI startup.
+
+1. Implement `validate_profile()` in `bin/4lm`. Check: file exists; `models:` present with ≥1 entry; each entry has `model_path` and `served_model_name`; `tool_call_parser` (if present) is in the allowed enum; `context_window` is a positive integer.
+2. Rewrite `cmd_profile_set` to execute the atomic sequence defined in Requirement 28.
+3. Remove the WebUI wait loop from `4lm-webui-start.sh` entirely.
+4. Remove `cmd_install` from `bin/4lm`.
+5. Update `service_start` to add the 5-second readiness poll for the backend agent only (Requirement 31).
+
+**Commit**: `feat: atomic profile switch with rollback; profile YAML validation`
+
+**Gate**: `4lm profile set <name>` with a malformed YAML exits 1 before symlink swap; `4lm profile current` still shows the original profile; WebUI starts in <2 s regardless of backend state.
+
+---
+
+### Phase 7 — Observability
+
+**Goal**: `status` and `health` are actionable.
+
+1. Rewrite `cmd_status` in `bin/4lm` to parse `launchctl print gui/$(id -u)/<label>` output for: `state`, `last exit code`, `last exit reason`, restart count. Use `awk`/`grep` — no Python dependency.
+2. Implement `cmd_health` in `bin/4lm`: read `iogpu.wired_limit_mb` via `/usr/sbin/sysctl -n iogpu.wired_limit_mb`; compare to 98304; exit 0 or 1 with the message from the Error Handling table.
+3. In `install.sh`: add `sudo tee /etc/newsyslog.d/4lm.conf` step. Print `Requires sudo: installing /etc/newsyslog.d/4lm.conf` before it.
+4. Change all `tail -f` calls in `cmd_logs` to `tail -F`. Set default target to `backend`. Update help text.
+5. Remove unused `plist` parameter from `service_stop` and `service_restart` function signatures (they only need the label).
+
+**Commit**: `feat: enhanced status/health; newsyslog rotation; tail -F`
+
+**Gate**: `4lm status` during throttle-waiting shows `respawning` with last exit code; `4lm health` with `iogpu.wired_limit_mb` below threshold exits 1 with remediation message; `4lm logs` follows rotated files.
+
+---
+
+### Phase 8 — Testing & CI
+
+**Goal**: Automated quality gates.
+
+1. Create `Makefile`:
+   ```makefile
+   SHELL := bash
+   SCRIPTS := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh
+   PLISTS  := launchd/legacy.4lm-backend.plist launchd/legacy.4lm-webui.plist
+
+   lint:
+   	shellcheck $(SCRIPTS)
+   	shfmt -d $(SCRIPTS)
+
+   fmt:
+   	shfmt -w $(SCRIPTS)
+
+   test:
+   	bats tests/
+
+   check: lint
+   	bash -n $(SCRIPTS)
+   	plutil -lint $(PLISTS)
+   	xmllint --noout $(PLISTS)
+   	bats tests/
+
+   .PHONY: lint fmt test check
+   ```
+2. Create `.shellcheckrc` with content defined in Data Models.
+3. Write four bats test files (see Requirement 38). Each file sources `tests/helpers/setup.bash` which prepends `${BATS_TEST_DIRNAME}/helpers` to `PATH`.
+4. Write stub executables `tests/helpers/launchctl` and `tests/helpers/curl` (executable, `#!/usr/bin/env bash`). `launchctl` stub: logs calls to `${BATS_TMPDIR}/launchctl.log`, returns 0. `curl` stub: if `${CURL_STUB_RESPONSE}` is set, print it and return 0; else return 1.
+5. Create `.github/workflows/ci.yml` running on `macos-latest`. Steps: checkout, install `bats-core` + `shellcheck` + `shfmt` via Homebrew, run `make check`.
+
+**Commit**: `test: add bats suite, Makefile, and GitHub Actions CI`
+
+**Gate**: `make check` exits 0 locally; CI passes on a PR.
+
+---
+
+### Phase 9 — Docs cleanup
+
+**Goal**: A fresh operator can go from `git clone` to `4lm start` using only README.
+
+1. Create `docs/setup.md` with: wired-memory explanation, sudoers snippet, troubleshooting (sysctl permission denied, newsyslog install error, pip version conflict).
+2. Create `docs/profile-schema.md` with YAML key reference filled in from Phase 1 verification.
+3. Create `CLAUDE.md` at repo root: structure overview, key commands, pointer to `BRIEFING.md`.
+4. Update `README.md` TL;DR: model pre-download, `docs/setup.md §Sudoers`, then `4lm start`.
+
+**Commit**: `docs: add setup.md, profile-schema.md, CLAUDE.md; update README`
+
+**Gate**: `grep -r 'docs/setup.md' docs/setup.md` finds the file; every internal doc link resolves; `README.md` includes model pre-download commands.
+
+---
+
+### Phase 10 — Hygiene cleanup (optional)
+
+Skip if any Phase 1–9 gate is still open.
+
+LOW-severity items: consolidate colour-block definitions (currently duplicated between `bin/4lm` and `install.sh`) into a sourced `bin/4lm-lib.sh`; fix `warn()` writing to stdout in some scripts and stderr in others (standardise to stderr); cache `id -u` once per script invocation.
+
+**Commit**: `refactor: consolidate colour helpers; fix warn() stderr; cache id -u`
+
+**Gate**: `make check` is green; no functional behaviour changes.
+
+---
+
+## Test Scenarios
+
+### Activation lifecycle
+
+```
+GIVEN install.sh completed successfully
+WHEN launchctl print gui/$(id -u)/legacy.4lm-backend is run
+THEN it exits non-zero (agent not loaded)
+AND no process is bound to :8000 or :3000
+```
+
+```
+GIVEN 4lm start was run and services are running
+WHEN 4lm stop is run
+AND all legacy.4lm-* labels are manually booted out (simulating reboot)
+THEN launchctl print gui/$(id -u)/legacy.4lm-backend exits non-zero
+AND 4lm start bootstraps cleanly on next invocation
+```
+
+### Network exposure
+
+```
+GIVEN bind mode is local and services are running
+WHEN 4lm expose lan is run without --confirm
+THEN the command exits 1
+AND stderr contains "requires --confirm"
+AND network.yaml mode remains local
+AND bind addresses are unchanged
+```
+
+```
+GIVEN bind mode is local
+WHEN 4lm expose lan --confirm is run
+THEN network.yaml mode is set to lan
+AND running services are restarted
+AND ~/.4lm/config/webui_secret_key exists with mode 0600
+AND WEBUI_REGISTRATION_ENABLED=false is passed to open-webui
+```
+
+### Profile switching
+
+```
+GIVEN profile default is active and backend is running
+WHEN 4lm profile set <name> is run and <name>.yaml is malformed (missing model_path)
+THEN validate_profile exits 1
+AND the mlx-active symlink is unchanged
+AND 4lm profile current still reports default
+AND backend is still running with the original models
+```
+
+```
+GIVEN profile default is active and backend is running
+WHEN 4lm profile set new is run and /v1/models does not respond within 30 s
+THEN 4lm waits up to 30 s for /v1/models
+AND on timeout restores mlx-active symlink to default
+AND kickstarts the backend with default
+AND prints "Profile switch failed; reverted to default" to stderr
+AND exits 1
+```
+
+```
+GIVEN profile default is active
+WHEN 4lm profile set ../../../etc/passwd is run
+THEN the command exits 1 with "invalid profile name"
+AND no filesystem operation outside ~/.4lm/config/profiles/ is attempted
+```
+
+### Observability
+
+```
+GIVEN the backend launchd agent is in state = waiting (respawn-throttled)
+WHEN 4lm status is run
+THEN stdout contains "respawning"
+AND stdout contains the last exit code
+AND stdout does not contain "running"
+```
+
+```
+GIVEN /usr/sbin/sysctl -n iogpu.wired_limit_mb returns a value below 98304
+WHEN 4lm health is run
+THEN the command exits 1
+AND stdout contains the actual value
+AND stdout contains "docs/setup.md"
+```
+
+### Idempotency
+
+```
+GIVEN install.sh ran successfully once
+WHEN install.sh runs a second time with no source changes
+THEN exit code is 0
+AND ~/.4lm/, ~/Library/LaunchAgents/ (N/A — plists in ~/.4lm/launchd/), and ~/.local/bin/4lm symlink target are byte-identical to the first run
+AND no launchctl bootstrap is called
+```
+
+### bats-specific (stubs active)
+
+```
+GIVEN launchctl stub is in PATH
+WHEN 4lm start is run
+THEN launchctl stub log contains "bootstrap gui/<uid>"
+AND 4lm start exits 0
+```
+
+```
+GIVEN curl stub returns HTTP 200 with valid /v1/models JSON
+WHEN 4lm profile set new is run (with valid new.yaml)
+THEN mlx-active symlink points to new.yaml
+AND exit code is 0
+AND stdout contains "Switched to new"
+```
+
+---
+
+## Decision Log
+
+| Considered | Decision | Reason |
+|---|---|---|
+| Keep `~/Library/LaunchAgents/` for plist install | Store in `~/.4lm/launchd/` | Only way to prevent launchd from auto-loading at login (R3/R4 contradiction resolved). |
+| `4lm enable`/`disable` separate from `start`/`stop` | Rejected | `bootstrap`/`bootout` already gives the right semantic; extra layer is YAGNI. |
+| `RunAtLoad=false` + `kickstart -k` after bootstrap | Rejected | `RunAtLoad=true` is more idiomatic; equivalent end state since plist is not in scanned directory. |
+| Keep home dir as `~/.llm-stack/` | Rename to `~/.4lm/` | Consistent with new CLI name; single-user stack, migration is trivial one-liner. |
+| Keep launchd labels as `legacy.llm-{backend,webui}` | Rename to `legacy.4lm-{backend,webui}` | Consistency wins; Apple label rules permit digits after dots. |
+| Env-var overrides (`LLM_BACKEND_HOST`, etc.) | Removed | YAGNI; single config channel (`network.yaml`) is simpler; no current automation consumer. |
+| `LLM_ALLOW_PUBLIC_BIND=1` bypass | Removed | YAGNI; single-user stack; untestable code path; `--confirm` is sufficient. |
+| `WEBUI_REGISTRATION_ENABLED=false` only once admin exists | Set unconditionally in LAN mode | No mechanism to detect admin from shell; operator must register immediately after `expose lan`. |
+| Auto-promote first WebUI user to admin | `DEFAULT_USER_ROLE=pending` | `admin` makes every new user admin, not just first. Explicit promotion is safer. |
+| Block WebUI startup on backend readiness (60 s wait) | Remove wait | Open WebUI handles backend-down at request time; wait is dead weight. |
+| `cmd_install` runtime subcommand | Remove | Drift risk vs `install.sh`; partial coverage. |
+| Validate profiles at backend start | Validate before activation | Backend crash-loops in KeepAlive until throttled; pre-activation validation is strictly safer. |
+| Docker/docker-compose | Rejected | Docker-for-Mac halves MLX performance (BRIEFING §). |
+| Python control plane | Rejected | Bash is more robust on macOS, fewer dependencies (BRIEFING §). |
+| User-space log rotation (launchd `StandardOutPath` size limits) | `/etc/newsyslog.d/` with sudo | newsyslog is the macOS-native solution; `StandardOutPath` does not support rotation. Single `sudo` prompt acceptable. |
+| Separate `.out`/`.err` log files per service | Merged into single `.log` | Simplifies rotation config and tailing; errors appear in context with stdout. |
+
+---
+
+## Open Decisions
+
+1. **`on_demand`/`idle_timeout` YAML key support in mlx-openai-server v1.7.1**: The implementing agent must read the installed package source in Phase 1 and make the call. If unsupported: remove keys from all profile YAMLs, add comment block documenting Slot 3 as manual-load, update `BRIEFING.md` and `docs/profile-schema.md`. If supported: document confirmed support in `docs/profile-schema.md` and keep keys in `default.yaml`. This cannot be pre-decided without running the code.
+
+---
+
+## Out of Scope
+
+- **OpenCode integration** (BRIEFING Phase B) — `~/.config/opencode/opencode.jsonc`, agents config, AGENTS.md.
+- **Open WebUI MCP server configuration** (BRIEFING Phase C) — Tools/MCP setup inside WebUI admin UI.
+- **SwiftBar menubar plugin** (BRIEFING Phase E item 19).
+- **Sleep/battery hooks** (BRIEFING Phase E item 20) — `caffeinate`/`pmset` integration.
+- **Profile auto-switching** (BRIEFING Phase E item 21).
+- **Cloud fallback configuration** (BRIEFING §4) — Z.ai, Kimi, Claude, Gemini provider tokens.
+- **Backup integration** for `openwebui-data/` — operator runs Restic/Borg manually.
+- **Multi-user support** — labels and paths are personal-stack-scoped.
+- **Cross-host clustering** — single-node only.
+- **Replacing the inference backend** — `mlx-openai-server` is locked in (BRIEFING §).
