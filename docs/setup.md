@@ -7,6 +7,9 @@ local LLM stack on Apple Silicon.
 
 - macOS, Apple Silicon (`uname -m` must report `arm64`)
 - Python 3.11+
+- `pipx` (`brew install pipx && pipx ensurepath`) — Homebrew's Python is
+  PEP 668 externally-managed, so the installer uses pipx to put each pinned
+  CLI tool in its own venv with the entrypoint on `PATH`
 - ~140 GB free disk for model weights
 
 ## Step 1 — Pre-download model weights
@@ -130,11 +133,18 @@ ls -la /etc/newsyslog.d/4lm.conf
 
 If missing, re-run `install.sh` and complete the sudo prompt.
 
-### `pip install` complains about version conflicts
+### `error: externally-managed-environment` (PEP 668)
 
-The `requirements.txt` pin is intentional. If you need a different version,
-edit `requirements.txt` and re-run the installer. Don't `pip install --upgrade`
-out-of-band — that will drift from what the rest of the stack expects.
+You ran `pip install` against Homebrew's Python directly. Use `install.sh`
+instead — it routes through `pipx`, which gives each tool its own venv. If
+`pipx` is missing, install it first: `brew install pipx && pipx ensurepath`.
+
+### Changing pinned package versions
+
+The `requirements.txt` pin is intentional. To change a version, edit
+`requirements.txt` (one `pkg==version` per line) and re-run `install.sh` —
+the installer detects existing pipx installs and reinstalls with `--force`
+when the pinned version differs. Don't `pip install --upgrade` out-of-band.
 
 ### `4lm logs backend` shows no file
 

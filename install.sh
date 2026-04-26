@@ -6,7 +6,7 @@
 #   2. Creates ~/.4lm/{bin,config/profiles,launchd,logs}
 #   3. Installs scripts, profile YAMLs, plists (plists in ~/.4lm/launchd/, NOT ~/Library/LaunchAgents/)
 #   4. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent
-#   5. pip install -r requirements.txt
+#   5. pipx install each pinned package from requirements.txt
 #   6. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
 #   7. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
 #
@@ -140,15 +140,25 @@ if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
   echo "    Add to ~/.zshrc:  export PATH=\"\${HOME}/.local/bin:\${PATH}\""
 fi
 
-# ---- 9. pip install ------------------------------------------------------
-info "Installing Python deps from requirements.txt…"
-if command -v pip3 >/dev/null; then
-  pip3 install -r "${SOURCE_DIR}/requirements.txt"
-elif command -v pip >/dev/null; then
-  pip install -r "${SOURCE_DIR}/requirements.txt"
-else
-  warn "pip not found — install mlx-openai-server and open-webui manually"
+# ---- 9. pipx install pinned deps ------------------------------------------
+# Homebrew's Python is PEP 668 "externally-managed", so plain `pip install`
+# fails. Both deps ship CLI entrypoints, so pipx (per-app venv) is the right
+# tool. Each line in requirements.txt is `pkg==version`.
+info "Installing Python deps with pipx…"
+if ! command -v pipx >/dev/null; then
+  die "pipx not found — install with: brew install pipx && pipx ensurepath"
 fi
+while IFS= read -r line; do
+  [[ -z "${line}" || "${line}" =~ ^# ]] && continue
+  pkg="${line%%==*}"
+  ver="${line#*==}"
+  if pipx list --short 2>/dev/null | grep -qE "^${pkg} ${ver}( |$)"; then
+    info "${pkg}==${ver} already installed"
+  else
+    info "pipx install ${pkg}==${ver}"
+    pipx install --force "${pkg}==${ver}"
+  fi
+done <"${SOURCE_DIR}/requirements.txt"
 
 # ---- 10. newsyslog log rotation ------------------------------------------
 NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
