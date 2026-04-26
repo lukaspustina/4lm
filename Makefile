@@ -2,13 +2,19 @@ SHELL       := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := check
 
-SCRIPTS    := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh tests/lint-profiles.sh
+SCRIPTS    := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh uninstall.sh tests/lint-profiles.sh
 PLISTS     := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
 SHFMT_OPTS := -i 2 -ci
 
-.PHONY: check lint fmt syntax test plist-lint yaml-lint help
+.PHONY: check lint fmt syntax test plist-lint yaml-lint install uninstall help
 
 check: lint syntax plist-lint yaml-lint test ## Run all gates (default)
+
+install: ## Run ./install.sh
+	./install.sh
+
+uninstall: ## Run ./uninstall.sh — DESTRUCTIVE, removes ~/.4lm and chat history
+	./uninstall.sh
 
 lint: ## shellcheck + shfmt -d on all scripts
 	shellcheck $(SCRIPTS)
