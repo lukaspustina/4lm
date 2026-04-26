@@ -96,6 +96,72 @@ To customise (different models, additional providers like Z.ai or Anthropic),
 edit `~/.config/opencode/opencode.jsonc` directly — install.sh leaves it alone
 on subsequent runs.
 
+## Profiles
+
+A "profile" is one YAML in `config/profiles/` (installed to
+`~/.4lm/config/profiles/`). It declares **which models load at backend
+start** and how much context each gets. The active profile is selected
+via the `~/.4lm/config/mlx-active` symlink; switch atomically with
+`4lm profile set <name>`.
+
+The three shipped profiles trade memory for capability:
+
+### `default` (the daily driver)
+
+Three slots — two always-resident, one on-demand:
+
+| Slot | Model | Purpose | Loaded |
+|---|---|---|---|
+| 1 | GLM-4.7-Flash (8-bit, ~33 GB) | Build / code / tool calling | always |
+| 2 | Qwen3.6-35B-A3B (8-bit, ~38 GB) | Plan / knowledge / multilingual | always |
+| 3 | GPT-OSS-120B (MXFP4, ~62 GB) | Heavy reasoning | on first request, unloads after 5 min idle |
+
+Working set ≈ 71 GB resident with slot 3 unloaded; up to ~100 GB when
+slot 3 fires. Both resident slots get `context_length: 65536` (64k
+tokens). Slot 3 gets `context_length: 32768` (32k).
+
+**Use when**: you want the full stack available — both build and plan
+in parallel, with heavy reasoning a request away.
+
+### `coding-only`
+
+One slot: GLM-4.7-Flash with `context_length: 200000` (200k tokens).
+
+Working set ≈ 33 GB weights + a much larger KV cache (the long context
+is the whole point).
+
+**Use when**: a single sustained coding session that wants the full
+context window — ingesting a large repo for refactor, multi-file
+analysis, large-diff review. Slot 2's plan/knowledge model isn't
+loaded, so OpenCode's `plan` agent will get an HTTP 404 from
+`/v1/models` for `qwen3.6-35b`. Fine if you only use `build`.
+
+### `knowledge-only`
+
+One slot: Qwen3.6-35B-A3B with `context_length: 262144` (256k tokens).
+
+Working set ≈ 38 GB weights + a very large KV cache. Tight on the 96 GB
+budget — leaves little headroom.
+
+**Use when**: long-form synthesis over a large corpus — Obsidian vault
+analysis, multilingual research, document RAG over big inputs. Slot
+1's coding model isn't loaded, so OpenCode's `build` agent will fail
+similarly on `glm-4.7-flash`. Multilingual is the differentiator
+(Qwen3 was trained on 119 languages, including German).
+
+### When to switch
+
+```sh
+4lm profile list                    # see installed profiles
+4lm profile current                 # see active
+4lm profile set coding-only         # atomic, validated, rolls back on failure
+```
+
+Switching restarts the backend (~30-60 s cold load). Profile schema
+reference: [`profile-schema.md`](profile-schema.md). To customise:
+edit `~/.4lm/config/profiles/<name>.yaml` directly — `install.sh`
+won't overwrite a profile that already exists.
+
 ## Network exposure
 
 Default bind is `127.0.0.1`. To expose to your LAN:
@@ -156,6 +222,53 @@ quality starts dropping).
 ps -o command= -p "$(pgrep -f 'mlx-openai-server launch' | head -1)" \
   | tr ' ' '\n' | grep -A1 repetition-penalty
 ```
+
+### `[metal::malloc] Resource limit (NNN) exceeded` (HTTP 500 to client)
+
+Symptom: OpenCode or WebUI gets a 500 with the message
+`Failed to generate text stream: [metal::malloc] Resource limit (NNN) exceeded.`
+where `NNN` is the size MLX failed to allocate (typically a KV-cache
+slab, ~hundreds of MB).
+
+This is **wired-memory exhaustion**, not the wedged-1.8.0 bug. After a
+long session with the `default` profile, two things grow inside the
+wired pool:
+
+- **KV cache** per ongoing conversation — `cache_key_len` in the
+  backend log climbs every turn (visible in `4lm diag` → "Last 5
+  finished").
+- **Disk-backed prompt cache** (1.8.0 feature) keeps recent slabs
+  resident even after a request finishes.
+
+Once the workers + caches + macOS itself fill the 96 GB wired-pool cap
+(`iogpu.wired_limit_mb=98304`), Metal refuses the next allocation and
+the request fails fast.
+
+First-aid:
+
+```sh
+4lm restart backend     # clears worker state, KV cache, disk-backed cache
+```
+
+Cold reload is 30-60 s. Subsequent prompts rebuild caches on demand.
+
+If it recurs within minutes (not hours), tune one of:
+
+1. **Drop context_length** in the active profile. The default profile
+   ships with `context_length: 65536` (64k) per resident slot — halve
+   that to 32k by editing `~/.4lm/config/profiles/default.yaml`, then
+   `4lm profile set default` to apply with rollback.
+2. **Switch to a single-model profile** to free the other slot's
+   ~30 GB: `4lm profile set coding-only` or `knowledge-only`.
+3. **Raise `iogpu.wired_limit_mb`** if you're willing to give MLX more
+   of the 128 GB. Going past ~104 GB (107520) starts crowding macOS
+   itself. The sudoers rule pins exactly `98304`, so if you change the
+   value, also update `/etc/sudoers.d/4lm-stack` and the wrapper's
+   call.
+
+If it recurs only after long sessions (every few hours): treat as
+normal cache-growth wear — `4lm restart backend` periodically, or
+`4lm stop backend` overnight so the cache resets daily.
 
 ### Worker burning CPU with no in-flight requests
 
