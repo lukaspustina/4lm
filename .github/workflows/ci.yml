@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install tooling
-        run: brew install bats-core shellcheck shfmt
+        run: brew bundle --file=Brewfile
 
       - name: make check
         run: make check

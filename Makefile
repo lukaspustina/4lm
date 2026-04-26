@@ -6,9 +6,13 @@ SCRIPTS    := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh
 PLISTS     := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
 SHFMT_OPTS := -i 2 -ci
 
-.PHONY: check lint fmt syntax test plist-lint yaml-lint install uninstall help
+.PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint help
 
 check: lint syntax plist-lint yaml-lint test ## Run all gates (default)
+
+bootstrap: ## Install required tools from Brewfile + pipx ensurepath
+	brew bundle --file=Brewfile
+	pipx ensurepath
 
 install: ## Run ./install.sh
 	./install.sh

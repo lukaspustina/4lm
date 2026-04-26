@@ -7,21 +7,24 @@ command.
 ## TL;DR
 
 ```sh
-# 1. Pre-download model weights (~140 GB)
+# 1. One-time: install dev + runtime tools (shellcheck, shfmt, bats-core, pipx, python@3.12)
+make bootstrap
+
+# 2. Pre-download model weights (~140 GB)
 huggingface-cli download mlx-community/GLM-4.7-Flash-8bit
 huggingface-cli download unsloth/Qwen3.6-35B-A3B-MLX-8bit
 huggingface-cli download LibraxisAI/gpt-oss-120b-mlx-mxfp4
 
-# 2. Wired-memory limit + sudoers (one-time, see docs/setup.md §Sudoers)
+# 3. Wired-memory limit + sudoers (one-time, see docs/setup.md §Sudoers)
 sudo /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
 
-# 3. Install
-./install.sh             # or: make install
+# 4. Install
+make install
 
-# 4. Start (does NOT auto-start at login)
+# 5. Start (does NOT auto-start at login)
 4lm start
 
-# 5. Daily life
+# 6. Daily life
 4lm status             # see what's running
 4lm logs backend       # tail backend log (uses tail -F, follows rotation)
 4lm restart            # after profile or config changes
@@ -143,6 +146,7 @@ pip install -r requirements.txt --upgrade
 ## Development
 
 ```sh
+make bootstrap    # one-time: brew bundle (shellcheck, shfmt, bats-core, pipx, python@3.12) + pipx ensurepath
 make lint         # shellcheck + shfmt -d
 make fmt          # shfmt -w
 make test         # bats tests/

@@ -6,11 +6,12 @@ local LLM stack on Apple Silicon.
 ## Requirements
 
 - macOS, Apple Silicon (`uname -m` must report `arm64`)
-- Python 3.11+
-- `pipx` (`brew install pipx && pipx ensurepath`) — Homebrew's Python is
-  PEP 668 externally-managed, so the installer uses pipx to put each pinned
-  CLI tool in its own venv with the entrypoint on `PATH`
+- Homebrew, then `make bootstrap` (installs Python 3.12, pipx, shellcheck,
+  shfmt, bats-core from `Brewfile` and runs `pipx ensurepath`)
 - ~140 GB free disk for model weights
+
+> mlx-openai-server 1.7.1 requires Python `>=3.11,<3.13`, so install.sh
+> creates pipx venvs with `python3.12` even if your system default is newer.
 
 ## Step 1 — Pre-download model weights
 
