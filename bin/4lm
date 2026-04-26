@@ -19,7 +19,6 @@ readonly LOG_DIR="${LLM_HOME}/logs"
 readonly CONFIG_DIR="${LLM_HOME}/config"
 readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
 readonly NETWORK_YAML="${CONFIG_DIR}/network.yaml"
-readonly NETWORK_EXAMPLE="${LLM_HOME}/network.example.yaml"
 readonly ACTIVE_CONFIG="${CONFIG_DIR}/mlx-active"
 readonly PREVIOUS_PROFILE_FILE="${CONFIG_DIR}/mlx-previous"
 
