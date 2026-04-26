@@ -233,6 +233,21 @@ print_clients() {
 cmd_diag() {
   echo "${C_DIM}─── 4lm Diagnostics ───${C_RST}"
 
+  # Capture worker CPU snapshot up-front so the in-flight section can flag
+  # "workers idle but log says in-flight" (orphaned admits from aborted clients).
+  local master_pid worker_pids="" max_worker_cpu=0
+  master_pid="$(pgrep -f 'mlx-openai-server launch' 2>/dev/null | head -1 || true)"
+  if [[ -n "${master_pid}" ]]; then
+    worker_pids="${master_pid} $(pgrep -P "${master_pid}" 2>/dev/null | tr '\n' ' ')"
+    local pid cpu
+    for pid in ${worker_pids}; do
+      cpu="$(ps -o pcpu= -p "${pid}" 2>/dev/null | tr -d ' ')"
+      [[ -z "${cpu}" ]] && continue
+      cpu="${cpu%%.*}"
+      ((cpu > max_worker_cpu)) && max_worker_cpu="${cpu}"
+    done
+  fi
+
   echo
   print_clients "$(net_backend_port)" "Backend"
 
@@ -277,7 +292,18 @@ cmd_diag() {
       }
       END { for (u in admit) print "  " admit[u] "  " u }
     ' "${LOG_DIR}/backend.log")"
-    [[ -n "${infl}" ]] && echo "${infl}" || echo "  (none)"
+    if [[ -n "${infl}" ]]; then
+      echo "${infl}"
+      # Cross-check: if log says in-flight but workers are quiet, those admits
+      # are almost certainly orphans from clients that died mid-stream
+      # without the server logging an abort.
+      if ((max_worker_cpu < 5)); then
+        echo "  ${C_YEL}note:${C_RST} all workers <5% CPU — these admits are likely orphans"
+        echo "        (client disconnected before server logged 'finished'), not actually in flight"
+      fi
+    else
+      echo "  (none)"
+    fi
   else
     echo "  (no backend.log yet)"
   fi
@@ -285,17 +311,14 @@ cmd_diag() {
   # Backend worker processes — surfaces "worker burning CPU with no in-flight"
   # which is the wedged-1.8.0 scenario. mlx-openai-server forks model workers
   # via multiprocessing.spawn, whose argv loses the 'mlx-openai-server' string,
-  # so we have to walk children of the master PID.
+  # so we have to walk children of the master PID (gathered above).
   echo
   echo "${C_DIM}Backend worker processes${C_RST}"
-  local master_pid
-  master_pid="$(pgrep -f 'mlx-openai-server launch' 2>/dev/null | head -1 || true)"
   if [[ -z "${master_pid}" ]]; then
     echo "  (no mlx-openai-server master process)"
   else
-    local pids
-    pids="${master_pid} $(pgrep -P "${master_pid}" 2>/dev/null | tr '\n' ' ')"
-    for pid in ${pids}; do
+    local pid
+    for pid in ${worker_pids}; do
       ps -o pid,pcpu,rss,etime -p "${pid}" 2>/dev/null | awk -v master="${master_pid}" 'NR>1 {
         role = ($1 == master) ? "master" : "worker"
         printf "  %-6s pid=%-6s %5s%% CPU, %6.2f GB RSS, etime %s\n", role, $1, $2, $3/1024/1024, $4
