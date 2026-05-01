@@ -21,11 +21,19 @@ setup() {
   [[ "$output" == *"expose"* ]]
   [[ "$output" == *"profile"* ]]
   [[ "$output" == *"outdated"* ]]
+  [[ "$output" == *"upgrade"* ]]
 }
 
 @test "outdated outside a repo dir exits 1 with hint" {
   cd "${HOME}"
   run "${REPO_ROOT}/bin/4lm" outdated
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"4lm clone"* ]] || [[ "${stderr:-}" == *"4lm clone"* ]]
+}
+
+@test "upgrade outside a repo dir exits 1 with hint" {
+  cd "${HOME}"
+  run "${REPO_ROOT}/bin/4lm" upgrade
   [ "$status" -eq 1 ]
   [[ "$output" == *"4lm clone"* ]] || [[ "${stderr:-}" == *"4lm clone"* ]]
 }
