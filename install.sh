@@ -252,9 +252,8 @@ echo "${C_GRN} Installation complete${C_RST}"
 echo "${C_GRN}════════════════════════════════════${C_RST}"
 echo
 echo "Next steps:"
-echo "  ${C_BLU}1.${C_RST} Pre-download models (see docs/setup.md):"
-echo "       ${C_DIM}huggingface-cli download mlx-community/GLM-4.7-Flash-8bit${C_RST}"
-echo "       ${C_DIM}huggingface-cli download unsloth/Qwen3.6-35B-A3B-MLX-8bit${C_RST}"
+echo "  ${C_BLU}1.${C_RST} Pre-download models:"
+echo "       ${C_DIM}4lm models download${C_RST}"
 echo
 echo "  ${C_BLU}2.${C_RST} Start the stack:"
 echo "       ${C_DIM}4lm start${C_RST}"
