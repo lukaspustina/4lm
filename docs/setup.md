@@ -112,11 +112,11 @@ Three slots — two always-resident, one on-demand:
 
 | Slot | Model | Purpose | Loaded |
 |---|---|---|---|
-| 1 | GLM-4.7-Flash (8-bit, ~33 GB) | Build / code / tool calling | always |
-| 2 | Qwen3.6-35B-A3B (8-bit, ~38 GB) | Plan / knowledge / multilingual | always |
-| 3 | GPT-OSS-120B (MXFP4, ~62 GB) | Heavy reasoning | on first request, unloads after 5 min idle |
+| 1 | Qwen3-Coder-30B-A3B (4-bit, ~18 GB) | Build / code / tool calling | always |
+| 2 | Qwen3.6-27B (4-bit, ~17 GB) | Plan / knowledge / reasoning | always |
+| 3 | GPT-OSS-120B (MXFP4, ~75 GB) | Heavy reasoning | on first request, unloads after 5 min idle |
 
-Working set ≈ 71 GB resident with slot 3 unloaded; up to ~100 GB when
+Working set ≈ 35 GB resident with slot 3 unloaded; up to ~110 GB when
 slot 3 fires. Both resident slots get `context_length: 65536` (64k
 tokens). Slot 3 gets `context_length: 32768` (32k).
 
@@ -125,29 +125,27 @@ in parallel, with heavy reasoning a request away.
 
 ### `coding-only`
 
-One slot: GLM-4.7-Flash with `context_length: 200000` (200k tokens).
+One slot: Qwen3-Coder-30B-A3B with `context_length: 131072` (128k tokens).
 
-Working set ≈ 33 GB weights + a much larger KV cache (the long context
-is the whole point).
+Working set ≈ 18 GB weights + a large KV cache (the long context is
+the whole point).
 
 **Use when**: a single sustained coding session that wants the full
 context window — ingesting a large repo for refactor, multi-file
 analysis, large-diff review. Slot 2's plan/knowledge model isn't
 loaded, so OpenCode's `plan` agent will get an HTTP 404 from
-`/v1/models` for `qwen3.6-35b`. Fine if you only use `build`.
+`/v1/models` for `qwen3.6-27b`. Fine if you only use `build`.
 
 ### `knowledge-only`
 
-One slot: Qwen3.6-35B-A3B with `context_length: 262144` (256k tokens).
+One slot: Qwen3.6-27B with `context_length: 131072` (128k tokens).
 
-Working set ≈ 38 GB weights + a very large KV cache. Tight on the 96 GB
-budget — leaves little headroom.
+Working set ≈ 17 GB weights + a large KV cache.
 
 **Use when**: long-form synthesis over a large corpus — Obsidian vault
-analysis, multilingual research, document RAG over big inputs. Slot
-1's coding model isn't loaded, so OpenCode's `build` agent will fail
-similarly on `glm-4.7-flash`. Multilingual is the differentiator
-(Qwen3 was trained on 119 languages, including German).
+analysis, research, document RAG over big inputs. Slot 1's coding
+model isn't loaded, so OpenCode's `build` agent will fail similarly
+on `qwen3-coder-30b`.
 
 ### When to switch
 
