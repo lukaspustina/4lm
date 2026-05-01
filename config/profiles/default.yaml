@@ -17,14 +17,17 @@ models:
     tool_call_parser: glm4_moe
     reasoning_parser: glm47_flash
     context_length: 65536
+    default_max_tokens: 8192
+    default_repetition_penalty: 1.15
 
   - model_path: unsloth/Qwen3.6-35B-A3B-MLX-8bit
     served_model_name: qwen3.6-35b
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_coder
-    reasoning_parser: qwen3
+    chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
     context_length: 65536
+    default_max_tokens: 8192
 
   - model_path: LibraxisAI/gpt-oss-120b-mlx-mxfp4
     served_model_name: gpt-oss-120b

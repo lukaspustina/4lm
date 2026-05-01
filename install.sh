@@ -95,6 +95,13 @@ for profile in "${SOURCE_DIR}"/config/profiles/*.yaml; do
   fi
 done
 
+# ---- 4b. Install chat template files (always overwrite — not user-editable) -
+for tmpl in "${SOURCE_DIR}"/config/*.jinja; do
+  [[ -f "${tmpl}" ]] || continue
+  cp "${tmpl}" "${CONFIG_DIR}/$(basename "${tmpl}")"
+  ok "Chat template → $(basename "${tmpl}")"
+done
+
 # ---- 5. Active profile default --------------------------------------------
 ACTIVE="${CONFIG_DIR}/mlx-active"
 if [[ ! -L "${ACTIVE}" && ! -f "${ACTIVE}" ]]; then

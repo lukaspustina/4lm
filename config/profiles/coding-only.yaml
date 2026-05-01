@@ -14,3 +14,5 @@ models:
     tool_call_parser: glm4_moe
     reasoning_parser: glm47_flash
     context_length: 200000
+    default_max_tokens: 8192
+    default_repetition_penalty: 1.15
