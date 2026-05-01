@@ -385,78 +385,150 @@ declare -a OUTDATED_PY=()
 declare -a OUTDATED_BREW=()
 declare -a OUTDATED_HF=()
 
-# Print the per-channel report and populate the OUTDATED_* arrays.
+# Print the per-channel report and populate the OUTDATED_* arrays. Pass a
+# scope of "all" (default) or one of "python" / "brew" / "models" to limit
+# the sections that are queried + printed.
 run_outdated_check() {
-  local repo="$1"
+  local repo="$1" scope="${2:-all}"
   OUTDATED_PY=()
   OUTDATED_BREW=()
   OUTDATED_HF=()
 
   # --- Python (PyPI) ---
-  echo
-  echo "${C_DIM}Python (requirements.txt)${C_RST}"
-  local line pkg ver pkg_query latest
-  while IFS= read -r line; do
-    [[ -z "${line}" || "${line}" =~ ^# ]] && continue
-    pkg="${line%%==*}"
-    ver="${line#*==}"
-    pkg_query="${pkg%%[*}"
-    latest="$(pypi_latest_version "${pkg_query}")"
-    if [[ -z "${latest}" ]]; then
-      printf "  %s %-30s %s\n" "${C_YEL}?${C_RST}" "${pkg}" "${C_DIM}query failed${C_RST}"
-    elif [[ "${ver}" == "${latest}" ]]; then
-      printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${pkg}" "${C_DIM}${ver}${C_RST}"
-    else
-      printf "  %s %-30s %s → %s\n" "${C_YEL}→${C_RST}" "${pkg}" "${ver}" "${latest}"
-      OUTDATED_PY+=("${pkg}|${ver}|${latest}")
-    fi
-  done <"${repo}/requirements.txt"
+  if [[ "${scope}" == "all" || "${scope}" == "python" ]]; then
+    echo
+    echo "${C_DIM}Python (requirements.txt)${C_RST}"
+    local line pkg ver pkg_query latest
+    while IFS= read -r line; do
+      [[ -z "${line}" || "${line}" =~ ^# ]] && continue
+      pkg="${line%%==*}"
+      ver="${line#*==}"
+      pkg_query="${pkg%%[*}"
+      latest="$(pypi_latest_version "${pkg_query}")"
+      if [[ -z "${latest}" ]]; then
+        printf "  %s %-30s %s\n" "${C_YEL}?${C_RST}" "${pkg}" "${C_DIM}query failed${C_RST}"
+      elif [[ "${ver}" == "${latest}" ]]; then
+        printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${pkg}" "${C_DIM}${ver}${C_RST}"
+      else
+        printf "  %s %-30s %s → %s\n" "${C_YEL}→${C_RST}" "${pkg}" "${ver}" "${latest}"
+        OUTDATED_PY+=("${pkg}|${ver}|${latest}")
+      fi
+    done <"${repo}/requirements.txt"
+  fi
 
   # --- Homebrew ---
-  echo
-  echo "${C_DIM}Homebrew (Brewfile)${C_RST}"
-  if ! command -v brew >/dev/null 2>&1; then
-    warn "brew not on PATH — skipping"
-  else
-    local formula out parsed
-    while IFS= read -r formula; do
-      [[ -z "${formula}" ]] && continue
-      out="$(brew outdated --formula --verbose "${formula}" 2>/dev/null || true)"
-      if [[ -z "${out}" ]]; then
-        printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${formula}" "${C_DIM}up to date${C_RST}"
-      else
-        parsed="$(sed -nE 's/^[^ ]+ \(([^)]+)\) < (.+)$/\1 → \2/p' <<<"${out}")"
-        printf "  %s %-30s %s\n" "${C_YEL}→${C_RST}" "${formula}" "${parsed:-update available}"
-        OUTDATED_BREW+=("${formula}")
-      fi
-    done < <(awk '/^brew "/{gsub(/"/,"",$2); print $2}' "${repo}/Brewfile")
+  if [[ "${scope}" == "all" || "${scope}" == "brew" ]]; then
+    echo
+    echo "${C_DIM}Homebrew (Brewfile)${C_RST}"
+    if ! command -v brew >/dev/null 2>&1; then
+      warn "brew not on PATH — skipping"
+    else
+      local formula out parsed
+      while IFS= read -r formula; do
+        [[ -z "${formula}" ]] && continue
+        out="$(brew outdated --formula --verbose "${formula}" 2>/dev/null || true)"
+        if [[ -z "${out}" ]]; then
+          printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${formula}" "${C_DIM}up to date${C_RST}"
+        else
+          parsed="$(sed -nE 's/^[^ ]+ \(([^)]+)\) < (.+)$/\1 → \2/p' <<<"${out}")"
+          printf "  %s %-30s %s\n" "${C_YEL}→${C_RST}" "${formula}" "${parsed:-update available}"
+          OUTDATED_BREW+=("${formula}")
+        fi
+      done < <(awk '/^brew "/{gsub(/"/,"",$2); print $2}' "${repo}/Brewfile")
+    fi
   fi
 
   # --- Models (HuggingFace) ---
-  echo
-  echo "${C_DIM}Models (config/profiles/*.yaml)${C_RST}"
-  local repos repo_id local_sha remote_sha
-  repos="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $3}' "${repo}"/config/profiles/*.yaml 2>/dev/null | sort -u)"
-  if [[ -z "${repos}" ]]; then
-    info "(no models in profiles)"
-  else
-    while IFS= read -r repo_id; do
-      [[ -z "${repo_id}" ]] && continue
-      local_sha="$(hf_local_sha "${repo_id}")"
-      remote_sha="$(hf_remote_sha "${repo_id}")"
-      if [[ -z "${remote_sha}" ]]; then
-        printf "  %s %-50s %s\n" "${C_YEL}?${C_RST}" "${repo_id}" "${C_DIM}query failed${C_RST}"
-      elif [[ -z "${local_sha}" ]]; then
-        printf "  %s %-50s %s\n" "${C_YEL}→${C_RST}" "${repo_id}" "not cached"
-        OUTDATED_HF+=("${repo_id}")
-      elif [[ "${local_sha}" == "${remote_sha}" ]]; then
-        printf "  %s %-50s %s\n" "${C_GRN}✓${C_RST}" "${repo_id}" "${C_DIM}${local_sha:0:8}${C_RST}"
-      else
-        printf "  %s %-50s %s → %s\n" "${C_YEL}→${C_RST}" "${repo_id}" "${local_sha:0:8}" "${remote_sha:0:8}"
-        OUTDATED_HF+=("${repo_id}")
-      fi
-    done <<<"${repos}"
+  if [[ "${scope}" == "all" || "${scope}" == "models" ]]; then
+    echo
+    echo "${C_DIM}Models (config/profiles/*.yaml)${C_RST}"
+    local repos repo_id local_sha remote_sha
+    repos="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $3}' "${repo}"/config/profiles/*.yaml 2>/dev/null | sort -u)"
+    if [[ -z "${repos}" ]]; then
+      info "(no models in profiles)"
+    else
+      while IFS= read -r repo_id; do
+        [[ -z "${repo_id}" ]] && continue
+        local_sha="$(hf_local_sha "${repo_id}")"
+        remote_sha="$(hf_remote_sha "${repo_id}")"
+        if [[ -z "${remote_sha}" ]]; then
+          printf "  %s %-50s %s\n" "${C_YEL}?${C_RST}" "${repo_id}" "${C_DIM}query failed${C_RST}"
+        elif [[ -z "${local_sha}" ]]; then
+          printf "  %s %-50s %s\n" "${C_YEL}→${C_RST}" "${repo_id}" "not cached"
+          OUTDATED_HF+=("${repo_id}")
+        elif [[ "${local_sha}" == "${remote_sha}" ]]; then
+          printf "  %s %-50s %s\n" "${C_GRN}✓${C_RST}" "${repo_id}" "${C_DIM}${local_sha:0:8}${C_RST}"
+        else
+          printf "  %s %-50s %s → %s\n" "${C_YEL}→${C_RST}" "${repo_id}" "${local_sha:0:8}" "${remote_sha:0:8}"
+          OUTDATED_HF+=("${repo_id}")
+        fi
+      done <<<"${repos}"
+    fi
   fi
+}
+
+# Restrict OUTDATED_<channel> to entries matching the passed names. Dies if
+# any requested name is not in the pending set.
+apply_item_filter() {
+  local channel="$1"
+  shift
+  local requested=("$@") r p found
+
+  case "${channel}" in
+    brew)
+      for r in "${requested[@]}"; do
+        found=0
+        for p in "${OUTDATED_BREW[@]:-}"; do
+          [[ "${r}" == "${p}" ]] && {
+            found=1
+            break
+          }
+        done
+        ((found)) || die "Homebrew: '${r}' is not pending. Pending: ${OUTDATED_BREW[*]:-(none)}"
+      done
+      OUTDATED_BREW=("${requested[@]}")
+      ;;
+    models)
+      for r in "${requested[@]}"; do
+        found=0
+        for p in "${OUTDATED_HF[@]:-}"; do
+          [[ "${r}" == "${p}" ]] && {
+            found=1
+            break
+          }
+        done
+        ((found)) || die "Models: '${r}' is not pending. Pending: ${OUTDATED_HF[*]:-(none)}"
+      done
+      OUTDATED_HF=("${requested[@]}")
+      ;;
+    python)
+      local present=() entry
+      for entry in "${OUTDATED_PY[@]:-}"; do
+        [[ -n "${entry}" ]] && present+=("${entry%%|*}")
+      done
+      for r in "${requested[@]}"; do
+        found=0
+        for p in "${present[@]:-}"; do
+          [[ "${r}" == "${p}" ]] && {
+            found=1
+            break
+          }
+        done
+        ((found)) || die "Python: '${r}' is not pending. Pending: ${present[*]:-(none)}"
+      done
+      local filtered=() name
+      for entry in "${OUTDATED_PY[@]}"; do
+        name="${entry%%|*}"
+        for r in "${requested[@]}"; do
+          [[ "${r}" == "${name}" ]] && {
+            filtered+=("${entry}")
+            break
+          }
+        done
+      done
+      OUTDATED_PY=("${filtered[@]:-}")
+      ;;
+  esac
 }
 
 cmd_outdated() {
@@ -477,17 +549,38 @@ cmd_outdated() {
 }
 
 cmd_upgrade() {
+  local channel="${1:-all}"
+  shift || true
+  local names=("$@")
+
+  case "${channel}" in
+    all)
+      ((${#names[@]} == 0)) ||
+        die "Item names require a channel: 4lm upgrade <brew|models|python> [name...]"
+      ;;
+    brew | models | python) ;;
+    *) die "Unknown channel: '${channel}'. Use: brew | models | python | (no arg = all)" ;;
+  esac
+
   local repo
   repo="$(find_4lm_repo)" ||
     die "Run from your 4lm clone or set LLM_4LM_REPO=<path>."
 
   echo "${C_DIM}─── 4lm Upgrade ───${C_RST}"
-  run_outdated_check "${repo}"
+  run_outdated_check "${repo}" "${channel}"
+
+  if ((${#names[@]} > 0)); then
+    apply_item_filter "${channel}" "${names[@]}"
+  fi
 
   local pending=$((${#OUTDATED_PY[@]} + ${#OUTDATED_BREW[@]} + ${#OUTDATED_HF[@]}))
   if ((pending == 0)); then
     echo
-    ok "Everything up to date."
+    if [[ "${channel}" == "all" ]]; then
+      ok "Everything up to date."
+    else
+      ok "Nothing to upgrade in channel '${channel}'."
+    fi
     return 0
   fi
 
@@ -890,7 +983,8 @@ ${C_DIM}Clients:${C_RST}
 
 ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
-  4lm upgrade                        Apply Homebrew + HF updates (Python is report-only)
+  4lm upgrade [chan] [name...]       Apply updates. chan: brew | models | python.
+                                     No args = all channels. Names limit to specific entries.
 
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
@@ -915,7 +1009,7 @@ main() {
     doctor) cmd_doctor ;;
     diag | diagnose) cmd_diag ;;
     outdated | out) cmd_outdated ;;
-    upgrade | up) cmd_upgrade ;;
+    upgrade | up) cmd_upgrade "$@" ;;
     open) cmd_open "$@" ;;
     opencode | code) cmd_opencode "$@" ;;
     uninstall | remove) cmd_uninstall ;;
