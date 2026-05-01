@@ -374,11 +374,8 @@ cmd_diag() {
 # formulas, and HuggingFace model repos. `outdated` is read-only; `upgrade`
 # reuses the same enumeration then applies brew + hf changes.
 #
-# Python is intentionally report-only in `upgrade`: requirements.txt is
-# git-tracked and the convention is committed bumps + `make install`.
-
 # Pending updates collected by run_outdated_check, consumed by cmd_upgrade.
-#   OUTDATED_PY:   "pkg|cur|new"  (display only)
+#   OUTDATED_PY:   "pkg|cur|new"  (sed-bump requirements.txt + pipx reinstall)
 #   OUTDATED_BREW: "formula"      (apply via brew upgrade)
 #   OUTDATED_HF:   "repo"         (apply via hf download)
 declare -a OUTDATED_PY=()
@@ -607,12 +604,31 @@ cmd_upgrade() {
     fi
   fi
 
-  # Python: report only — requirements.txt is git-tracked.
+  # Python: sed-bump requirements.txt then reinstall via pipx.
   if ((${#OUTDATED_PY[@]} > 0)); then
-    echo
-    warn "Python deps are git-tracked — bump and commit manually:"
-    echo "    \$EDITOR ${repo}/requirements.txt   # bump pinned versions shown above"
-    echo "    make install                          # reinstalls via pipx"
+    local pipx_py=""
+    for _c in python3.12 python3.11; do
+      command -v "${_c}" >/dev/null && {
+        pipx_py="${_c}"
+        break
+      }
+    done
+    if [[ -z "${pipx_py}" ]]; then
+      warn "no python3.11/3.12 on PATH — skipping Python upgrades"
+    else
+      local entry p cur_new new_ver pkg_base
+      for entry in "${OUTDATED_PY[@]}"; do
+        p="${entry%%|*}"
+        cur_new="${entry#*|}"
+        new_ver="${cur_new##*|}"
+        pkg_base="${p%%[*}"
+        info "Python: ${p} ${cur_new%%|*} → ${new_ver}"
+        sed -i '' -E "s|^(${pkg_base}(\[[^]]+\])?)==[^[:space:]]*$|\1==${new_ver}|" \
+          "${repo}/requirements.txt"
+        pipx install --python "${pipx_py}" --force "${p}==${new_ver}" ||
+          warn "pipx install ${p}==${new_ver} failed"
+      done
+    fi
   fi
 
   echo
@@ -983,7 +999,7 @@ ${C_DIM}Clients:${C_RST}
 
 ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
-  4lm upgrade [chan] [name...]       Apply updates. chan: brew | models | python.
+  4lm upgrade [chan] [name...]       Apply updates (brew, models, python). chan: brew | models | python.
                                      No args = all channels. Names limit to specific entries.
 
 ${C_DIM}Other:${C_RST}

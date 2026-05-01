@@ -105,16 +105,16 @@ applies, hence `python@3.12` in the Brewfile.
 # Check for newer versions across PyPI / Homebrew / HuggingFace
 4lm outdated
 
-# Apply updates (Python channel is report-only by design)
+# Apply updates across all channels
 4lm upgrade                     # everything pending
 4lm upgrade brew                # all pending Homebrew
 4lm upgrade brew opencode       # just one formula
 4lm upgrade models              # all pending HF model repos
 4lm upgrade models org/repo     # just one repo
+4lm upgrade python              # bump requirements.txt + pipx reinstall
 
-# Bump a pinned Python dep
-$EDITOR requirements.txt        # change pkg==X.Y.Z
-make install                    # detects drift, force-reinstalls via pipx
+# Review Python bumps before committing
+git diff requirements.txt && git add requirements.txt && git commit -m "chore(deps): bump ..."
 
 # After a crash
 4lm logs backend
