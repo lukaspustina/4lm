@@ -20,6 +20,14 @@ setup() {
   [[ "$output" == *"start"* ]]
   [[ "$output" == *"expose"* ]]
   [[ "$output" == *"profile"* ]]
+  [[ "$output" == *"outdated"* ]]
+}
+
+@test "outdated outside a repo dir exits 1 with hint" {
+  cd "${HOME}"
+  run "${REPO_ROOT}/bin/4lm" outdated
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"4lm clone"* ]] || [[ "${stderr:-}" == *"4lm clone"* ]]
 }
 
 @test "status is dispatched (no args == status)" {

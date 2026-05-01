@@ -102,6 +102,9 @@ applies, hence `python@3.12` in the Brewfile.
 4lm profile list
 4lm profile set coding-only
 
+# Check for newer versions across PyPI / Homebrew / HuggingFace
+4lm outdated
+
 # Bump a pinned dep
 $EDITOR requirements.txt        # change pkg==X.Y.Z
 make install                    # detects drift, force-reinstalls via pipx
