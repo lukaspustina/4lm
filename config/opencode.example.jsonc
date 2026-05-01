@@ -13,8 +13,8 @@
         "baseURL": "http://127.0.0.1:8000/v1"
       },
       "models": {
-        "glm-4.7-flash": { "name": "GLM-4.7-Flash (build/code)" },
-        "qwen3.6-35b": { "name": "Qwen3.6-35B (plan/knowledge)" },
+        "qwen3-coder-30b": { "name": "Qwen3-Coder-30B (build/code)" },
+        "qwen3.6-27b": { "name": "Qwen3.6-27B (plan/knowledge)" },
         "gpt-oss-120b": { "name": "GPT-OSS-120B (heavy reasoning, on-demand)" }
       }
     }

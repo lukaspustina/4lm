@@ -1,4 +1,4 @@
-# Knowledge-only profile: Qwen3.6-35B-A3B with maximum context for vault synthesis.
+# Knowledge-only profile: Qwen3.6-27B with extended context for vault synthesis.
 #
 # server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
 
@@ -7,11 +7,11 @@ server:
   port: 8000
 
 models:
-  - model_path: unsloth/Qwen3.6-35B-A3B-MLX-8bit
-    served_model_name: qwen3.6-35b
+  - model_path: mlx-community/Qwen3.6-27B-4bit
+    served_model_name: qwen3.6-27b
     model_type: lm
     enable_auto_tool_choice: true
-    tool_call_parser: qwen3_coder
+    tool_call_parser: qwen3
     chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
-    context_length: 262144
+    context_length: 131072
     default_max_tokens: 8192

@@ -1,4 +1,4 @@
-# Coding-only profile: maximum context for GLM-4.7-Flash, no second model.
+# Coding-only profile: Qwen3-Coder-30B-A3B with maximum context, no second model.
 #
 # server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
 
@@ -7,12 +7,10 @@ server:
   port: 8000
 
 models:
-  - model_path: mlx-community/GLM-4.7-Flash-8bit
-    served_model_name: glm-4.7-flash
+  - model_path: mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit
+    served_model_name: qwen3-coder-30b
     model_type: lm
     enable_auto_tool_choice: true
-    tool_call_parser: glm4_moe
-    reasoning_parser: glm47_flash
-    context_length: 200000
+    tool_call_parser: qwen3_coder
+    context_length: 131072
     default_max_tokens: 8192
-    default_repetition_penalty: 1.15

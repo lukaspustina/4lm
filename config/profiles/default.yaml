@@ -1,4 +1,4 @@
-# Default profile: GLM-4.7-Flash (Build) + Qwen3.6-35B-A3B (Plan/Knowledge)
+# Default profile: Qwen3-Coder-30B-A3B (Build) + Qwen3.6-27B (Plan/Knowledge)
 #
 # Slot 1 + 2 loaded permanently. Slot 3 (gpt-oss-120b) loads on demand
 # and unloads after on_demand_idle_timeout seconds idle.
@@ -10,21 +10,19 @@ server:
   port: 8000
 
 models:
-  - model_path: mlx-community/GLM-4.7-Flash-8bit
-    served_model_name: glm-4.7-flash
-    model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: glm4_moe
-    reasoning_parser: glm47_flash
-    context_length: 65536
-    default_max_tokens: 8192
-    default_repetition_penalty: 1.15
-
-  - model_path: unsloth/Qwen3.6-35B-A3B-MLX-8bit
-    served_model_name: qwen3.6-35b
+  - model_path: mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit
+    served_model_name: qwen3-coder-30b
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_coder
+    context_length: 65536
+    default_max_tokens: 8192
+
+  - model_path: mlx-community/Qwen3.6-27B-4bit
+    served_model_name: qwen3.6-27b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3
     chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
     context_length: 65536
     default_max_tokens: 8192
