@@ -105,8 +105,12 @@ applies, hence `python@3.12` in the Brewfile.
 # Check for newer versions across PyPI / Homebrew / HuggingFace
 4lm outdated
 
-# Apply Homebrew + HF updates in one shot (Python is report-only by design)
-4lm upgrade
+# Apply updates (Python channel is report-only by design)
+4lm upgrade                     # everything pending
+4lm upgrade brew                # all pending Homebrew
+4lm upgrade brew opencode       # just one formula
+4lm upgrade models              # all pending HF model repos
+4lm upgrade models org/repo     # just one repo
 
 # Bump a pinned Python dep
 $EDITOR requirements.txt        # change pkg==X.Y.Z

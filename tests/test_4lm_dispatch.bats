@@ -38,6 +38,18 @@ setup() {
   [[ "$output" == *"4lm clone"* ]] || [[ "${stderr:-}" == *"4lm clone"* ]]
 }
 
+@test "upgrade with unknown channel exits 1" {
+  run "${REPO_ROOT}/bin/4lm" upgrade bogus
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Unknown channel"* ]] || [[ "${stderr:-}" == *"Unknown channel"* ]]
+}
+
+@test "upgrade with item names but no channel exits 1" {
+  run "${REPO_ROOT}/bin/4lm" upgrade opencode
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Unknown channel"* ]] || [[ "${stderr:-}" == *"Unknown channel"* ]]
+}
+
 @test "status is dispatched (no args == status)" {
   run "${REPO_ROOT}/bin/4lm"
   [ "$status" -eq 0 ]
