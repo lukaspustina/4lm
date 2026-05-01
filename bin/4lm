@@ -87,6 +87,38 @@ net_webui_port() {
 backend_url() { echo "http://127.0.0.1:$(net_backend_port)"; }
 webui_url() { echo "http://127.0.0.1:$(net_webui_port)"; }
 
+# Resolve the source repo (where requirements.txt / Brewfile / config/profiles/
+# live). The runtime ~/.4lm/bin/4lm is a copy of source bin/4lm, so we cannot
+# walk back from BASH_SOURCE — caller must run from a clone or set
+# LLM_4LM_REPO.
+find_4lm_repo() {
+  local d="${LLM_4LM_REPO:-$(pwd)}"
+  [[ -f "${d}/requirements.txt" && -f "${d}/Brewfile" && -d "${d}/config/profiles" ]] || return 1
+  echo "${d}"
+}
+
+# Fetch latest version of a PyPI package. Empty stdout on failure.
+pypi_latest_version() {
+  local pkg="$1"
+  curl --max-time 10 --silent --fail "https://pypi.org/pypi/${pkg}/json" 2>/dev/null |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null || true
+}
+
+# Fetch the default-revision sha of a HuggingFace model repo.
+hf_remote_sha() {
+  local repo="$1"
+  curl --max-time 10 --silent --fail "https://huggingface.co/api/models/${repo}" 2>/dev/null |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])' 2>/dev/null || true
+}
+
+# Read the locally cached sha of a HuggingFace model repo (refs/main). Empty
+# if the repo is not in the cache.
+hf_local_sha() {
+  local repo="$1"
+  local ref_file="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${repo//\//--}/refs/main"
+  [[ -f "${ref_file}" ]] && cat "${ref_file}" || true
+}
+
 # ---- Service control -------------------------------------------------------
 service_start() {
   local label="$1" plist="$2"
@@ -335,6 +367,93 @@ cmd_diag() {
   echo
   echo "${C_DIM}GPU snapshot (run separately, needs sudo)${C_RST}"
   echo "  sudo powermetrics -i 1000 -n 1 --samplers gpu_power | grep -E 'GPU HW active|GPU idle|GPU Power'"
+}
+
+# ---- Outdated --------------------------------------------------------------
+# Check three channels for newer versions: Python deps (PyPI), Homebrew
+# formulas, and HuggingFace model repos. Read-only — `4lm upgrade` (future)
+# applies. Always exits 0 (informational), even when updates exist or some
+# queries fail.
+cmd_outdated() {
+  local repo
+  repo="$(find_4lm_repo)" ||
+    die "Run from your 4lm clone or set LLM_4LM_REPO=<path>."
+
+  echo "${C_DIM}─── 4lm Outdated ───${C_RST}"
+  local pending=0
+
+  # --- Python (PyPI) ---
+  echo
+  echo "${C_DIM}Python (requirements.txt)${C_RST}"
+  local line pkg ver pkg_query latest
+  while IFS= read -r line; do
+    [[ -z "${line}" || "${line}" =~ ^# ]] && continue
+    pkg="${line%%==*}"
+    ver="${line#*==}"
+    pkg_query="${pkg%%[*}"
+    latest="$(pypi_latest_version "${pkg_query}")"
+    if [[ -z "${latest}" ]]; then
+      printf "  %s %-30s %s\n" "${C_YEL}?${C_RST}" "${pkg}" "${C_DIM}query failed${C_RST}"
+    elif [[ "${ver}" == "${latest}" ]]; then
+      printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${pkg}" "${C_DIM}${ver}${C_RST}"
+    else
+      printf "  %s %-30s %s → %s\n" "${C_YEL}→${C_RST}" "${pkg}" "${ver}" "${latest}"
+      ((pending++))
+    fi
+  done <"${repo}/requirements.txt"
+
+  # --- Homebrew ---
+  echo
+  echo "${C_DIM}Homebrew (Brewfile)${C_RST}"
+  if ! command -v brew >/dev/null 2>&1; then
+    warn "brew not on PATH — skipping"
+  else
+    local formula out parsed
+    while IFS= read -r formula; do
+      [[ -z "${formula}" ]] && continue
+      out="$(brew outdated --formula --verbose "${formula}" 2>/dev/null || true)"
+      if [[ -z "${out}" ]]; then
+        printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${formula}" "${C_DIM}up to date${C_RST}"
+      else
+        parsed="$(sed -nE 's/^[^ ]+ \(([^)]+)\) < (.+)$/\1 → \2/p' <<<"${out}")"
+        printf "  %s %-30s %s\n" "${C_YEL}→${C_RST}" "${formula}" "${parsed:-update available}"
+        ((pending++))
+      fi
+    done < <(awk '/^brew "/{gsub(/"/,"",$2); print $2}' "${repo}/Brewfile")
+  fi
+
+  # --- Models (HuggingFace) ---
+  echo
+  echo "${C_DIM}Models (config/profiles/*.yaml)${C_RST}"
+  local repos repo_id local_sha remote_sha
+  repos="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $3}' "${repo}"/config/profiles/*.yaml 2>/dev/null | sort -u)"
+  if [[ -z "${repos}" ]]; then
+    info "(no models in profiles)"
+  else
+    while IFS= read -r repo_id; do
+      [[ -z "${repo_id}" ]] && continue
+      local_sha="$(hf_local_sha "${repo_id}")"
+      remote_sha="$(hf_remote_sha "${repo_id}")"
+      if [[ -z "${remote_sha}" ]]; then
+        printf "  %s %-50s %s\n" "${C_YEL}?${C_RST}" "${repo_id}" "${C_DIM}query failed${C_RST}"
+      elif [[ -z "${local_sha}" ]]; then
+        printf "  %s %-50s %s\n" "${C_YEL}→${C_RST}" "${repo_id}" "not cached"
+        ((pending++))
+      elif [[ "${local_sha}" == "${remote_sha}" ]]; then
+        printf "  %s %-50s %s\n" "${C_GRN}✓${C_RST}" "${repo_id}" "${C_DIM}${local_sha:0:8}${C_RST}"
+      else
+        printf "  %s %-50s %s → %s\n" "${C_YEL}→${C_RST}" "${repo_id}" "${local_sha:0:8}" "${remote_sha:0:8}"
+        ((pending++))
+      fi
+    done <<<"${repos}"
+  fi
+
+  echo
+  if ((pending == 0)); then
+    ok "Everything up to date."
+  else
+    info "${pending} update(s) available. Run \`4lm upgrade\` to install."
+  fi
 }
 
 # ---- Profile management ----------------------------------------------------
@@ -692,6 +811,9 @@ ${C_DIM}Clients:${C_RST}
   4lm opencode [args...]             Run OpenCode TUI against the local backend (alias: code)
   4lm open [webui|backend]           Open URL in browser (default: webui)
 
+${C_DIM}Updates:${C_RST}
+  4lm outdated                       Check PyPI / Homebrew / HF for newer versions
+
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
   4lm diag                           Show live clients, recent inference, top CPU
@@ -714,6 +836,7 @@ main() {
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor ;;
     diag | diagnose) cmd_diag ;;
+    outdated | out) cmd_outdated ;;
     open) cmd_open "$@" ;;
     opencode | code) cmd_opencode "$@" ;;
     uninstall | remove) cmd_uninstall ;;
