@@ -162,6 +162,69 @@ make uninstall                  # full: bootout, ~/.4lm/, sudoers/newsyslog, pip
 /etc/newsyslog.d/4lm.conf        log rotation (10 MB, 7 generations, gzipped)
 ```
 
+## Model history
+
+### v0.1.x — Initial model set
+
+| Slot | Model | Role |
+|---|---|---|
+| Build | `mlx-community/GLM-4.7-Flash-8bit` | Fast code edits, low-latency tool calls |
+| Plan/Knowledge | `unsloth/Qwen3.6-35B-A3B-MLX-8bit` | Architecture reasoning, vault synthesis |
+| Heavy (on-demand) | `LibraxisAI/gpt-oss-120b-mlx-mxfp4` | Deep reasoning, on-demand |
+
+### v0.2.0 — Qwen3 thinking-loop fix
+
+**Problem.** Both GLM-4.7-Flash and Qwen3.6-35B-A3B have `reasoning_parser`
+entries in the mlx-openai-server profile, which tells the server to use the
+thinking-mode chat template and extract `<think>` blocks. In agentic sessions
+(OpenCode multi-step edits, tool call chains) both models looped indefinitely
+inside their reasoning output — GLM with token-level repetition, Qwen3 with
+deliberation cycles that never resolved.
+
+Root cause: the Qwen3 Jinja chat template defaults `enable_thinking` to `true`
+unless the request explicitly passes `enable_thinking=false` inside a
+`chat_template_kwargs` object. OpenCode's `@ai-sdk/openai-compatible` provider
+cannot send nested objects this way — it puts all model options at the top
+level of the request body, where mlx-openai-server ignores them as unknown
+fields.
+
+**Fix.** `config/qwen3-no-think.jinja` is a copy of the model's Jinja template
+with one logical change: the `enable_thinking` default is inverted. Instead of
+activating `<think>` unless told otherwise, it skips `<think>` unless the
+request explicitly passes `enable_thinking=true`. The profiles reference this
+template via `chat_template_file`. `reasoning_parser: qwen3` is removed from
+all Qwen3 profile entries (keeping it would re-enable the thinking template).
+`default_max_tokens: 8192` and `default_repetition_penalty: 1.15` were also
+added to all model entries as server-side safety nets against runaway
+generation.
+
+This state is tagged **v0.2.0**.
+
+### v0.3.0 — Migration to Qwen3-Coder-30B-A3B + Qwen3.6-27B
+
+**Why switch.**
+
+| Slot | From | To | Reason |
+|---|---|---|---|
+| Build | GLM-4.7-Flash | `Qwen3-Coder-30B-A3B` | Coder models never emit `<think>` by design — RL-trained on SWE-bench-style execution trajectories. The Jinja workaround becomes unnecessary for this slot. Same ~3B active params and token throughput as GLM. |
+| Plan/Knowledge | Qwen3.6-35B-A3B | `Qwen3.6-27B` | Dense 27B beats the MoE 35B-A3B on every benchmark: SWE-bench Verified 77.2% vs 73.4%, LiveCodeBench 83.9%, GPQA 87.8%. Dense architecture also avoids the MoE consistency drift that can appear on long agentic chains. Uses ~17 GB at 4-bit vs ~22 GB for the 35B-A3B. |
+
+**Why the config modifications are no longer needed for Qwen3-Coder.**
+The Qwen3-Coder model card states explicitly: *"Supports only non-thinking
+mode — does not generate `<think></think>` blocks. `enable_thinking=False`
+is no longer required."* The model was trained without a reasoning mode at
+all. No template override, no parser suppression, no API parameters — it
+simply never thinks.
+
+`config/qwen3-no-think.jinja` is kept in the repo because Qwen3.6-27B in the
+plan/knowledge slot still defaults to thinking mode. The template continues to
+serve that slot. The `default_max_tokens` and `default_repetition_penalty`
+server-side defaults remain as belt-and-suspenders for all models.
+
+**Memory.** Apple M5 Max with 128 GB unified memory:
+Qwen3-Coder-30B-A3B (~18 GB at 4-bit) + Qwen3.6-27B (~17 GB at 4-bit) =
+~35 GB always-on. GPT-OSS-120B loads on-demand into the remaining ~93 GB.
+
 ## Documentation
 
 - [`docs/setup.md`](docs/setup.md) — operator runbook (sudoers, troubleshooting, model pulls)
