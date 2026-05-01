@@ -119,6 +119,28 @@ hf_local_sha() {
   [[ -f "${ref_file}" ]] && cat "${ref_file}" || true
 }
 
+# Return 0 if a HuggingFace repo has any files in the local cache.
+hf_is_cached() {
+  local repo="$1"
+  local cache_dir="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${repo//\//--}"
+  [[ -d "${cache_dir}" ]]
+}
+
+# Emit "served_name|model_path|permanent|on_demand" lines for every model
+# entry in a profile YAML, in order.
+profile_model_entries() {
+  local yaml="$1"
+  awk '
+    /^[[:space:]]*-[[:space:]]*model_path:/ {
+      if (path != "") print name "|" path "|" od
+      path = $NF; name = ""; od = "permanent"
+    }
+    /^[[:space:]]+served_model_name:/ { name = $NF }
+    /^[[:space:]]+on_demand:[[:space:]]*true/ { od = "on_demand" }
+    END { if (path != "") print name "|" path "|" od }
+  ' "${yaml}"
+}
+
 # ---- Service control -------------------------------------------------------
 service_start() {
   local label="$1" plist="$2"
@@ -970,6 +992,109 @@ cmd_restart() {
   esac
 }
 
+# ---- Models ----------------------------------------------------------------
+
+cmd_models_list() {
+  [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
+  echo "${C_DIM}─── 4lm Models ───${C_RST}"
+  echo
+
+  local active=""
+  [[ -L "${ACTIVE_CONFIG}" ]] && active="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+  local missing_count=0
+
+  for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
+    [[ -f "${profile_yaml}" ]] || continue
+    local pname
+    pname="$(basename "${profile_yaml}" .yaml)"
+    if [[ "${pname}" == "${active}" ]]; then
+      printf "  ${C_GRN}* %s${C_RST} ${C_DIM}(active)${C_RST}\n" "${pname}"
+    else
+      printf "  ${C_DIM}  %s${C_RST}\n" "${pname}"
+    fi
+
+    while IFS='|' read -r served_name model_path slot_type; do
+      [[ -z "${model_path}" ]] && continue
+      local od_label=""
+      [[ "${slot_type}" == "on_demand" ]] && od_label="  ${C_DIM}on-demand${C_RST}"
+      if hf_is_cached "${model_path}"; then
+        printf "    ${C_GRN}✓${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
+      else
+        printf "    ${C_YEL}✗${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
+        ((missing_count++)) || true
+      fi
+    done < <(profile_model_entries "${profile_yaml}")
+    echo
+  done
+
+  if ((missing_count > 0)); then
+    info "${missing_count} model(s) not cached — run: 4lm models download"
+  else
+    ok "All models cached."
+  fi
+}
+
+cmd_models_download() {
+  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+
+  if (($# > 0)); then
+    local repo
+    for repo in "$@"; do
+      info "Downloading ${repo}…"
+      hf download "${repo}"
+      ok "${repo}"
+    done
+    return 0
+  fi
+
+  [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
+  echo "${C_DIM}─── 4lm Models Download ───${C_RST}"
+  echo
+
+  local model_path
+  while IFS= read -r model_path; do
+    [[ -z "${model_path}" ]] && continue
+    if hf_is_cached "${model_path}"; then
+      printf "  ${C_GRN}✓${C_RST}  %s ${C_DIM}(already cached)${C_RST}\n" "${model_path}"
+    else
+      info "Downloading ${model_path}…"
+      hf download "${model_path}"
+      ok "${model_path}"
+    fi
+  done < <(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $NF}' \
+    "${PROFILES_DIR}"/*.yaml 2>/dev/null | sort -u)
+
+  echo
+  ok "Done."
+}
+
+cmd_models_clean() {
+  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+  info "Pruning orphaned HuggingFace cache revisions…"
+  hf cache prune
+}
+
+cmd_models_rm() {
+  local repo="${1:-}"
+  [[ -n "${repo}" ]] || die "Usage: 4lm models rm <repo>"
+  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+  info "Removing ${repo} from cache…"
+  hf cache rm "${repo}"
+  ok "Removed ${repo}"
+}
+
+cmd_models() {
+  local subcmd="${1:-list}"
+  shift || true
+  case "${subcmd}" in
+    list | ls)          cmd_models_list ;;
+    download | dl | pull) cmd_models_download "$@" ;;
+    clean | prune)      cmd_models_clean ;;
+    rm | remove)        cmd_models_rm "$@" ;;
+    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | rm <repo>" ;;
+  esac
+}
+
 # ---- Help ------------------------------------------------------------------
 cmd_help() {
   cat <<EOF
@@ -996,6 +1121,12 @@ ${C_DIM}Network exposure:${C_RST}
 ${C_DIM}Clients:${C_RST}
   4lm opencode [args...]             Run OpenCode TUI against the local backend (alias: code)
   4lm open [webui|backend]           Open URL in browser (default: webui)
+
+${C_DIM}Models:${C_RST}
+  4lm models [list]                  List models from all profiles with cache status
+  4lm models download [repo...]      Download missing models (all profiles), or specific repo(s)
+  4lm models clean                   Prune orphaned HuggingFace cache revisions
+  4lm models rm <repo>               Remove a cached model repo
 
 ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
@@ -1024,6 +1155,7 @@ main() {
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor ;;
     diag | diagnose) cmd_diag ;;
+    models | model | m) cmd_models "$@" ;;
     outdated | out) cmd_outdated ;;
     upgrade | up) cmd_upgrade "$@" ;;
     open) cmd_open "$@" ;;
