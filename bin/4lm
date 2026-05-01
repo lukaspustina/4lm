@@ -119,11 +119,19 @@ hf_local_sha() {
   [[ -f "${ref_file}" ]] && cat "${ref_file}" || true
 }
 
-# Return 0 if a HuggingFace repo has any files in the local cache.
+# Return 0 if a HuggingFace repo has a completed download.
+# refs/main alone is insufficient — partial downloads leave it behind with
+# only metadata files. Require blobs to sum to at least 1 GB.
 hf_is_cached() {
   local repo="$1"
   local cache_dir="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${repo//\//--}"
-  [[ -d "${cache_dir}" ]]
+  local ref_file="${cache_dir}/refs/main"
+  [[ -f "${ref_file}" ]] || return 1
+  local blobs_dir="${cache_dir}/blobs"
+  [[ -d "${blobs_dir}" ]] || return 1
+  local total_bytes
+  total_bytes=$(du -sk "${blobs_dir}" 2>/dev/null | awk '{print $1 * 1024}')
+  [[ "${total_bytes}" -ge 1073741824 ]]
 }
 
 # Emit "served_name|model_path|permanent|on_demand" lines for every model
@@ -1034,6 +1042,28 @@ cmd_models_list() {
   fi
 }
 
+# Download a single HF repo and print size progress until done.
+_hf_download_with_progress() {
+  local repo="$1"
+  local blobs_dir="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${repo//\//--}/blobs"
+
+  # hf download prints file paths to stdout on completion; suppress those.
+  # stderr (tqdm bars, errors) still goes to the terminal.
+  hf download "${repo}" >/dev/null &
+  local dl_pid=$!
+
+  while kill -0 "${dl_pid}" 2>/dev/null; do
+    local sz
+    sz=$(du -sh "${blobs_dir}" 2>/dev/null | cut -f1 || echo "…")
+    printf "\r    %s downloaded…" "${sz}"
+    sleep 3
+  done
+
+  # Clear the progress line, then check exit code.
+  printf "\r%60s\r" ""
+  wait "${dl_pid}" || die "Download failed: ${repo}"
+}
+
 cmd_models_download() {
   command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
 
@@ -1041,7 +1071,7 @@ cmd_models_download() {
     local repo
     for repo in "$@"; do
       info "Downloading ${repo}…"
-      hf download "${repo}"
+      _hf_download_with_progress "${repo}"
       ok "${repo}"
     done
     return 0
@@ -1058,7 +1088,7 @@ cmd_models_download() {
       printf "  ${C_GRN}✓${C_RST}  %s ${C_DIM}(already cached)${C_RST}\n" "${model_path}"
     else
       info "Downloading ${model_path}…"
-      hf download "${model_path}"
+      _hf_download_with_progress "${model_path}"
       ok "${model_path}"
     fi
   done < <(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $NF}' \
