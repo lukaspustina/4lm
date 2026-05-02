@@ -1131,14 +1131,20 @@ cmd_models() {
 cmd_recommend() {
   command -v llmfit >/dev/null 2>&1 || die "llmfit not found — run: brew install llmfit"
 
+  # First positional arg is the optional use-case (like `4lm upgrade <channel>`).
   local use_case="" limit=5 runtime=""
+  case "${1:-}" in
+    coding | reasoning | chat | general) use_case="$1"; shift ;;
+    "") ;;
+    -*) ;;
+    *) die "Unknown use-case: '$1'. Use: coding | reasoning | chat | general" ;;
+  esac
   while (($# > 0)); do
     case "$1" in
-      --use-case | -u) use_case="$2"; shift 2 ;;
-      -n | --limit)    limit="$2";    shift 2 ;;
-      --runtime | -r)  runtime="$2";  shift 2 ;;
+      -n | --limit)   limit="$2";   shift 2 ;;
+      --runtime | -r) runtime="$2"; shift 2 ;;
       -h | --help)
-        echo "Usage: 4lm recommend [--use-case coding|reasoning|chat|general] [-n N] [--runtime mlx|llamacpp]"
+        echo "Usage: 4lm recommend [coding|reasoning|chat|general] [-n N] [--runtime mlx|llamacpp]"
         return 0 ;;
       *) die "Unknown option: $1" ;;
     esac
@@ -1306,8 +1312,8 @@ ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
   4lm upgrade [chan] [name...]       Apply updates (brew, models, python). chan: brew | models | python.
                                      No args = all channels. Names limit to specific entries.
-  4lm recommend [--use-case <cat>]  Top model picks for this hardware (llmfit + localmaxxing benchmarks)
-               [-n N] [--runtime R]  cat: coding|reasoning|chat|general. R: mlx|llamacpp
+  4lm recommend [<use-case>]         Top model picks for this hardware (llmfit + localmaxxing benchmarks)
+               [-n N] [--runtime R]  use-case: coding|reasoning|chat|general. R: mlx|llamacpp
 
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
