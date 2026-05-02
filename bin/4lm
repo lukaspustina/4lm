@@ -1086,13 +1086,11 @@ cmd_models_download() {
   local model_path
   while IFS= read -r model_path; do
     [[ -z "${model_path}" ]] && continue
-    if hf_is_cached "${model_path}"; then
-      printf "  ${C_GRN}✓${C_RST}  %s ${C_DIM}(already cached)${C_RST}\n" "${model_path}"
-    else
-      info "Downloading ${model_path}…"
-      _hf_download_with_progress "${model_path}"
-      ok "${model_path}"
-    fi
+    # Always call hf download — it verifies hashes and resumes partials.
+    # hf_is_cached is only a display hint; partial downloads can be >1 GB.
+    info "Checking ${model_path}…"
+    _hf_download_with_progress "${model_path}"
+    ok "${model_path}"
   done < <(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $NF}' \
     "${PROFILES_DIR}"/*.yaml 2>/dev/null | sort -u)
 
