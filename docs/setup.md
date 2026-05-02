@@ -108,20 +108,23 @@ The three shipped profiles trade memory for capability:
 
 ### `default` (the daily driver)
 
-Three slots — two always-resident, one on-demand:
+Four slots — two always-resident, two on-demand:
 
 | Slot | Model | Purpose | Loaded |
 |---|---|---|---|
 | 1 | Qwen3-Coder-30B-A3B (4-bit, ~18 GB) | Build / code / tool calling | always |
 | 2 | Qwen3.6-27B (4-bit, ~17 GB) | Plan / knowledge / reasoning | always |
-| 3 | GPT-OSS-120B (MXFP4, ~75 GB) | Heavy reasoning | on first request, unloads after 5 min idle |
+| 3 | Gemma 4 26B-A4B (4-bit, ~10 GB) | Reasoning / multimodal / 128k context | on first request, unloads after 5 min idle |
+| 4 | GPT-OSS-120B (MXFP4, ~75 GB) | Heavy reasoning | on first request, unloads after 5 min idle |
 
-Working set ≈ 35 GB resident with slot 3 unloaded; up to ~110 GB when
-slot 3 fires. Both resident slots get `context_length: 65536` (64k
-tokens). Slot 3 gets `context_length: 32768` (32k).
+Working set ≈ 35 GB resident with slots 3–4 unloaded; ~45 GB with slot 3
+loaded; up to ~110 GB when slot 4 fires. Both resident slots get
+`context_length: 65536` (64k tokens). Slot 3 gets `context_length: 131072`
+(128k). Slot 4 gets `context_length: 32768` (32k).
 
-**Use when**: you want the full stack available — both build and plan
-in parallel, with heavy reasoning a request away.
+**Use when**: you want the full stack available — build and plan always
+resident, with Gemma 4 a request away for reasoning or image input, and
+GPT-OSS-120B for the heaviest tasks.
 
 ### `coding-only`
 
