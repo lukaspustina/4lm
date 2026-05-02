@@ -1234,9 +1234,11 @@ chip = system.get('cpu_name', 'Apple Silicon')
 mem  = system.get('total_ram_gb', 0)
 print(f"\n{DIM}─── 4lm Recommendations ({chip} · {mem:.0f} GB) ───{RST}\n")
 
-print(f"  {'#':>2}  {'Model':<34}  {'Cat':<10}  {'Score':>5}  {'Params':>7}  {'Mem':>6}  {'tps*':>6}  {'Community':>9}  Fit")
-print(f"  {'─'*2}  {'─'*34}  {'─'*10}  {'─'*5}  {'─'*7}  {'─'*6}  {'─'*6}  {'─'*9}  {'─'*7}")
+CW = 22  # community column width
+print(f"  {'#':>2}  {'Model':<34}  {'Cat':<10}  {'Score':>5}  {'Params':>7}  {'Mem':>6}  {'tps*':>6}  {'Community':<{CW}}  Fit")
+print(f"  {'─'*2}  {'─'*34}  {'─'*10}  {'─'*5}  {'─'*7}  {'─'*6}  {'─'*6}  {'─'*CW}  {'─'*7}")
 
+in_profile = []
 for i, m in enumerate(models, 1):
     name  = m['name']
     short = name.split('/')[-1]
@@ -1251,21 +1253,25 @@ for i, m in enumerate(models, 1):
 
     norm = normalize(name)
     if norm in lm_index:
-        best      = lm_index[norm][0]
-        community = f"{best['tps']:.1f} ({best['hw'][:16]})"
+        best = lm_index[norm][0]
+        hw   = best['hw'][:14]
+        community = f"{best['tps']:.1f} ({hw})"
     else:
         community = '—'
 
-    marker  = f"{GRN}*{RST}" if norm in active_set else ' '
+    is_active = norm in active_set
+    if is_active:
+        in_profile.append(i)
+    marker  = f"{GRN}*{RST}" if is_active else ' '
     fit_col = GRN if fit == 'Perfect' else (YEL if fit == 'Good' else '')
     fit_str = f"{fit_col}{fit}{RST}" if fit_col else fit
 
-    print(f"  {i:>2}{marker} {short:<34}  {cat:<10}  {score:>5.1f}  {params:>7}  {mem_r:>5.1f}G  {tps:>6.1f}  {community:<25}  {fit_str}")
+    print(f"  {i:>2}{marker} {short:<34}  {cat:<10}  {score:>5.1f}  {params:>7}  {mem_r:>5.1f}G  {tps:>6.1f}  {community:<{CW}}  {fit_str}")
 
 lm_count = sum(len(v) for v in lm_index.values())
 print(f"\n  {DIM}* estimated MLX tok/s (llmfit){RST}")
 print(f"  {DIM}  Community: best UNIFIED tok/s from localmaxxing.com ({lm_count} benchmarks fetched; — = no data yet){RST}")
-if active_set:
+if in_profile:
     print(f"  {DIM}* = already in active profile{RST}")
 print()
 PYEOF
