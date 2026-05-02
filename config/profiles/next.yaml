@@ -1,0 +1,38 @@
+# Next-gen profile: Qwen3-Coder-Next (~80B MoE, Build) + Qwen3-Next-80B-A3B (Knowledge/Chat)
+#
+# Both slots loaded permanently; no on-demand slot.
+# Replaces the default profile's 30B coder + 27B knowledge pair with the
+# next-generation 80B MoE models at llmfit ranks 1 and 4.
+#
+# Memory: actual resident footprint unknown until download completes —
+# llmfit reports ~41 GB each at 8-bit; 4-bit should be roughly half.
+# context_length set to 32768 conservatively; raise to 65536 if wired
+# pool headroom allows (monitor with `4lm health` and `4lm diag`).
+#
+# chat_template_file on slot 2 inverts the Qwen3 thinking default
+# (same fix as default.yaml — see config/qwen3-no-think.jinja).
+# Remove if Qwen3-Next-80B-A3B-Instruct ships with thinking off by default.
+#
+# server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    context_length: 32768
+    default_max_tokens: 8192
+
+  - model_path: mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit
+    served_model_name: qwen3-next-80b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3
+    chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
+    context_length: 32768
+    default_max_tokens: 8192

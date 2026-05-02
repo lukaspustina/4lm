@@ -13,9 +13,13 @@
         "baseURL": "http://127.0.0.1:8000/v1"
       },
       "models": {
+        // default profile
         "qwen3-coder-30b": { "name": "Qwen3-Coder-30B (build/code)" },
         "qwen3.6-27b": { "name": "Qwen3.6-27B (plan/knowledge)" },
-        "gpt-oss-120b": { "name": "GPT-OSS-120B (heavy reasoning, on-demand)" }
+        "gpt-oss-120b": { "name": "GPT-OSS-120B (heavy reasoning, on-demand)" },
+        // next profile
+        "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code)" },
+        "qwen3-next-80b": { "name": "Qwen3-Next-80B (plan/knowledge/chat)" }
       }
     }
   }
