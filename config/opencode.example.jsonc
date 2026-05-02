@@ -16,6 +16,7 @@
         // default profile
         "qwen3-coder-30b": { "name": "Qwen3-Coder-30B (build/code)" },
         "qwen3.6-27b": { "name": "Qwen3.6-27B (plan/knowledge)" },
+        "gemma4-26b": { "name": "Gemma 4 26B (reasoning/multimodal, on-demand)" },
         "gpt-oss-120b": { "name": "GPT-OSS-120B (heavy reasoning, on-demand)" },
         // next profile
         "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code)" },

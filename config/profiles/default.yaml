@@ -1,7 +1,7 @@
 # Default profile: Qwen3-Coder-30B-A3B (Build) + Qwen3.6-27B (Plan/Knowledge)
 #
-# Slot 1 + 2 loaded permanently. Slot 3 (gpt-oss-120b) loads on demand
-# and unloads after on_demand_idle_timeout seconds idle.
+# Slot 1 + 2 loaded permanently. Slots 3 + 4 load on demand and unload
+# after on_demand_idle_timeout seconds idle.
 #
 # server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
 
@@ -25,6 +25,17 @@ models:
     tool_call_parser: qwen3
     chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
     context_length: 65536
+    default_max_tokens: 8192
+
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: gemma4
+    reasoning_parser: gemma4
+    on_demand: true
+    on_demand_idle_timeout: 300
+    context_length: 131072
     default_max_tokens: 8192
 
   - model_path: LibraxisAI/gpt-oss-120b-mlx-mxfp4
