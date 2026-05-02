@@ -187,6 +187,20 @@ while IFS= read -r line; do
   fi
 done <"${SOURCE_DIR}/requirements.txt"
 
+# ---- 9b. Inject hf-transfer into huggingface-hub venv ----------------------
+# hf-transfer is a Rust-backed parallel downloader for HuggingFace; it must
+# live in the same pipx venv as huggingface-hub (hence inject, not install).
+# HF_HUB_ENABLE_HF_TRANSFER=1 activates it at download time.
+if pipx list --short 2>/dev/null | grep -q "^huggingface-hub "; then
+  if pipx runpip huggingface-hub show hf-transfer >/dev/null 2>&1; then
+    ok "hf-transfer already injected into huggingface-hub venv"
+  else
+    info "pipx inject huggingface-hub hf-transfer"
+    pipx inject huggingface-hub hf-transfer
+    ok "hf-transfer injected"
+  fi
+fi
+
 # ---- 10. newsyslog log rotation ------------------------------------------
 NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
 NEWSYSLOG_BODY="${HOME}/.4lm/logs/backend.log               600  7     10240 *     J

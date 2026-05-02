@@ -1049,7 +1049,9 @@ _hf_download_with_progress() {
 
   # hf download prints file paths to stdout on completion; suppress those.
   # stderr (tqdm bars, errors) still goes to the terminal.
-  hf download "${repo}" >/dev/null &
+  # hf-transfer (Rust parallel downloader) activates when injected into the
+  # huggingface-hub venv and this env var is set; silently ignored otherwise.
+  HF_HUB_ENABLE_HF_TRANSFER=1 hf download "${repo}" >/dev/null &
   local dl_pid=$!
 
   while kill -0 "${dl_pid}" 2>/dev/null; do
