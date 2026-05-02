@@ -9,10 +9,6 @@
 # context_length set to 32768 conservatively; raise to 65536 if wired
 # pool headroom allows (monitor with `4lm health` and `4lm diag`).
 #
-# chat_template_file on slot 2 inverts the Qwen3 thinking default
-# (same fix as default.yaml — see config/qwen3-no-think.jinja).
-# Remove if Qwen3-Next-80B-A3B-Instruct ships with thinking off by default.
-#
 # server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
 
 server:
@@ -33,7 +29,6 @@ models:
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3
-    chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
     context_length: 32768
     default_max_tokens: 8192
 
