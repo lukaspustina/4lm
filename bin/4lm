@@ -1045,25 +1045,10 @@ cmd_models_list() {
 # Download a single HF repo and print size progress until done.
 _hf_download_with_progress() {
   local repo="$1"
-  local blobs_dir="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${repo//\//--}/blobs"
-
-  # hf download prints file paths to stdout on completion; suppress those.
-  # stderr (tqdm bars, errors) still goes to the terminal.
-  # hf-transfer (Rust parallel downloader) activates when injected into the
-  # huggingface-hub venv and this env var is set; silently ignored otherwise.
-  HF_HUB_ENABLE_HF_TRANSFER=1 hf download "${repo}" >/dev/null &
-  local dl_pid=$!
-
-  while kill -0 "${dl_pid}" 2>/dev/null; do
-    local sz
-    sz=$(du -sh "${blobs_dir}" 2>/dev/null | cut -f1 || echo "…")
-    printf "\r    %s downloaded…" "${sz}"
-    sleep 3
-  done
-
-  # Clear the progress line, then check exit code.
-  printf "\r%60s\r" ""
-  wait "${dl_pid}" || die "Download failed: ${repo}"
+  # Run synchronously — hf-transfer writes tqdm progress to stderr (the
+  # terminal). Suppress stdout (hf prints local cache paths on completion).
+  HF_HUB_ENABLE_HF_TRANSFER=1 hf download "${repo}" >/dev/null \
+    || die "Download failed: ${repo}"
 }
 
 cmd_models_download() {
@@ -1148,7 +1133,10 @@ cmd_recommend() {
     esac
   done
 
-  local -a llmfit_args=("recommend" "--json" "-n" "${limit}")
+  # Always fetch the full ranked list so active profile models can be located
+  # anywhere in the rankings. Display is capped by ${limit}. llmfit -n 999
+  # completes in ~240 ms (local scoring, no network).
+  local -a llmfit_args=("recommend" "--json" "-n" "999")
   [[ -n "${use_case}" ]] && llmfit_args+=("--use-case" "${use_case}")
   [[ -n "${runtime}" ]] && llmfit_args+=("--runtime" "${runtime}")
 
