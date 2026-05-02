@@ -1125,6 +1125,148 @@ cmd_models() {
   esac
 }
 
+# ---- Recommend -------------------------------------------------------------
+cmd_recommend() {
+  command -v llmfit >/dev/null 2>&1 || die "llmfit not found — run: brew install llmfit"
+
+  local use_case="" limit=5 runtime=""
+  while (($# > 0)); do
+    case "$1" in
+      --use-case | -u) use_case="$2"; shift 2 ;;
+      -n | --limit)    limit="$2";    shift 2 ;;
+      --runtime | -r)  runtime="$2";  shift 2 ;;
+      -h | --help)
+        echo "Usage: 4lm recommend [--use-case coding|reasoning|chat|general] [-n N] [--runtime mlx|llamacpp]"
+        return 0 ;;
+      *) die "Unknown option: $1" ;;
+    esac
+  done
+
+  local -a llmfit_args=("recommend" "--json" "-n" "${limit}")
+  [[ -n "${use_case}" ]] && llmfit_args+=("--use-case" "${use_case}")
+  [[ -n "${runtime}" ]] && llmfit_args+=("--runtime" "${runtime}")
+
+  info "Querying llmfit…"
+  local rec_tmpfile lm_tmpfile
+  rec_tmpfile=$(mktemp)
+  lm_tmpfile=$(mktemp)
+
+  if ! llmfit "${llmfit_args[@]}" 2>/dev/null >"${rec_tmpfile}"; then
+    rm -f "${rec_tmpfile}" "${lm_tmpfile}"
+    die "llmfit recommend failed"
+  fi
+
+  # Community benchmarks — GET /api/benchmarks is public, no auth required.
+  # LOCALMAXXING_API_KEY is used if set (for rate-limit headroom), not required.
+  info "Fetching community benchmarks from localmaxxing.com…"
+  local lm_url="https://www.localmaxxing.com/api/benchmarks?hardware_class=UNIFIED&limit=200"
+  local -a lm_curl=("curl" "--max-time" "10" "--silent" "--fail" "-L")
+  [[ -n "${LOCALMAXXING_API_KEY:-}" ]] && lm_curl+=("-H" "Authorization: Bearer ${LOCALMAXXING_API_KEY}")
+  "${lm_curl[@]}" "${lm_url}" 2>/dev/null >"${lm_tmpfile}" || echo "{}" >"${lm_tmpfile}"
+
+  # Active profile model paths for cross-reference
+  local active_yaml active_paths=""
+  active_yaml=$(readlink "${CONFIG_DIR}/mlx-active" 2>/dev/null || true)
+  if [[ -f "${active_yaml:-}" ]]; then
+    active_paths=$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{printf "%s,", $NF}' "${active_yaml}")
+  fi
+
+  python3 - "${rec_tmpfile}" "${lm_tmpfile}" "${active_paths}" <<'PYEOF'
+import json, sys, os
+
+rec_file, lm_file = sys.argv[1], sys.argv[2]
+active_paths = sys.argv[3] if len(sys.argv) > 3 else ""
+
+with open(rec_file) as f:
+    rec = json.load(f)
+with open(lm_file) as f:
+    try:
+        lm = json.load(f)
+    except Exception:
+        lm = {}
+
+tty = sys.stdout.isatty() and not os.environ.get('NO_COLOR')
+GRN = '\033[0;32m' if tty else ''
+YEL = '\033[0;33m' if tty else ''
+DIM = '\033[2m'    if tty else ''
+RST = '\033[0m'    if tty else ''
+
+system = rec.get('system', {})
+models = rec.get('models', [])
+
+def normalize(name):
+    if '/' in name:
+        name = name.split('/')[-1]
+    name = name.lower()
+    for s in ['-instruct', '-it', '-mlx', '-4bit', '-8bit', '-q4', '-q8',
+              '-fp8', '-bf16', '-gguf', '-mxfp4', '-nvfp4', '-awq', '-gptq']:
+        while name.endswith(s):
+            name = name[:-len(s)]
+    return name
+
+# Index community benchmarks: normalized model name -> list of results (best first)
+lm_index = {}
+for b in lm.get('benchmarks', []):
+    if b.get('tokSOut') is None:
+        continue
+    h = b['hardware']
+    key = normalize(b['model'].get('hfId', ''))
+    hw = h.get('chipVariant') or h.get('gpuName') or h.get('chipFamily') or '?'
+    entry = {
+        'tps': b['tokSOut'],
+        'hw':  hw,
+        'engine': b['engine']['engineName'],
+        'quant':  b['engine']['quantization'],
+    }
+    lm_index.setdefault(key, []).append(entry)
+for key in lm_index:
+    lm_index[key].sort(key=lambda x: -x['tps'])
+
+active_set = {normalize(p) for p in active_paths.split(',') if p.strip()}
+
+chip = system.get('cpu_name', 'Apple Silicon')
+mem  = system.get('total_ram_gb', 0)
+print(f"\n{DIM}─── 4lm Recommendations ({chip} · {mem:.0f} GB) ───{RST}\n")
+
+print(f"  {'#':>2}  {'Model':<34}  {'Cat':<10}  {'Score':>5}  {'Params':>7}  {'Mem':>6}  {'tps*':>6}  {'Community':>9}  Fit")
+print(f"  {'─'*2}  {'─'*34}  {'─'*10}  {'─'*5}  {'─'*7}  {'─'*6}  {'─'*6}  {'─'*9}  {'─'*7}")
+
+for i, m in enumerate(models, 1):
+    name  = m['name']
+    short = name.split('/')[-1]
+    if len(short) > 34:
+        short = short[:32] + '…'
+    cat    = (m.get('category') or '?')[:10]
+    score  = m.get('score', 0)
+    params = m.get('parameter_count', '?')
+    mem_r  = m.get('memory_required_gb', 0)
+    tps    = m.get('estimated_tps', 0)
+    fit    = m.get('fit_level', '?')
+
+    norm = normalize(name)
+    if norm in lm_index:
+        best      = lm_index[norm][0]
+        community = f"{best['tps']:.1f} ({best['hw'][:16]})"
+    else:
+        community = '—'
+
+    marker  = f"{GRN}*{RST}" if norm in active_set else ' '
+    fit_col = GRN if fit == 'Perfect' else (YEL if fit == 'Good' else '')
+    fit_str = f"{fit_col}{fit}{RST}" if fit_col else fit
+
+    print(f"  {i:>2}{marker} {short:<34}  {cat:<10}  {score:>5.1f}  {params:>7}  {mem_r:>5.1f}G  {tps:>6.1f}  {community:<25}  {fit_str}")
+
+lm_count = sum(len(v) for v in lm_index.values())
+print(f"\n  {DIM}* estimated MLX tok/s (llmfit){RST}")
+print(f"  {DIM}  Community: best UNIFIED tok/s from localmaxxing.com ({lm_count} benchmarks fetched; — = no data yet){RST}")
+if active_set:
+    print(f"  {DIM}* = already in active profile{RST}")
+print()
+PYEOF
+
+  rm -f "${rec_tmpfile}" "${lm_tmpfile}"
+}
+
 # ---- Help ------------------------------------------------------------------
 cmd_help() {
   cat <<EOF
@@ -1162,6 +1304,8 @@ ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
   4lm upgrade [chan] [name...]       Apply updates (brew, models, python). chan: brew | models | python.
                                      No args = all channels. Names limit to specific entries.
+  4lm recommend [--use-case <cat>]  Top model picks for this hardware (llmfit + localmaxxing benchmarks)
+               [-n N] [--runtime R]  cat: coding|reasoning|chat|general. R: mlx|llamacpp
 
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
@@ -1188,6 +1332,7 @@ main() {
     models | model | m) cmd_models "$@" ;;
     outdated | out) cmd_outdated ;;
     upgrade | up) cmd_upgrade "$@" ;;
+    recommend | rec) cmd_recommend "$@" ;;
     open) cmd_open "$@" ;;
     opencode | code) cmd_opencode "$@" ;;
     uninstall | remove) cmd_uninstall ;;
