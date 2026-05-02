@@ -187,18 +187,22 @@ while IFS= read -r line; do
   fi
 done <"${SOURCE_DIR}/requirements.txt"
 
-# ---- 9b. Inject hf-transfer into huggingface-hub venv ----------------------
-# hf-transfer is a Rust-backed parallel downloader for HuggingFace; it must
-# live in the same pipx venv as huggingface-hub (hence inject, not install).
-# HF_HUB_ENABLE_HF_TRANSFER=1 activates it at download time.
+# ---- 9b. Inject extras into huggingface-hub venv ----------------------------
+# hf-transfer: Rust-backed parallel downloader; activated via
+#   HF_HUB_ENABLE_HF_TRANSFER=1 at download time.
+# socksio: required by httpx (used by huggingface_hub) when macOS system
+#   network settings configure a SOCKS proxy; without it downloads fail or
+#   fall back to a slow path.
 if pipx list --short 2>/dev/null | grep -q "^huggingface-hub "; then
-  if pipx runpip huggingface-hub show hf-transfer >/dev/null 2>&1; then
-    ok "hf-transfer already injected into huggingface-hub venv"
-  else
-    info "pipx inject huggingface-hub hf-transfer"
-    pipx inject huggingface-hub hf-transfer
-    ok "hf-transfer injected"
-  fi
+  for _pkg in hf-transfer socksio; do
+    if pipx runpip huggingface-hub show "${_pkg}" >/dev/null 2>&1; then
+      ok "${_pkg} already injected into huggingface-hub venv"
+    else
+      info "pipx inject huggingface-hub ${_pkg}"
+      pipx inject huggingface-hub "${_pkg}"
+      ok "${_pkg} injected"
+    fi
+  done
 fi
 
 # ---- 10. newsyslog log rotation ------------------------------------------
