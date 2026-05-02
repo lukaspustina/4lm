@@ -23,7 +23,8 @@ models:
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3
-    chat_template_file: /Users/lukas/.4lm/config/qwen3-no-think.jinja
+    reasoning_parser: qwen3_vl
+    chat_template_file: /Users/lukas/.4lm/config/qwen3.6-27b-chat-template.jinja
     context_length: 65536
     default_max_tokens: 8192
 

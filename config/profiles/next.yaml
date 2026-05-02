@@ -29,6 +29,7 @@ models:
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3
+    reasoning_parser: qwen3
     context_length: 32768
     default_max_tokens: 8192
 
