@@ -1,0 +1,44 @@
+# Experiment profile: Qwen3-Coder-30B-A3B (Build) + Gemma 4 26B-A4B (Knowledge/Reasoning)
+#
+# Tests Gemma 4 as a permanent knowledge/reasoning slot replacing Qwen3.6-27B.
+# Gemma 4 is multimodal and has reasoning_parser support (collapsible thinking).
+# Loading it permanently avoids the on-demand cold-start Stream(gpu,1) bug.
+#
+# Memory: ~20GB (coder) + ~20GB (gemma4) ≈ 40GB permanent; ~56GB headroom.
+# Qwen3.6-27B loads on demand for comparison or fallback.
+#
+# server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit
+    served_model_name: qwen3-coder-30b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    context_length: 65536
+    default_max_tokens: 8192
+
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: gemma4
+    reasoning_parser: gemma4
+    context_length: 131072
+    default_max_tokens: 8192
+
+  - model_path: mlx-community/Qwen3.6-27B-4bit
+    served_model_name: qwen3.6-27b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3
+    reasoning_parser: qwen3_vl
+    chat_template_file: /Users/lukas/.4lm/config/qwen3.6-27b-chat-template.jinja
+    on_demand: true
+    on_demand_idle_timeout: 300
+    context_length: 65536
+    default_max_tokens: 8192
