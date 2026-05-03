@@ -87,6 +87,13 @@ net_webui_port() {
 backend_url() { echo "http://127.0.0.1:$(net_backend_port)"; }
 webui_url() { echo "http://127.0.0.1:$(net_webui_port)"; }
 
+# Primary LAN IP (first non-loopback IPv4 on en0, falling back to any en*)
+lan_ip() {
+  ipconfig getifaddr en0 2>/dev/null \
+    || ipconfig getifaddr en1 2>/dev/null \
+    || ifconfig | awk '/inet / && !/127\.0\.0\.1/{print $2; exit}'
+}
+
 # Resolve the source repo (where requirements.txt / Brewfile / config/profiles/
 # live). The runtime ~/.4lm/bin/4lm is a copy of source bin/4lm, so we cannot
 # walk back from BASH_SOURCE — caller must run from a clone or set
@@ -249,10 +256,32 @@ cmd_status() {
 
   local mode
   mode="$(net_mode)"
-  printf "%-8s %s\n" "Network:" "${mode}"
+  if [[ "${mode}" == "lan" ]]; then
+    printf "%-8s %s\n" "Network:" "${C_YEL}⚠ LAN — reachable by anyone on the network${C_RST}"
+  else
+    printf "%-8s %s\n" "Network:" "${mode}"
+  fi
 
   print_service_status "${BACKEND_LABEL}" "Backend"
   print_service_status "${WEBUI_LABEL}" "WebUI"
+
+  local backend_port webui_port
+  backend_port="$(net_backend_port)"
+  webui_port="$(net_webui_port)"
+  echo ""
+  echo "${C_DIM}  localhost${C_RST}"
+  printf "  %-10s http://127.0.0.1:%s\n" "WebUI"   "${webui_port}"
+  printf "  %-10s http://127.0.0.1:%s\n" "Backend" "${backend_port}"
+  if [[ "${mode}" == "lan" ]]; then
+    local ip
+    ip="$(lan_ip)"
+    if [[ -n "${ip}" ]]; then
+      echo ""
+      echo "${C_DIM}  LAN${C_RST}"
+      printf "  %-10s http://%s:%s\n" "WebUI"   "${ip}" "${webui_port}"
+      printf "  %-10s http://%s:%s\n" "Backend" "${ip}" "${backend_port}"
+    fi
+  fi
 }
 
 # ---- Logs ------------------------------------------------------------------
@@ -861,6 +890,21 @@ EOF
   if is_running "${WEBUI_LABEL}"; then
     info "Restarting WebUI…"
     launchctl kickstart -k "gui/${UID_NUM}/${WEBUI_LABEL}" >/dev/null 2>&1 || true
+  fi
+
+  echo ""
+  echo "  Connect from this machine:"
+  echo "    WebUI:   http://127.0.0.1:${webui_port}"
+  echo "    Backend: http://127.0.0.1:${backend_port}"
+  if [[ "${mode}" == "lan" ]]; then
+    local ip
+    ip="$(lan_ip)"
+    if [[ -n "${ip}" ]]; then
+      echo ""
+      echo "  Connect from LAN:"
+      echo "    WebUI:   http://${ip}:${webui_port}"
+      echo "    Backend: http://${ip}:${backend_port}"
+    fi
   fi
 }
 
