@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stub: records calls to ${OLLAMA_LOG}, returns 0 (or OLLAMA_STUB_EXIT).
+LOG="${OLLAMA_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/ollama-calls}"
+echo "$*" >> "${LOG}"
+exit "${OLLAMA_STUB_EXIT:-0}"

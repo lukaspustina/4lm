@@ -67,3 +67,66 @@ pid = 12345"
   target="$(readlink "${HOME}/.4lm/config/active-profile")"
   [[ "${target}" == *"default.yaml" ]]
 }
+
+# ---- Ollama backend profile tests (Phase 2) ---------------------------------
+
+@test "ollama profile with only model_path + served_model_name validates (no context_length)" {
+  cat > "${HOME}/.4lm/config/profiles/ollama-test.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set ollama-test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Switched to ollama-test"* ]]
+}
+
+@test "ollama profile switch updates active-profile symlink" {
+  cat > "${HOME}/.4lm/config/profiles/ollama-test.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set ollama-test
+  [ "$status" -eq 0 ]
+  target="$(readlink "${HOME}/.4lm/config/active-profile")"
+  [[ "${target}" == *"ollama-test.yaml" ]]
+}
+
+@test "ollama profile with extra mlx fields (context_length) still validates" {
+  cat > "${HOME}/.4lm/config/profiles/ollama-extra.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+    context_length: 8192
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set ollama-extra
+  [ "$status" -eq 0 ]
+}
+
+@test "profile with unknown backend value is rejected" {
+  cat > "${HOME}/.4lm/config/profiles/bad-backend.yaml" <<'YAML'
+backend: llamacpp
+models:
+  - model_path: some/model
+    served_model_name: mymodel
+    context_length: 4096
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set bad-backend
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown backend"* ]] || [[ "$output" == *"validation failed"* ]]
+}
+
+@test "mlx profile without context_length still fails validation" {
+  cat > "${HOME}/.4lm/config/profiles/mlx-noctx.yaml" <<'YAML'
+models:
+  - model_path: mlx-community/some-model
+    served_model_name: mymodel
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set mlx-noctx
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"context_length"* ]] || [[ "$output" == *"validation failed"* ]]
+}

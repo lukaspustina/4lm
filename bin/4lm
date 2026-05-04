@@ -156,6 +156,22 @@ profile_model_entries() {
   ' "${yaml}"
 }
 
+# Return "mlx" (default) or "ollama" for a profile YAML.
+# Exits 1 with stderr on unrecognised backend value.
+profile_backend() {
+  local yaml="$1"
+  local val
+  val="$(grep '^backend:' "${yaml}" 2>/dev/null | awk '{print $2}' | tr -d "\"'")"
+  case "${val}" in
+    ollama) echo "ollama" ;;
+    mlx | "") echo "mlx" ;;
+    *)
+      echo "unknown backend '${val}' in ${yaml}" >&2
+      return 1
+      ;;
+  esac
+}
+
 # ---- Service control -------------------------------------------------------
 service_start() {
   local label="$1" plist="$2"
@@ -710,7 +726,11 @@ validate_profile() {
     return 1
   }
 
-  # models: top-level key must be present with at least one entry.
+  # Determine backend — fail fast on unknown values.
+  local backend
+  backend="$(profile_backend "${yaml_path}")" || return 1
+
+  # Both backends: models: key and at least one model_path: entry required.
   if ! grep -q '^models:' "${yaml_path}"; then
     echo "missing top-level 'models:' key" >&2
     return 1
@@ -720,8 +740,7 @@ validate_profile() {
     return 1
   fi
 
-  # Every model entry needs a non-empty served_model_name.
-  # If model_path entries count != served_model_name count, fail.
+  # Both backends: model_path count must equal served_model_name count.
   local n_paths n_names
   n_paths="$(grep -cE '^[[:space:]]*-[[:space:]]*model_path:[[:space:]]*\S' "${yaml_path}" || true)"
   n_names="$(grep -cE '^[[:space:]]*served_model_name:[[:space:]]*\S' "${yaml_path}" || true)"
@@ -730,27 +749,30 @@ validate_profile() {
     return 1
   fi
 
-  # context_length present and positive integer per entry.
-  local n_ctx
-  n_ctx="$(grep -cE '^[[:space:]]*context_length:[[:space:]]*[0-9]+' "${yaml_path}" || true)"
-  if [[ "${n_ctx}" -ne "${n_paths}" ]]; then
-    echo "every model entry must define context_length as a positive integer" >&2
-    return 1
-  fi
-
-  # tool_call_parser, if present, must be in the allowed enum.
-  # Source: app/parsers/ in mlx-openai-server v1.7.1.
-  # Source of truth: `mlx-openai-server launch --help` (--tool-call-parser).
-  local allowed_parsers="functiongemma gemma4 glm4_moe harmony hermes iquest_coder_v1 kimi_k2 longcat_flash_lite minimax_m2 nemotron3_nano qwen3 qwen3_coder qwen3_moe qwen3_vl solar_open step_35"
-  while IFS= read -r line; do
-    local val
-    val="$(awk -F': ' '{print $2}' <<<"${line}" | tr -d '"' | tr -d "'" | tr -d ' ')"
-    [[ -z "${val}" ]] && continue
-    if ! grep -qw "${val}" <<<"${allowed_parsers}"; then
-      echo "invalid tool_call_parser '${val}'; allowed: ${allowed_parsers}" >&2
+  # mlx-only checks.
+  if [[ "${backend}" == "mlx" ]]; then
+    # context_length required per entry.
+    local n_ctx
+    n_ctx="$(grep -cE '^[[:space:]]*context_length:[[:space:]]*[0-9]+' "${yaml_path}" || true)"
+    if [[ "${n_ctx}" -ne "${n_paths}" ]]; then
+      echo "every model entry must define context_length as a positive integer" >&2
       return 1
     fi
-  done < <(grep -E '^[[:space:]]*tool_call_parser:[[:space:]]*' "${yaml_path}" || true)
+
+    # tool_call_parser, if present, must be in the allowed enum.
+    # Source: app/parsers/ in mlx-openai-server v1.7.1.
+    # Source of truth: `mlx-openai-server launch --help` (--tool-call-parser).
+    local allowed_parsers="functiongemma gemma4 glm4_moe harmony hermes iquest_coder_v1 kimi_k2 longcat_flash_lite minimax_m2 nemotron3_nano qwen3 qwen3_coder qwen3_moe qwen3_vl solar_open step_35"
+    while IFS= read -r line; do
+      local val
+      val="$(awk -F': ' '{print $2}' <<<"${line}" | tr -d '"' | tr -d "'" | tr -d ' ')"
+      [[ -z "${val}" ]] && continue
+      if ! grep -qw "${val}" <<<"${allowed_parsers}"; then
+        echo "invalid tool_call_parser '${val}'; allowed: ${allowed_parsers}" >&2
+        return 1
+      fi
+    done < <(grep -E '^[[:space:]]*tool_call_parser:[[:space:]]*' "${yaml_path}" || true)
+  fi
 
   return 0
 }
