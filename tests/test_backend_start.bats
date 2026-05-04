@@ -43,6 +43,18 @@ YAML
   run "${BACKEND_START}"
   [ "$status" -eq 0 ]
   grep -q "serve" "${OLLAMA_LOG}"
+  grep -q "OLLAMA_HOST=127.0.0.1:8000" "${OLLAMA_LOG}"
+}
+
+@test "ollama profile: LAN mode sets OLLAMA_HOST to 0.0.0.0" {
+  _write_ollama_profile
+  cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
+mode: lan
+backend_port: 8000
+YAML
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  grep -q "OLLAMA_HOST=0.0.0.0:8000" "${OLLAMA_LOG}"
 }
 
 @test "ollama profile: sysctl wired-limit block is skipped" {

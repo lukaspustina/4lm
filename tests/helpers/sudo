@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${SUDO_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/sudo-calls}"
+echo "$*" >> "${LOG}"
+exit 0
