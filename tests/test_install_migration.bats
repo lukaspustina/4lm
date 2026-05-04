@@ -62,19 +62,19 @@ setup() {
 
 # ---- Phase 5: install.sh Ollama detection (T5.1, T5.2) ---------------------
 
-@test "install.sh: warns when ollama is absent from PATH" {
-  # Build a PATH that has all stubs except ollama.
+@test "install.sh: installs ollama via brew when absent from PATH" {
+  # Build a PATH that has all stubs except ollama (but includes brew stub).
   local stub_dir="${BATS_TEST_DIRNAME}/helpers"
   local bin="${BATS_TMPDIR}/no-ollama"
   mkdir -p "${bin}"
-  for s in sudo pipx python3.12 visudo hf sysctl mlx-openai-server curl launchctl; do
+  for s in sudo pipx python3.12 visudo hf sysctl mlx-openai-server curl launchctl brew; do
     [[ -x "${stub_dir}/${s}" ]] && ln -sfn "${stub_dir}/${s}" "${bin}/${s}"
   done
 
   run env PATH="${bin}:/usr/bin:/bin" "${INSTALL}"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"ollama not found"* ]]
-  [[ "$output" == *"brew install ollama"* ]]
+  [[ "$output" == *"Installing ollama"* ]]
+  [[ "$output" == *"ollama installed"* ]]
 }
 
 @test "install.sh: reports ok when ollama is present in PATH" {

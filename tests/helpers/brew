@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${BREW_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/brew-calls}"
+echo "$*" >> "${LOG}"
+exit "${BREW_STUB_EXIT:-0}"
