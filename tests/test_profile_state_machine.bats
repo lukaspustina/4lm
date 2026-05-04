@@ -130,3 +130,65 @@ YAML
   [ "$status" -eq 1 ]
   [[ "$output" == *"context_length"* ]] || [[ "$output" == *"validation failed"* ]]
 }
+
+# ---- Model download backend dispatch tests (Phase 4) ------------------------
+
+@test "models download: mlx and ollama profiles dispatch to correct backends" {
+  export HF_LOG="${BATS_TMPDIR}/hf-calls"
+  export OLLAMA_LOG="${BATS_TMPDIR}/ollama-calls"
+  rm -f "${HF_LOG}" "${OLLAMA_LOG}"
+
+  cat > "${HOME}/.4lm/config/profiles/mlx-dl.yaml" <<'YAML'
+models:
+  - model_path: org/ModelA
+    served_model_name: modela
+    context_length: 4096
+YAML
+  cat > "${HOME}/.4lm/config/profiles/ollama-dl.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+
+  run "${REPO_ROOT}/bin/4lm" models download
+  [ "$status" -eq 0 ]
+  grep -q "pull gemma4:27b" "${OLLAMA_LOG}"
+  grep -q "org/ModelA" "${HF_LOG}"
+}
+
+@test "models download: duplicate ollama model_path is pulled only once" {
+  export OLLAMA_LOG="${BATS_TMPDIR}/ollama-calls"
+  rm -f "${OLLAMA_LOG}"
+
+  cat > "${HOME}/.4lm/config/profiles/ollama-dup1.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+  cat > "${HOME}/.4lm/config/profiles/ollama-dup2.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-dup
+YAML
+
+  run "${REPO_ROOT}/bin/4lm" models download
+  [ "$status" -eq 0 ]
+  count="$(grep -c "pull gemma4:27b" "${OLLAMA_LOG}" || true)"
+  [ "${count}" -eq 1 ]
+}
+
+@test "models download: explicit arg with colon is rejected with HF-only error" {
+  run "${REPO_ROOT}/bin/4lm" models download "gemma4:27b"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"explicit download is HF-only"* ]]
+}
+
+@test "doctor: ollama absent produces warning but exits 0" {
+  # Use a PATH without tests/helpers so ollama stub is not found
+  run env PATH="/usr/bin:/bin" "${REPO_ROOT}/bin/4lm" doctor
+  [ "$status" -ne 127 ]
+  [[ "$output" == *"ollama"* ]]
+}

@@ -6,8 +6,6 @@ SCRIPTS    := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh
 PLISTS     := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
 SHFMT_OPTS := -i 2 -ci
 
-# Models are sourced from every profile YAML — single source of truth.
-MODELS := $(shell awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $$3}' config/profiles/*.yaml | sort -u)
 
 .PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint models models-list models-clean models-rm help
 
@@ -43,9 +41,19 @@ plist-lint: ## plutil -lint + xmllint --noout on all plists
 yaml-lint: ## Validate every profile YAML against the bin/4lm schema
 	tests/lint-profiles.sh
 
-models: ## Download/update all models referenced in config/profiles/ (idempotent)
-	@command -v hf >/dev/null || { echo "hf not found — run: make install" >&2; exit 1; }
-	@for m in $(MODELS); do echo "→ hf download $$m"; hf download "$$m"; done
+models: ## Download/update all models in config/profiles/ (backend-aware, idempotent)
+	@for yaml in config/profiles/*.yaml; do \
+	  backend=$$(awk '/^backend:/{print $$2}' "$$yaml"); \
+	  backend=$${backend:-mlx}; \
+	  while IFS= read -r model; do \
+	    [ -z "$$model" ] && continue; \
+	    if [ "$$backend" = "ollama" ]; then \
+	      echo "→ ollama pull $$model"; ollama pull "$$model"; \
+	    else \
+	      echo "→ hf download $$model"; hf download "$$model"; \
+	    fi; \
+	  done < <(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $$NF}' "$$yaml"); \
+	done
 
 models-list: ## List cached HuggingFace repos (size + revisions)
 	@command -v hf >/dev/null || { echo "hf not found — run: make install" >&2; exit 1; }
