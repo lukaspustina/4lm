@@ -149,6 +149,8 @@ YAML
 @test "models download: mlx and ollama profiles dispatch to correct backends" {
   export HF_LOG="${BATS_TMPDIR}/hf-calls"
   export OLLAMA_LOG="${BATS_TMPDIR}/ollama-calls"
+  # Simulate a running ollama server so _ollama_ensure_serve skips temp-serve.
+  export CURL_STUB_RESPONSE='{"version":"0.0.0"}'
   rm -f "${HF_LOG}" "${OLLAMA_LOG}"
 
   cat > "${HOME}/.4lm/config/profiles/mlx-dl.yaml" <<'YAML'
@@ -172,6 +174,8 @@ YAML
 
 @test "models download: duplicate ollama model_path is pulled only once" {
   export OLLAMA_LOG="${BATS_TMPDIR}/ollama-calls"
+  # Simulate a running ollama server so _ollama_ensure_serve skips temp-serve.
+  export CURL_STUB_RESPONSE='{"version":"0.0.0"}'
   rm -f "${OLLAMA_LOG}"
 
   cat > "${HOME}/.4lm/config/profiles/ollama-dup1.yaml" <<'YAML'
