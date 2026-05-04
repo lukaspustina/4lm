@@ -8,7 +8,7 @@ readonly LLM_HOME="${HOME}/.4lm"
 readonly CONFIG_DIR="${LLM_HOME}/config"
 readonly LOG_DIR="${LLM_HOME}/logs"
 readonly NETWORK_YAML="${CONFIG_DIR}/network.yaml"
-readonly ACTIVE_CONFIG="${CONFIG_DIR}/mlx-active"
+readonly ACTIVE_CONFIG="${CONFIG_DIR}/active-profile"
 
 mkdir -p "${LOG_DIR}"
 
