@@ -8,8 +8,9 @@ export REPO_ROOT
 # Prepend stub helpers so launchctl/curl in scripts resolve to stubs.
 export PATH="${BATS_TEST_DIRNAME}/helpers:${PATH}"
 
-# Sandbox HOME per test run.
+# Sandbox HOME per test run — wipe first so state never bleeds across runs.
 export HOME="${BATS_TMPDIR}/home-${BATS_TEST_NAME:-default}"
+rm -rf "${HOME}"
 mkdir -p "${HOME}"
 
 # Default log file for launchctl stub.

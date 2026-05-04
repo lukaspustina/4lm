@@ -89,9 +89,9 @@ webui_url() { echo "http://127.0.0.1:$(net_webui_port)"; }
 
 # Primary LAN IP (first non-loopback IPv4 on en0, falling back to any en*)
 lan_ip() {
-  ipconfig getifaddr en0 2>/dev/null \
-    || ipconfig getifaddr en1 2>/dev/null \
-    || ifconfig | awk '/inet / && !/127\.0\.0\.1/{print $2; exit}'
+  ipconfig getifaddr en0 2>/dev/null ||
+    ipconfig getifaddr en1 2>/dev/null ||
+    ifconfig | awk '/inet / && !/127\.0\.0\.1/{print $2; exit}'
 }
 
 # Resolve the source repo (where requirements.txt / Brewfile / config/profiles/
@@ -286,7 +286,7 @@ cmd_status() {
   webui_port="$(net_webui_port)"
   echo ""
   echo "${C_DIM}  localhost${C_RST}"
-  printf "  %-10s http://127.0.0.1:%s\n" "WebUI"   "${webui_port}"
+  printf "  %-10s http://127.0.0.1:%s\n" "WebUI" "${webui_port}"
   printf "  %-10s http://127.0.0.1:%s\n" "Backend" "${backend_port}"
   if [[ "${mode}" == "lan" ]]; then
     local ip
@@ -294,7 +294,7 @@ cmd_status() {
     if [[ -n "${ip}" ]]; then
       echo ""
       echo "${C_DIM}  LAN${C_RST}"
-      printf "  %-10s http://%s:%s\n" "WebUI"   "${ip}" "${webui_port}"
+      printf "  %-10s http://%s:%s\n" "WebUI" "${ip}" "${webui_port}"
       printf "  %-10s http://%s:%s\n" "Backend" "${ip}" "${backend_port}"
     fi
   fi
@@ -1147,8 +1147,8 @@ _hf_download_with_progress() {
   local repo="$1"
   # Run synchronously — hf-transfer writes tqdm progress to stderr (the
   # terminal). Suppress stdout (hf prints local cache paths on completion).
-  HF_HUB_ENABLE_HF_TRANSFER=1 hf download "${repo}" >/dev/null \
-    || die "Download failed: ${repo}"
+  HF_HUB_ENABLE_HF_TRANSFER=1 hf download "${repo}" >/dev/null ||
+    die "Download failed: ${repo}"
 }
 
 cmd_models_download() {
@@ -1217,10 +1217,10 @@ cmd_models() {
   local subcmd="${1:-list}"
   shift || true
   case "${subcmd}" in
-    list | ls)          cmd_models_list ;;
+    list | ls) cmd_models_list ;;
     download | dl | pull) cmd_models_download "$@" ;;
-    clean | prune)      cmd_models_clean ;;
-    rm | remove)        cmd_models_rm "$@" ;;
+    clean | prune) cmd_models_clean ;;
+    rm | remove) cmd_models_rm "$@" ;;
     *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | rm <repo>" ;;
   esac
 }
@@ -1232,18 +1232,28 @@ cmd_recommend() {
   # First positional arg is the optional use-case (like `4lm upgrade <channel>`).
   local use_case="" limit=5 runtime=""
   case "${1:-}" in
-    coding | reasoning | chat | general) use_case="$1"; shift ;;
+    coding | reasoning | chat | general)
+      use_case="$1"
+      shift
+      ;;
     "") ;;
     -*) ;;
     *) die "Unknown use-case: '$1'. Use: coding | reasoning | chat | general" ;;
   esac
   while (($# > 0)); do
     case "$1" in
-      -n | --limit)   limit="$2";   shift 2 ;;
-      --runtime | -r) runtime="$2"; shift 2 ;;
+      -n | --limit)
+        limit="$2"
+        shift 2
+        ;;
+      --runtime | -r)
+        runtime="$2"
+        shift 2
+        ;;
       -h | --help)
         echo "Usage: 4lm recommend [coding|reasoning|chat|general] [-n N] [--runtime mlx|llamacpp]"
-        return 0 ;;
+        return 0
+        ;;
       *) die "Unknown option: $1" ;;
     esac
   done
