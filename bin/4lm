@@ -514,8 +514,17 @@ run_outdated_check() {
   if [[ "${scope}" == "all" || "${scope}" == "models" ]]; then
     echo
     echo "${C_DIM}Models (config/profiles/*.yaml)${C_RST}"
-    local repos repo_id local_sha remote_sha
-    repos="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $3}' "${repo}"/config/profiles/*.yaml 2>/dev/null | sort -u)"
+    local repos="" repo_id local_sha remote_sha _p _be _served _od
+    for _p in "${repo}"/config/profiles/*.yaml; do
+      [[ -f "${_p}" ]] || continue
+      _be="$(profile_backend "${_p}" 2>/dev/null || echo "mlx")"
+      [[ "${_be}" == "ollama" ]] && continue
+      while IFS='|' read -r _served repo_id _od; do
+        [[ -z "${repo_id}" ]] && continue
+        repos="${repos}${repo_id}"$'\n'
+      done < <(profile_model_entries "${_p}")
+    done
+    repos="$(sort -u <<<"${repos}")"
     if [[ -z "${repos}" ]]; then
       info "(no models in profiles)"
     else
@@ -991,6 +1000,11 @@ cmd_doctor() {
     warn "opencode not in PATH (run: make bootstrap)"
     fail=1
   fi
+  if command -v ollama >/dev/null; then
+    ok "ollama: $(command -v ollama)"
+  else
+    warn "ollama not in PATH (optional — only needed for backend: ollama profiles)"
+  fi
 
   return "${fail}"
 }
@@ -1079,19 +1093,24 @@ cmd_models_list() {
 
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
-    local pname
+    local pname backend_label
     pname="$(basename "${profile_yaml}" .yaml)"
+    local be
+    be="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
+    backend_label="${C_DIM}(${be})${C_RST}"
     if [[ "${pname}" == "${active}" ]]; then
-      printf "  ${C_GRN}* %s${C_RST} ${C_DIM}(active)${C_RST}\n" "${pname}"
+      printf "  ${C_GRN}* %s${C_RST} ${C_DIM}(active)${C_RST} %b\n" "${pname}" "${backend_label}"
     else
-      printf "  ${C_DIM}  %s${C_RST}\n" "${pname}"
+      printf "  ${C_DIM}  %s${C_RST} %b\n" "${pname}" "${backend_label}"
     fi
 
     while IFS='|' read -r served_name model_path slot_type; do
       [[ -z "${model_path}" ]] && continue
       local od_label=""
       [[ "${slot_type}" == "on_demand" ]] && od_label="  ${C_DIM}on-demand${C_RST}"
-      if hf_is_cached "${model_path}"; then
+      if [[ "${be}" == "ollama" ]]; then
+        printf "    ${C_DIM}~${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
+      elif hf_is_cached "${model_path}"; then
         printf "    ${C_GRN}✓${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
       else
         printf "    ${C_YEL}✗${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
@@ -1118,11 +1137,14 @@ _hf_download_with_progress() {
 }
 
 cmd_models_download() {
-  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
-
   if (($# > 0)); then
     local repo
     for repo in "$@"; do
+      # Heuristic: Ollama tags contain ':' (e.g. gemma4:27b); HF IDs do not.
+      if [[ "${repo}" == *:* ]]; then
+        die "explicit download is HF-only; use: ollama pull ${repo}"
+      fi
+      command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
       info "Downloading ${repo}…"
       _hf_download_with_progress "${repo}"
       ok "${repo}"
@@ -1134,16 +1156,28 @@ cmd_models_download() {
   echo "${C_DIM}─── 4lm Models Download ───${C_RST}"
   echo
 
-  local model_path
-  while IFS= read -r model_path; do
-    [[ -z "${model_path}" ]] && continue
-    # Always call hf download — it verifies hashes and resumes partials.
-    # hf_is_cached is only a display hint; partial downloads can be >1 GB.
-    info "Checking ${model_path}…"
-    _hf_download_with_progress "${model_path}"
-    ok "${model_path}"
-  done < <(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $NF}' \
-    "${PROFILES_DIR}"/*.yaml 2>/dev/null | sort -u)
+  local seen_mlx="" seen_ollama="" backend model_path _served _od
+  for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
+    [[ -f "${profile_yaml}" ]] || continue
+    backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
+    while IFS='|' read -r _served model_path _od; do
+      [[ -z "${model_path}" ]] && continue
+      if [[ "${backend}" == "ollama" ]]; then
+        grep -qxF "${model_path}" <<<"${seen_ollama}" && continue
+        seen_ollama="${seen_ollama}${model_path}"$'\n'
+        info "ollama pull ${model_path}…"
+        ollama pull "${model_path}" || die "ollama pull failed: ${model_path}"
+        ok "${model_path}"
+      else
+        command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+        grep -qxF "${model_path}" <<<"${seen_mlx}" && continue
+        seen_mlx="${seen_mlx}${model_path}"$'\n'
+        info "Checking ${model_path}…"
+        _hf_download_with_progress "${model_path}"
+        ok "${model_path}"
+      fi
+    done < <(profile_model_entries "${profile_yaml}")
+  done
 
   echo
   ok "Done."

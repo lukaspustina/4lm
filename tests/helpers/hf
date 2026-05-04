@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${HF_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/hf-calls}"
+echo "$*" >> "${LOG}"
+exit "${HF_STUB_EXIT:-0}"
