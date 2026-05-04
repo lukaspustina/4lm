@@ -49,29 +49,32 @@ Health-poll after kickstart (`GET /v1/models`) is unchanged — both Ollama and 
 5. `4lm-backend-start.sh` shall read `backend:` from the active profile and start either `mlx-openai-server launch` (existing behaviour) or `ollama serve` (with `OLLAMA_HOST` set).
 6. The wired-memory limit sysctl shall only be applied for `mlx` profiles.
 7. `4lm models download` (no-arg form) shall dispatch to `hf download` for mlx-backend models and `ollama pull` for ollama-backend models, processing every profile in `~/.4lm/config/profiles/`. Each unique `model_path` per backend type is processed exactly once.
-8. `4lm models download <repo> [<repo>...]` (explicit-arg form) shall remain HF-only. Users must invoke `ollama pull` directly for Ollama models; passing a non-HF path prints `error: explicit download is HF-only; use: ollama pull <tag>` and exits 1.
+8. `4lm models download <repo> [<repo>...]` (explicit-arg form) shall remain HF-only. Users must invoke `ollama pull` directly for Ollama models; passing any arg containing `:` (Ollama tag heuristic) prints `error: explicit download is HF-only; use: ollama pull <tag>` and exits 1.
 9. The `make models` target shall perform the same backend-aware dispatch as R7.
 10. `4lm models list` shall annotate each profile name with its backend type (e.g. `(mlx)` or `(ollama)`) and shall not query the HuggingFace cache for Ollama model entries; instead it shall show `~` in the cache-path column.
-11. `4lm doctor` shall report whether the `ollama` binary is available: `ok` if found, `warn` if absent. Exit code remains 0 in both cases.
+11. `4lm doctor` shall report whether the `ollama` binary is available: `ok` if found, `warn` if absent. Exit code remains 0 in both cases. The check must not set `fail=1` (ollama is optional).
 12. `install.sh` shall migrate the `mlx-active` symlink to `active-profile` and the `mlx-previous` file to `previous-profile` on existing installations, then remove the old names.
 13. `install.sh` shall warn (not fail) if the `ollama` binary is absent, printing: `warn: ollama not found — needed only for profiles with backend: ollama` and `    Install: brew install ollama`.
 14. The repo shall include `config/profiles/ollama-gemma4.yaml` as a reference Ollama profile (see Data Models).
 15. Profile switching between backends (mlx → ollama and back) shall use the existing kickstart/rollback mechanism unchanged. Cross-backend rollback is verified manually only (no bats scenario feasible without a live launchd).
-16. `run_outdated_check()` shall skip HuggingFace freshness checks for profiles whose `profile_backend()` returns `ollama`.
+16. `run_outdated_check()` shall skip HuggingFace freshness checks for profiles whose `profile_backend()` returns `ollama`. The existing flat-awk pass (lines 497–523) must be rewritten as a per-profile loop before the guard can be applied.
 
 ## File & Module Structure
 
 | File | Change |
 |------|--------|
 | `bin/4lm` | Add `profile_backend()`; update `validate_profile()`, `cmd_models_download()`, `cmd_models_list()`, `run_outdated_check()`, `cmd_doctor()`; rename `ACTIVE_CONFIG` / `PREVIOUS_PROFILE_FILE` constants; fix one hardcoded `mlx-active` reference in `cmd_recommend` |
-| `bin/4lm-backend-start.sh` | Rename `ACTIVE_CONFIG` constant; add inline backend detection; gate wired-memory sysctl; add Ollama launch branch |
+| `bin/4lm-backend-start.sh` | Rename `ACTIVE_CONFIG` constant; add inline backend detection; gate wired-memory sysctl; add Ollama launch branch; update file header comment |
 | `install.sh` | Add symlink migration block (before step 5); update `ACTIVE` variable; add Ollama binary detection warning |
-| `Makefile` | Delete `MODELS` variable; rewrite `models` target with per-profile backend dispatch |
+| `Makefile` | Delete `MODELS` variable (line 10); rewrite `models` target with per-profile backend dispatch |
 | `config/profiles/ollama-gemma4.yaml` | New reference profile |
 | `docs/profile-schema.md` | Document `backend:` key and Ollama model format |
-| `tests/test_profile_state_machine.bats` | Update symlink names (Phase 1); add Ollama validation cases (Phase 2) |
+| `tests/test_profile_state_machine.bats` | Update symlink names (Phase 1); add Ollama validation cases (Phase 2); add model download cases (Phase 4) |
+| `tests/test_4lm_dispatch.bats` | Update `mlx-active` → `active-profile` and `mlx-previous` → `previous-profile` in `setup()` and test bodies (Phase 1) |
 | `tests/test_backend_start.bats` | New file for Phase 3 test cases |
-| `tests/helpers/ollama` | New stub: records args to `$BATS_TMPDIR/ollama-calls`, exits 0 (or `OLLAMA_STUB_EXIT`) |
+| `tests/helpers/ollama` | New stub: records args to `${OLLAMA_LOG:-$BATS_TMPDIR/ollama-calls}`, exits `${OLLAMA_STUB_EXIT:-0}` |
+| `tests/helpers/hf` | New stub: records args to `${HF_LOG:-$BATS_TMPDIR/hf-calls}`, exits `${HF_STUB_EXIT:-0}` (Phase 4) |
+| `tests/helpers/sysctl` | New stub: records args to `${SYSCTL_LOG:-$BATS_TMPDIR/sysctl-calls}`, exits 0 (Phase 3) |
 
 ## Data Models
 
@@ -116,7 +119,7 @@ for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
   [[ -f "${profile_yaml}" ]] || continue
   local backend
   backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
-  while IFS='|' read -r _served model_path _slot; do
+  while IFS='|' read -r _served model_path _od; do
     [[ -z "${model_path}" ]] && continue
     if [[ "${backend}" == "ollama" ]]; then
       grep -qxF "${model_path}" <<<"${seen_ollama}" && continue
@@ -132,6 +135,27 @@ for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
 done
 ```
 
+Note: `_od` is the third field from `profile_model_entries()` — the on-demand flag (`permanent` or `on_demand`). It is not used in the download loop.
+
+### `run_outdated_check()` models section rewrite (lines 497–523)
+
+The existing single-pass awk glob must be replaced with a per-profile loop:
+
+```bash
+# Collect HF repos from mlx profiles only.
+repos=""
+for _p in "${repo}"/config/profiles/*.yaml; do
+  [[ -f "${_p}" ]] || continue
+  _be="$(profile_backend "${_p}" 2>/dev/null || echo "mlx")"
+  [[ "${_be}" == "mlx" ]] || continue
+  _r="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $3}' "${_p}")"
+  [[ -n "${_r}" ]] && repos="${repos}${_r}"$'\n'
+done
+repos="$(sort -u <<<"${repos}")"
+```
+
+The rest of the `run_outdated_check()` models section (HF API calls) is unchanged.
+
 ## Configuration
 
 | Key | Location | Type | Default | Notes |
@@ -139,6 +163,10 @@ done
 | `backend:` | profile YAML (top-level) | string | `mlx` | Accepted values: `mlx`, `ollama` |
 | `OLLAMA_HOST` | env var set in `4lm-backend-start.sh` | `host:port` | — | Set to `${BIND_HOST}:${NET_PORT}`; `0.0.0.0` is valid for LAN mode |
 | `OLLAMA_STUB_EXIT` | env var for tests | integer | `0` | Controls exit code of `tests/helpers/ollama` stub |
+| `OLLAMA_LOG` | env var for tests | path | `$BATS_TMPDIR/ollama-calls` | Overrides log path in `tests/helpers/ollama` stub |
+| `HF_STUB_EXIT` | env var for tests | integer | `0` | Controls exit code of `tests/helpers/hf` stub |
+| `HF_LOG` | env var for tests | path | `$BATS_TMPDIR/hf-calls` | Overrides log path in `tests/helpers/hf` stub |
+| `SYSCTL_LOG` | env var for tests | path | `$BATS_TMPDIR/sysctl-calls` | Overrides log path in `tests/helpers/sysctl` stub |
 
 ## Error Handling
 
@@ -147,9 +175,9 @@ done
 | Unknown `backend:` value | `profile_backend()` called on profile with e.g. `backend: llamacpp` | Return 1 | `unknown backend 'llamacpp' in <path>` on stderr |
 | `ollama` binary absent at start | `4lm-backend-start.sh` with ollama profile, binary not in PATH | Exit 127 | `FATAL: ollama not found in PATH — Install: brew install ollama` |
 | `ollama pull` failure | `cmd_models_download()` | `die` (exits 1) | `ollama pull failed: <model_path>` |
-| Explicit-arg with Ollama tag | `4lm models download gemma4:27b` | Exit 1 | `error: explicit download is HF-only; use: ollama pull <tag>` |
+| Explicit-arg with Ollama tag | `4lm models download gemma4:27b` (arg contains `:`) | Exit 1 | `error: explicit download is HF-only; use: ollama pull <tag>` |
 | `ollama serve` exits before poll | Health poll in `cmd_profile_set()` times out | Rollback to previous profile; kickstart previous backend | `WARN: rollback kickstart failed — backend may be in unknown state` (existing message) |
-| `ollama` absent at install | `install.sh` `command -v ollama` check | Continue; warn | `warn: ollama not found — needed only for profiles with backend: ollama` + hint |
+| `ollama` absent at install | `install.sh` `command -v ollama` check | Continue; warn; do not set `fail=1` | `warn: ollama not found — needed only for profiles with backend: ollama` + hint |
 
 ---
 
@@ -173,7 +201,7 @@ Also fix the one hardcoded `"${CONFIG_DIR}/mlx-active"` string in `cmd_recommend
 readonly ACTIVE_CONFIG="${CONFIG_DIR}/active-profile"
 ```
 
-`install.sh` — add migration block immediately before the existing "Active profile default" block (step 5, around line 106):
+`install.sh` — add migration block immediately before the existing "Active profile default" block (step 5, around line 105):
 ```bash
 OLD_ACTIVE="${CONFIG_DIR}/mlx-active"
 OLD_PREVIOUS="${CONFIG_DIR}/mlx-previous"
@@ -189,7 +217,7 @@ if [[ -f "${OLD_PREVIOUS}" && ! -f "${NEW_PREVIOUS}" ]]; then
   ok "Migrated mlx-previous → previous-profile"
 fi
 ```
-Then update line 106: `ACTIVE="${CONFIG_DIR}/active-profile"`.
+Then update the `ACTIVE=` line immediately following: `ACTIVE="${CONFIG_DIR}/active-profile"`.
 
 `tests/test_profile_state_machine.bats` and `tests/test_4lm_dispatch.bats`: replace every occurrence of `mlx-active` with `active-profile` and every `mlx-previous` with `previous-profile`.
 
@@ -221,7 +249,7 @@ THEN exit code is 0 with no warnings
 
 ## Phase 2 — Profile schema + `validate_profile` backend awareness
 
-Add the `backend:` key to the YAML schema. Make `validate_profile()` branch on it. Add the reference Ollama profile and the `ollama` stub.
+Add the `backend:` key to the YAML schema. Make `validate_profile()` branch on it. Add the reference Ollama profile and test stubs.
 
 **Changes:**
 
@@ -231,15 +259,15 @@ Add the `backend:` key to the YAML schema. Make `validate_profile()` branch on i
 1. Call `profile_backend "${yaml_path}"` → `backend`. Return 1 on unknown value.
 2. Check `models:` key present and ≥1 `model_path:` entry (both backends).
 3. Verify `model_path` count == `served_model_name` count (both backends).
-4. **mlx only**: verify `context_length` count == `model_path` count; check `tool_call_parser` enum values against existing whitelist.
-5. **ollama**: no additional field requirements.
+4. **mlx only**: verify `context_length` count == `model_path` count; check `tool_call_parser` enum values against the existing `allowed_parsers` whitelist (line 744 of `bin/4lm` — preserve this string verbatim).
+5. **ollama**: no additional field requirements beyond steps 2–3.
 
 `config/profiles/ollama-gemma4.yaml` — new file (see Data Models for content).
 
 `tests/helpers/ollama` — new stub:
 ```bash
 #!/usr/bin/env bash
-LOG="${BATS_TMPDIR:-${TMPDIR:-/tmp}}/ollama-calls"
+LOG="${OLLAMA_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/ollama-calls}"
 echo "$*" >> "${LOG}"
 exit "${OLLAMA_STUB_EXIT:-0}"
 ```
@@ -282,7 +310,7 @@ Make the backend start script dispatch to the correct binary.
 
 **Changes:**
 
-`bin/4lm-backend-start.sh` — after the bind-host/port block (after line 35), add:
+`bin/4lm-backend-start.sh` — after the bind-host/port block (after line 35), add backend detection:
 ```bash
 # Detect backend type from active profile (inline; cannot source bin/4lm).
 BACKEND_TYPE="mlx"
@@ -322,23 +350,36 @@ fi
 
 `OLLAMA_HOST=0.0.0.0:${NET_PORT}` is valid and intentional for LAN mode.
 
-Update the file header comment from "Starts the mlx-openai-server backend daemon" to "Starts the backend daemon (mlx-openai-server or Ollama) based on the active profile's backend: key."
+Update the file header comment: "Starts the backend daemon (mlx-openai-server or Ollama) based on the active profile's `backend:` key."
 
-Add `tests/test_backend_start.bats` with the cases in Test Scenarios below.
+`tests/helpers/sysctl` — new stub:
+```bash
+#!/usr/bin/env bash
+LOG="${SYSCTL_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/sysctl-calls}"
+echo "$*" >> "${LOG}"
+exit 0
+```
+
+`tests/test_backend_start.bats` — new file. The `setup()` block must:
+- `load helpers/setup` (sandboxes `$HOME`, prepends `tests/helpers/` to PATH)
+- Create `${HOME}/.4lm/config/profiles/`
+- Write `${HOME}/.4lm/config/network.yaml` with `mode: local` and `backend_port: 8000`
+- Create `${HOME}/.4lm/config/active-profile` as a symlink to a minimal profile YAML written to `$BATS_TMPDIR`
+- Ensure `sysctl`, `ollama`, and `mlx-openai-server` stubs are in PATH (via `tests/helpers/`)
 
 **Phase complete when:** With an Ollama profile active, `4lm start` launches `ollama serve` on port 8000; with an mlx profile active, behaviour is identical to today. `make check` passes.
 
 ### Test Scenarios
 
-All cases go in `tests/test_backend_start.bats`. Tests source `tests/helpers/setup.bash` (which prepends stubs to PATH); the `ollama` stub from Phase 2 and the existing `mlx-openai-server` stub (or a new one following the same pattern) must be present.
+All cases go in `tests/test_backend_start.bats`. Uses `load helpers/setup` (no `.bash` extension).
 
 GIVEN `active-profile` points to a profile with `backend: ollama` and the `ollama` stub is in PATH
 WHEN `4lm-backend-start.sh` is executed
-THEN `$BATS_TMPDIR/ollama-calls` records `serve`; `OLLAMA_HOST` is `127.0.0.1:8000`; sysctl is NOT invoked
+THEN `$BATS_TMPDIR/ollama-calls` records `serve`; `OLLAMA_HOST` is `127.0.0.1:8000`; `$BATS_TMPDIR/sysctl-calls` does not exist or is empty
 
 GIVEN `active-profile` points to a profile with no `backend:` key and the mlx stub is in PATH
 WHEN `4lm-backend-start.sh` is executed
-THEN the mlx stub is invoked with `launch --config ...`; sysctl IS invoked
+THEN the mlx stub is invoked with `launch --config ...`; `$BATS_TMPDIR/sysctl-calls` contains at least one entry
 
 GIVEN `active-profile` points to an ollama profile and `ollama` is absent from PATH
 WHEN `4lm-backend-start.sh` is executed
@@ -356,13 +397,13 @@ Make `4lm models download` and `make models` dispatch per backend. Fix `cmd_mode
 
 **Changes:**
 
-`bin/4lm` — `cmd_models_download()`: replace the all-profiles awk pass with the loop in Data Models. The explicit-arg path (`$# > 0`) gains an early check: if any arg contains `:` (Ollama tag heuristic), print the HF-only error and exit 1.
+`bin/4lm` — `cmd_models_download()`: replace the all-profiles awk pass with the loop in Data Models. The explicit-arg path (`$# > 0`) gains an early check: if any arg contains `:`, print the HF-only error and exit 1.
 
-`bin/4lm` — `run_outdated_check()`: in the models loop, call `profile_backend "${_p}"` for each profile file; skip the profile entirely if backend is `ollama`.
+`bin/4lm` — `run_outdated_check()`: rewrite the models section (lines 497–523) from a single flat awk glob into a per-profile loop. See Data Models for the exact implementation. The rest of the function is unchanged.
 
-`bin/4lm` — `cmd_models_list()`: in the per-profile display loop, call `profile_backend` and append `(mlx)` or `(ollama)` to the profile name. In the inner model loop, for `ollama` backend skip `hf_is_cached` and print `~` in the cache-path column.
+`bin/4lm` — `cmd_models_list()`: call `profile_backend` in the per-profile display loop and append `(mlx)` or `(ollama)` to the profile name. In the inner model loop, for `ollama` backend skip `hf_is_cached` and print `~` in the cache-path column.
 
-`bin/4lm` — `cmd_doctor()`: after existing binary checks, add:
+`bin/4lm` — `cmd_doctor()`: after the existing required-binary checks, add the Ollama check. Do not set `fail=1` — ollama is an optional binary:
 ```bash
 if command -v ollama >/dev/null 2>&1; then
   ok "ollama: $(command -v ollama)"
@@ -371,7 +412,7 @@ else
 fi
 ```
 
-`Makefile`: delete the `MODELS :=` variable (line 10). Rewrite the `models` target:
+`Makefile`: delete the `MODELS :=` variable (line 10). Rewrite the `models` target (recipes use `bash` via the existing `SHELL := /bin/bash` setting):
 ```makefile
 models: ## Download/update all models in config/profiles/ (backend-aware, idempotent)
 	@for yaml in config/profiles/*.yaml; do \
@@ -388,7 +429,15 @@ models: ## Download/update all models in config/profiles/ (backend-aware, idempo
 	done
 ```
 
-Add model download tests to `tests/test_profile_state_machine.bats`.
+`tests/helpers/hf` — new stub:
+```bash
+#!/usr/bin/env bash
+LOG="${HF_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/hf-calls}"
+echo "$*" >> "${LOG}"
+exit "${HF_STUB_EXIT:-0}"
+```
+
+Add model download and list tests to `tests/test_profile_state_machine.bats`.
 
 **Phase complete when:** `4lm models download` logs `hf download` for mlx models and `ollama pull` for Ollama models; `make models` does the same; `4lm models list` shows `(ollama)` for Ollama profiles; `make check` passes.
 
@@ -396,15 +445,15 @@ Add model download tests to `tests/test_profile_state_machine.bats`.
 
 GIVEN profiles dir has one mlx profile (model path `org/ModelA`) and one ollama profile (model path `gemma4:27b`), with `hf` and `ollama` stubs in PATH
 WHEN `4lm models download` is run (no args)
-THEN `$BATS_TMPDIR/ollama-calls` records exactly one line `pull gemma4:27b`; `hf` stub records exactly one call with `org/ModelA`
+THEN `$BATS_TMPDIR/ollama-calls` records exactly one line `pull gemma4:27b`; `$BATS_TMPDIR/hf-calls` records exactly one line containing `org/ModelA`
 
 GIVEN two ollama profiles both referencing `gemma4:27b`
 WHEN `4lm models download` is run
-THEN `$BATS_TMPDIR/ollama-calls` records exactly one line (deduplicated)
+THEN `$BATS_TMPDIR/ollama-calls` records exactly one line (deduplicated by model_path)
 
 GIVEN the profiles dir includes one ollama profile
 WHEN `4lm models list` is run
-THEN output contains `(ollama)` for that profile; `hf cache` is not invoked for the ollama model path
+THEN output contains `(ollama)` for that profile; `$BATS_TMPDIR/hf-calls` does not contain the ollama model path
 
 GIVEN `ollama` is not in PATH
 WHEN `4lm doctor` is run
@@ -414,7 +463,7 @@ GIVEN profiles dir has one mlx and one ollama profile, with stubs in PATH
 WHEN `make models` is run
 THEN `hf download` is invoked for the mlx model; `ollama pull` is invoked for the ollama model; make exits 0
 
-GIVEN `4lm models download gemma4:27b` is run (explicit Ollama-tag arg)
+GIVEN `4lm models download gemma4:27b` is run (arg contains `:`)
 WHEN the command executes
 THEN exit code is 1; output contains "explicit download is HF-only"
 
@@ -422,7 +471,7 @@ THEN exit code is 1; output contains "explicit download is HF-only"
 
 ## Phase 5 — `install.sh` Ollama detection + docs
 
-Non-functional polish. **Depends on Phase 1** (`docs/profile-schema.md` references `active-profile`).
+Non-functional polish. **Depends on Phase 1** (docs reference `active-profile`).
 
 **Changes:**
 
@@ -436,7 +485,7 @@ else
 fi
 ```
 
-`docs/profile-schema.md` — add a new "Top-level keys" subsection documenting `backend: mlx | ollama` (default `mlx`), note that mlx-specific model fields are optional/ignored for Ollama profiles, and show the minimal Ollama profile skeleton.
+`docs/profile-schema.md` — add a "Top-level keys" subsection documenting `backend: mlx | ollama` (default `mlx`), note that mlx-specific model fields are optional/ignored for Ollama profiles, and show the minimal Ollama profile skeleton from Data Models.
 
 **Phase complete when:** `install.sh` completes without error whether or not Ollama is installed; `make check` passes.
 
