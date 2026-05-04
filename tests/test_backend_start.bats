@@ -70,6 +70,10 @@ YAML
   run "${BACKEND_START}"
   [ "$status" -eq 0 ]
   grep -q "launch --config" "${MLX_LOG}"
+  # Note: the wired-memory sysctl block is also entered here but uses
+  # /usr/sbin/sysctl with a full path, which bypasses PATH-based stubs.
+  # Its invocation cannot be asserted via SYSCTL_LOG in this harness.
+  # The negative case (ollama skips the block) is verified in the sysctl test.
 }
 
 @test "ollama profile: ollama absent from PATH exits 127 with FATAL message" {

@@ -59,3 +59,27 @@ setup() {
   [[ "$(readlink "${HOME}/.4lm/config/active-profile")" == *"default.yaml" ]]
   [ ! -e "${HOME}/.4lm/config/mlx-active" ]
 }
+
+# ---- Phase 5: install.sh Ollama detection (T5.1, T5.2) ---------------------
+
+@test "install.sh: warns when ollama is absent from PATH" {
+  # Build a PATH that has all stubs except ollama.
+  local stub_dir="${BATS_TEST_DIRNAME}/helpers"
+  local bin="${BATS_TMPDIR}/no-ollama"
+  mkdir -p "${bin}"
+  for s in sudo pipx python3.12 visudo hf sysctl mlx-openai-server curl launchctl; do
+    [[ -x "${stub_dir}/${s}" ]] && ln -sfn "${stub_dir}/${s}" "${bin}/${s}"
+  done
+
+  run env PATH="${bin}:/usr/bin:/bin" "${INSTALL}"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ollama not found"* ]]
+  [[ "$output" == *"brew install ollama"* ]]
+}
+
+@test "install.sh: reports ok when ollama is present in PATH" {
+  # setup() already prepends tests/helpers/ (which has the ollama stub) to PATH.
+  run "${INSTALL}"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ollama:"* ]]
+}
