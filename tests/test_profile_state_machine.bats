@@ -192,3 +192,27 @@ YAML
   [ "$status" -ne 127 ]
   [[ "$output" == *"ollama"* ]]
 }
+
+@test "models list: ollama profile annotated with (ollama)" {
+  cat > "${HOME}/.4lm/config/profiles/ollama-ann.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+  run "${REPO_ROOT}/bin/4lm" models list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(ollama)"* ]]
+}
+
+@test "make models: dispatches hf for mlx profiles and ollama pull for ollama profiles" {
+  export HF_LOG="${BATS_TMPDIR}/hf-make-calls"
+  export OLLAMA_LOG="${BATS_TMPDIR}/ollama-make-calls"
+  rm -f "${HF_LOG}" "${OLLAMA_LOG}"
+  run make -C "${REPO_ROOT}" models
+  [ "$status" -eq 0 ]
+  # config/profiles/ollama-gemma4.yaml has backend: ollama + gemma4:27b
+  grep -q "gemma4:27b" "${OLLAMA_LOG}"
+  # config/profiles/default.yaml and coding-only.yaml have mlx models
+  [ -s "${HF_LOG}" ]
+}

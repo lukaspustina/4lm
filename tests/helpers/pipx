@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${PIPX_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/pipx-calls}"
+echo "$*" >> "${LOG}"
+exit 0
