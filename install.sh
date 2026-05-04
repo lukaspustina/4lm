@@ -278,7 +278,15 @@ else
   info "opencode config exists, not overwriting: ${OPENCODE_CONFIG}"
 fi
 
-# ---- 13. Final summary ----------------------------------------------------
+# ---- 13. Optional: Ollama ---------------------------------------------------
+if command -v ollama >/dev/null 2>&1; then
+  ok "ollama: $(command -v ollama)"
+else
+  warn "ollama not found — needed only for profiles with backend: ollama"
+  echo "    Install: brew install ollama"
+fi
+
+# ---- 14. Final summary ----------------------------------------------------
 echo
 echo "${C_GRN}════════════════════════════════════${C_RST}"
 echo "${C_GRN} Installation complete${C_RST}"
