@@ -156,6 +156,40 @@ profile_model_entries() {
   ' "${yaml}"
 }
 
+# Ensure an ollama server is reachable for `ollama pull`.
+# Checks the 4lm backend port first, then the default ollama port (11434),
+# then starts a temporary `ollama serve` if neither responds.
+# Sets OLLAMA_HOST when using a non-default port; leaves it unset for 11434.
+# On return, caller is responsible for killing _ollama_tmp_pid if non-empty.
+_ollama_tmp_pid=""
+_ollama_ensure_serve() {
+  local be_port
+  be_port="$(net_backend_port)"
+  # Prefer the running 4lm backend (ollama serve already on be_port).
+  if curl -sf "http://127.0.0.1:${be_port}/api/version" >/dev/null 2>&1; then
+    export OLLAMA_HOST="127.0.0.1:${be_port}"
+    return 0
+  fi
+  # Fall back to the default ollama port.
+  if curl -sf "http://127.0.0.1:11434/api/version" >/dev/null 2>&1; then
+    unset OLLAMA_HOST 2>/dev/null || true
+    return 0
+  fi
+  # Neither is up — start a temporary serve on the default port.
+  info "Starting temporary ollama serve for model downloads…"
+  ollama serve >/dev/null 2>&1 &
+  _ollama_tmp_pid=$!
+  local n=0
+  while ((n < 20)); do
+    sleep 0.5
+    curl -sf "http://127.0.0.1:11434/api/version" >/dev/null 2>&1 && return 0
+    n=$((n + 1))
+  done
+  kill "${_ollama_tmp_pid}" 2>/dev/null || true
+  _ollama_tmp_pid=""
+  die "ollama serve did not start within 10 s"
+}
+
 # Return "mlx" (default) or "ollama" for a profile YAML.
 # Exits 1 with stderr on unrecognised backend value.
 profile_backend() {
@@ -1171,7 +1205,7 @@ cmd_models_download() {
   echo "${C_DIM}─── 4lm Models Download ───${C_RST}"
   echo
 
-  local seen_mlx="" seen_ollama="" backend model_path _served _od
+  local seen_mlx="" seen_ollama="" seen_ollama_server=false backend model_path _served _od
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
     backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
@@ -1180,6 +1214,11 @@ cmd_models_download() {
       if [[ "${backend}" == "ollama" ]]; then
         grep -qxF "${model_path}" <<<"${seen_ollama}" && continue
         seen_ollama="${seen_ollama}${model_path}"$'\n'
+        # Ensure a server is up before the first pull (idempotent after that).
+        if [[ "${seen_ollama_server}" == false ]]; then
+          _ollama_ensure_serve
+          seen_ollama_server=true
+        fi
         info "ollama pull ${model_path}…"
         ollama pull "${model_path}" || die "ollama pull failed: ${model_path}"
         ok "${model_path}"
@@ -1193,6 +1232,9 @@ cmd_models_download() {
       fi
     done < <(profile_model_entries "${profile_yaml}")
   done
+
+  # Stop the temporary ollama serve we started (if any).
+  [[ -n "${_ollama_tmp_pid}" ]] && kill "${_ollama_tmp_pid}" 2>/dev/null || true
 
   echo
   ok "Done."
