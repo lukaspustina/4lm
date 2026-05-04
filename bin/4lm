@@ -808,15 +808,30 @@ cmd_profile() {
     set | use)
       cmd_profile_set "${2:-}"
       ;;
-    current | show)
+    current)
       if [[ -L "${ACTIVE_CONFIG}" ]]; then
         basename "$(readlink "${ACTIVE_CONFIG}")" .yaml
       else
         echo "(none)"
       fi
       ;;
+    show | cat | view)
+      local name="${2:-}"
+      local yaml
+      if [[ -n "${name}" ]]; then
+        [[ "${name}" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || die "invalid profile name: ${name}"
+        yaml="${PROFILES_DIR}/${name}.yaml"
+        [[ -f "${yaml}" ]] || die "profile not found: ${yaml}"
+      else
+        [[ -L "${ACTIVE_CONFIG}" ]] || die "no active profile set"
+        yaml="${ACTIVE_CONFIG}"
+        name="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+      fi
+      echo "# Profile: ${name}"
+      cat "${yaml}"
+      ;;
     *)
-      die "Unknown profile subcommand: ${subcmd}. Use: list | set <name> | current"
+      die "Unknown profile subcommand: ${subcmd}. Use: list | set <name> | current | show [<name>]"
       ;;
   esac
 }
@@ -1405,6 +1420,7 @@ ${C_DIM}Profiles:${C_RST}
   4lm profile list                   List profiles
   4lm profile set <name>             Atomic switch with rollback
   4lm profile current                Print active profile name
+  4lm profile show [<name>]          Print profile YAML (active if no name given)
 
 ${C_DIM}Network exposure:${C_RST}
   4lm expose local|lan [--confirm]   Change bind mode
