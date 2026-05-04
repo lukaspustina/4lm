@@ -1,13 +1,42 @@
 # Profile YAML Schema
 
-Profiles describe the model set served by `mlx-openai-server`. The active
-profile is selected via the `~/.4lm/config/mlx-active` symlink.
+Profiles describe the model set and backend for 4lm. The active profile is
+selected via the `~/.4lm/config/active-profile` symlink.
 
-The schema below documents the keys consumed by `mlx-openai-server` v1.7.1.
-Source of truth: [`app/config.py`](https://github.com/cubist38/mlx-openai-server/blob/main/app/config.py)
-in the upstream repo.
+## Top-level keys
 
-## Top-level
+| Key | Type | Required | Notes |
+|-----|------|----------|-------|
+| `backend` | `mlx` \| `ollama` | no, default `mlx` | Selects the inference daemon for this profile |
+| `models` | list | yes | One or more model entries (see below) |
+
+### `backend: mlx` (default)
+
+Uses `mlx-openai-server`. All model entry fields apply. The `server.host` and
+`server.port` from the YAML are ignored — they are set by `4lm-backend-start.sh`
+from `~/.4lm/config/network.yaml`.
+
+### `backend: ollama`
+
+Uses `ollama serve` with `OLLAMA_HOST=<bind>:<port>`. mlx-specific fields
+(`model_type`, `tool_call_parser`, `reasoning_parser`, `context_length`,
+`on_demand`) are not required and are ignored by the validator. Only
+`model_path:` (Ollama pull tag, e.g. `gemma4:27b`) and `served_model_name:`
+are required per model entry.
+
+Minimal Ollama profile skeleton:
+
+```yaml
+backend: ollama
+
+models:
+  - model_path: gemma4:27b          # Ollama pull tag
+    served_model_name: gemma4-27b   # OpenAI API model alias
+```
+
+See `config/profiles/ollama-gemma4.yaml` for a complete example.
+
+### mlx profile structure
 
 ```yaml
 server:
@@ -105,8 +134,10 @@ The validator (`bin/4lm:validate_profile`) checks:
 2. Top-level `models:` key is present.
 3. At least one entry with `model_path:`.
 4. Every entry has `served_model_name:`.
-5. Every entry has `context_length:` as a positive integer.
-6. Any `tool_call_parser` value is in the allowed enum above.
+5. `backend:` value is `mlx`, `ollama`, or absent (defaults to `mlx`). Unknown
+   values are rejected.
+6. **mlx profiles only**: every entry has `context_length:` as a positive
+   integer; any `tool_call_parser` value must be in the allowed enum above.
 
 A validation failure aborts the switch with a non-zero exit and leaves the
 active profile unchanged.
