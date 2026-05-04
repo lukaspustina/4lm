@@ -6,7 +6,7 @@ setup() {
   mkdir -p "${HOME}/.4lm/launchd" "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs"
   # Provide a default profile + symlink so commands that read it don't fail.
   cp "${REPO_ROOT}/config/profiles/default.yaml" "${HOME}/.4lm/config/profiles/default.yaml"
-  ln -sfn "${HOME}/.4lm/config/profiles/default.yaml" "${HOME}/.4lm/config/mlx-active"
+  ln -sfn "${HOME}/.4lm/config/profiles/default.yaml" "${HOME}/.4lm/config/active-profile"
   cp "${REPO_ROOT}/config/network.example.yaml"     "${HOME}/.4lm/config/network.yaml"
   # Substituted plists in the launchd dir.
   for p in "${REPO_ROOT}"/launchd/*.plist; do

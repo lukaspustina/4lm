@@ -102,8 +102,23 @@ for tmpl in "${SOURCE_DIR}"/config/*.jinja; do
   ok "Chat template → $(basename "${tmpl}")"
 done
 
+# ---- 4c. Migrate legacy symlink names (mlx-active → active-profile) --------
+OLD_ACTIVE="${CONFIG_DIR}/mlx-active"
+OLD_PREVIOUS="${CONFIG_DIR}/mlx-previous"
+NEW_ACTIVE="${CONFIG_DIR}/active-profile"
+NEW_PREVIOUS="${CONFIG_DIR}/previous-profile"
+if [[ -L "${OLD_ACTIVE}" && ! -L "${NEW_ACTIVE}" ]]; then
+  ln -sfn "$(readlink "${OLD_ACTIVE}")" "${NEW_ACTIVE}"
+  rm "${OLD_ACTIVE}"
+  ok "Migrated mlx-active → active-profile"
+fi
+if [[ -f "${OLD_PREVIOUS}" && ! -f "${NEW_PREVIOUS}" ]]; then
+  mv "${OLD_PREVIOUS}" "${NEW_PREVIOUS}"
+  ok "Migrated mlx-previous → previous-profile"
+fi
+
 # ---- 5. Active profile default --------------------------------------------
-ACTIVE="${CONFIG_DIR}/mlx-active"
+ACTIVE="${CONFIG_DIR}/active-profile"
 if [[ ! -L "${ACTIVE}" && ! -f "${ACTIVE}" ]]; then
   ln -sfn "${PROFILES_DIR}/default.yaml" "${ACTIVE}"
   ok "Active profile → default"

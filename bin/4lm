@@ -19,8 +19,8 @@ readonly LOG_DIR="${LLM_HOME}/logs"
 readonly CONFIG_DIR="${LLM_HOME}/config"
 readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
 readonly NETWORK_YAML="${CONFIG_DIR}/network.yaml"
-readonly ACTIVE_CONFIG="${CONFIG_DIR}/mlx-active"
-readonly PREVIOUS_PROFILE_FILE="${CONFIG_DIR}/mlx-previous"
+readonly ACTIVE_CONFIG="${CONFIG_DIR}/active-profile"
+readonly PREVIOUS_PROFILE_FILE="${CONFIG_DIR}/previous-profile"
 
 readonly BACKEND_LABEL="com.4lm.backend"
 readonly WEBUI_LABEL="com.4lm.webui"
@@ -1204,7 +1204,7 @@ cmd_recommend() {
 
   # Active profile model paths for cross-reference
   local active_yaml active_paths=""
-  active_yaml=$(readlink "${CONFIG_DIR}/mlx-active" 2>/dev/null || true)
+  active_yaml=$(readlink "${ACTIVE_CONFIG}" 2>/dev/null || true)
   if [[ -f "${active_yaml:-}" ]]; then
     active_paths=$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{printf "%s,", $NF}' "${active_yaml}")
   fi
