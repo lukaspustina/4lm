@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${SYSCTL_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/sysctl-calls}"
+echo "$*" >> "${LOG}"
+exit 0

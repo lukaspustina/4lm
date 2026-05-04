@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${MLX_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/mlx-calls}"
+echo "$*" >> "${LOG}"
+exit "${MLX_STUB_EXIT:-0}"
