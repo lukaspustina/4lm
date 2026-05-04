@@ -18,3 +18,6 @@ brew "opencode"
 
 # Hardware-fit scoring and model recommendations (used by `4lm recommend`).
 brew "llmfit"
+
+# Ollama — needed for profiles with backend: ollama (e.g. ollama-gemma4).
+brew "ollama"
