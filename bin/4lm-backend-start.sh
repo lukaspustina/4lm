@@ -40,8 +40,8 @@ esac
 # Duplicated inline from profile_backend() in bin/4lm — cannot source bin/4lm
 # from a launchd entry point (circular dependency, different env).
 BACKEND_TYPE="mlx"
-_be_val="$(grep '^backend:' "${ACTIVE_CONFIG}" 2>/dev/null \
-  | awk '{print $2}' | tr -d "\"'" || true)"
+_be_val="$(grep '^backend:' "${ACTIVE_CONFIG}" 2>/dev/null |
+  awk '{print $2}' | tr -d "\"'" || true)"
 case "${_be_val}" in
   ollama) BACKEND_TYPE="ollama" ;;
   mlx | "") BACKEND_TYPE="mlx" ;;
