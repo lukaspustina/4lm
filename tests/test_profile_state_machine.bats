@@ -95,6 +95,19 @@ YAML
   [[ "${target}" == *"ollama-test.yaml" ]]
 }
 
+@test "ollama profile set: writes previous-profile with prior profile name" {
+  cat > "${HOME}/.4lm/config/profiles/ollama-test.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set ollama-test
+  [ "$status" -eq 0 ]
+  [ -f "${HOME}/.4lm/config/previous-profile" ]
+  [ "$(cat "${HOME}/.4lm/config/previous-profile")" = "default" ]
+}
+
 @test "ollama profile with extra mlx fields (context_length) still validates" {
   cat > "${HOME}/.4lm/config/profiles/ollama-extra.yaml" <<'YAML'
 backend: ollama
@@ -193,7 +206,9 @@ YAML
   [[ "$output" == *"ollama"* ]]
 }
 
-@test "models list: ollama profile annotated with (ollama)" {
+@test "models list: ollama profile annotated with (ollama) and shows ~ not hf cache path" {
+  export HF_LOG="${BATS_TMPDIR}/hf-list-calls"
+  rm -f "${HF_LOG}"
   cat > "${HOME}/.4lm/config/profiles/ollama-ann.yaml" <<'YAML'
 backend: ollama
 models:
@@ -202,7 +217,12 @@ models:
 YAML
   run "${REPO_ROOT}/bin/4lm" models list
   [ "$status" -eq 0 ]
+  # Profile is annotated with backend type.
   [[ "$output" == *"(ollama)"* ]]
+  # Cache column shows ~ (hf_is_cached is not called for ollama entries).
+  [[ "$output" == *"~"* ]]
+  # The hf CLI stub is never invoked for models list.
+  [ ! -f "${HF_LOG}" ] || ! grep -q "gemma4:27b" "${HF_LOG}"
 }
 
 @test "make models: dispatches hf for mlx profiles and ollama pull for ollama profiles" {
