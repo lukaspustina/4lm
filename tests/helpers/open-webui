@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+LOG_ENV="${WEBUI_ENV_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/open-webui.env}"
+LOG_ARGS="${WEBUI_ARGS_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/open-webui.args}"
+env > "${LOG_ENV}"
+printf '%s\n' "$*" > "${LOG_ARGS}"
+exit 0
