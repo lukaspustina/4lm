@@ -377,12 +377,13 @@ cmd_logs() {
 # ---- Health ----------------------------------------------------------------
 cmd_health() {
   local current
-  current="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
+  current="$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
   if [[ "${current}" -lt "${REQUIRED_WIRED_LIMIT_MB}" ]]; then
-    echo "iogpu.wired_limit_mb=${current} < ${REQUIRED_WIRED_LIMIT_MB} — see docs/setup.md §Sudoers" >&2
-    exit 1
+    die "wired memory ${current} MB is below threshold"
   fi
-  ok "iogpu.wired_limit_mb=${current}"
+  local human_gb
+  human_gb=$(((current + 512) / 1024))
+  ok "GPU wired memory: ${human_gb} GB (${current} MB) — OK"
 
   # Also probe the backend HTTP API if it's supposed to be running.
   if is_loaded "${BACKEND_LABEL}"; then
@@ -1050,7 +1051,26 @@ cmd_doctor() {
     warn "ollama not in PATH (optional — only needed for backend: ollama profiles)"
   fi
 
+  _doctor_check_models_cached
+
   return "${fail}"
+}
+
+_doctor_check_models_cached() {
+  [[ -L "${ACTIVE_CONFIG}" ]] || return 0
+  local backend
+  backend="$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || echo "mlx")"
+  local found=0
+  while IFS='|' read -r name _path _od; do
+    if [[ "${backend}" == "ollama" ]]; then
+      ollama list 2>/dev/null | grep -qF "${name}" && found=1 && break
+    else
+      hf_is_cached "${name}" && found=1 && break
+    fi
+  done < <(profile_model_entries "${ACTIVE_CONFIG}")
+  if [[ "${found}" -eq 0 ]]; then
+    warn "no models cached — run: 4lm models download"
+  fi
 }
 
 # ---- Open ------------------------------------------------------------------
@@ -1091,8 +1111,15 @@ cmd_start() {
     backend | be) service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}" ;;
     webui | ui) service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}" ;;
     all)
+      local first_run=false
+      [[ ! -d "${LLM_HOME}/openwebui-data" ]] && first_run=true
       service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}"
       service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}"
+      info "WebUI: http://127.0.0.1:$(net_webui_port)"
+      if [[ "${first_run}" == "true" ]]; then
+        info "Open it in a private window, create an account, then visit Admin → Settings → Users to promote yourself to admin."
+      fi
+      info "Run \`4lm open\` to open in browser."
       ;;
     *) die "Unknown target: ${target}" ;;
   esac
