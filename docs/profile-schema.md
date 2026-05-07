@@ -38,7 +38,7 @@ models:
     served_model_name: gemma4-26b                         # informational only for mlx_lm
 ```
 
-See `config/profiles/mlx-lm-gemma4.yaml` for a complete example.
+See `config/profiles/exp-mlxlm-gemma4.yaml` for a complete example.
 
 ### `backend: ollama`
 
@@ -58,7 +58,7 @@ models:
     served_model_name: gemma4-27b   # OpenAI API model alias
 ```
 
-See `config/profiles/ollama-gemma4.yaml` for a complete example.
+See `config/profiles/default.yaml` for a complete example.
 
 ### mlx profile structure
 
@@ -99,6 +99,8 @@ ignored.
 | `batch_prefill_size` | int | no, default `8` | Prefill batch size |
 | `batch_prefill_step_size` | int | no, default `2048` | Prefill chunk size |
 | `message_converter` | string | no | Model-specific request transformer |
+| `default_max_tokens` | int | no | Pass-through to mlx-openai-server; caps generated tokens per request as a server-side default |
+| `chat_template_file` | string | no | Path to a Jinja template file; pass-through to mlx-openai-server, overrides the model's built-in chat template |
 
 ### Phase 1 verification (2026-04-26)
 
