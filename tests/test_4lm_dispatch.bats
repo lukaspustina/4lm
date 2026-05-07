@@ -117,3 +117,21 @@ FAKE
   # Status may be 0 (started) — we mainly assert bootstrap was called.
   grep -q "bootstrap" "${LAUNCHCTL_LOG}"
 }
+
+@test "4lm_helpers.py passes py_compile syntax check" {
+  run python3 -m py_compile "${REPO_ROOT}/bin/4lm_helpers.py"
+  [ "$status" -eq 0 ]
+}
+
+@test "make test skips pytest and exits 0 when venv absent" {
+  run bash -c '
+    HELPERS_PYTHON=/nonexistent/python
+    if [ -x "${HELPERS_PYTHON}" ]; then
+      "${HELPERS_PYTHON}" -m pytest
+    else
+      echo "skip: pytest — venv not installed (run make install)"
+    fi
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skip: pytest"* ]]
+}
