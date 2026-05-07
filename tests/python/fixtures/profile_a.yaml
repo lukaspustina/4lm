@@ -1,0 +1,8 @@
+backend: mlx
+
+models:
+  - model_path: mlx-community/Foo-4bit
+    served_model_name: foo
+
+  - model_path: mlx-community/Shared-8bit
+    served_model_name: shared
