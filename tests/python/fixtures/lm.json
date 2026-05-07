@@ -1,0 +1,8 @@
+{
+  "benchmarks": [
+    {"model": {"hfId": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"}, "tokSOut": 38.2, "hardware": {"chipVariant": "M4 Max 128GB"}},
+    {"model": {"hfId": "mlx-community/Llama-3.1-8B-Instruct-8bit"},      "tokSOut": 92.1, "hardware": {"chipVariant": "M3 Max 96GB"}},
+    {"model": {"hfId": "mlx-community/Llama-3.1-8B-Instruct-8bit"},      "tokSOut": 88.5, "hardware": {"chipVariant": "M3 Pro 36GB"}},
+    {"model": {"hfId": "mlx-community/Llama-3.3-70B-Instruct-4bit"},     "tokSOut": 17.3, "hardware": {"chipVariant": "M4 Max 128GB"}}
+  ]
+}
