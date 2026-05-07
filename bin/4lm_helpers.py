@@ -384,6 +384,132 @@ def cmd_diag(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_req_file(path: str) -> list[tuple[str, str]]:
+    """Parse a requirements file; return (name, version) for ==X and >=X pins."""
+    import re as _re
+
+    result = []
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return result
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Strip extras bracket: huggingface_hub[cli] → huggingface_hub
+        name = _re.split(r"[=<>!~\[]", line)[0].rstrip()
+        if "==" in line:
+            ver = line.split("==", 1)[1].split(",")[0].split(";")[0].strip()
+            result.append((name, ver))
+        elif ">=" in line:
+            ver = line.split(">=", 1)[1].split(",")[0].strip()
+            result.append((name, ver))
+        # else: unsupported pin format — skip silently
+    return result
+
+
+def cmd_outdated(args: argparse.Namespace) -> int:
+    import re as _re
+    import subprocess
+    import urllib.error
+    import urllib.request
+
+    repo_dir = Path(args.repo_dir)
+    porcelain = getattr(args, "porcelain", False)
+
+    python_pkgs = _parse_req_file(str(repo_dir / "requirements.txt"))
+    helpers_pkgs = _parse_req_file(str(repo_dir / "requirements-helpers.txt"))
+
+    py_outdated: list[dict] = []
+    helpers_outdated: list[dict] = []
+
+    for source_pkgs, dest in [(python_pkgs, py_outdated), (helpers_pkgs, helpers_outdated)]:
+        for pkg, ver in source_pkgs:
+            url = f"https://pypi.org/pypi/{pkg}/json"
+            try:
+                with urllib.request.urlopen(url, timeout=10) as resp:
+                    data = json.loads(resp.read())
+                latest = data["info"]["version"]
+            except urllib.error.URLError as e:
+                print(f"error: could not reach PyPI: {e}", file=sys.stderr)
+                return 1
+            if latest != ver:
+                dest.append({"pkg": pkg, "installed": ver, "latest": latest})
+
+    brew_outdated: list[dict] = []
+    brewfile_formulae: set[str] = set()
+    brewfile_path = repo_dir / "Brewfile"
+    if brewfile_path.exists():
+        for line in brewfile_path.read_text().splitlines():
+            m = _re.match(r'^brew\s+"([^"]+)"', line)
+            if m:
+                brewfile_formulae.add(m.group(1))
+
+    if brewfile_formulae:
+        r = subprocess.run(
+            ["brew", "outdated", "--json=v2"],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            print(f"error: brew outdated failed: {r.stderr}", file=sys.stderr)
+            return 1
+        brew_data = json.loads(r.stdout)
+        for formula in brew_data.get("formulae", []):
+            name = formula.get("name", "")
+            if name in brewfile_formulae:
+                brew_outdated.append({
+                    "pkg": name,
+                    "installed": (formula.get("installed_versions") or ["?"])[0],
+                    "latest": formula.get("current_version", "?"),
+                })
+
+    if porcelain:
+        print(json.dumps({"python": py_outdated, "helpers": helpers_outdated, "brew": brew_outdated}))
+        return 0
+
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    def _pkg_table(title: str, all_pkgs: list[tuple], outdated: list[dict]) -> None:
+        if not all_pkgs:
+            return
+        table = Table(title=title, show_edge=False, pad_edge=False)
+        table.add_column("Package")
+        table.add_column("Installed")
+        table.add_column("")
+        table.add_column("Latest")
+        outdated_map = {e["pkg"]: e for e in outdated}
+        for pkg, ver in all_pkgs:
+            if pkg in outdated_map:
+                e = outdated_map[pkg]
+                table.add_row(pkg, e["installed"], "→", e["latest"])
+            else:
+                table.add_row(pkg, ver, "", "")
+        console.print(table)
+
+    _pkg_table("Python", python_pkgs, py_outdated)
+    _pkg_table("Helpers", helpers_pkgs, helpers_outdated)
+
+    if brewfile_formulae:
+        table = Table(title="Homebrew", show_edge=False, pad_edge=False)
+        table.add_column("Formula")
+        table.add_column("Status")
+        brew_outdated_map = {e["pkg"]: e for e in brew_outdated}
+        for formula in sorted(brewfile_formulae):
+            if formula in brew_outdated_map:
+                e = brew_outdated_map[formula]
+                table.add_row(formula, f"→ {e['latest']}")
+            else:
+                table.add_row(formula, "✓")
+        console.print(table)
+
+    return 0
+
+
 def cmd_hello(args: argparse.Namespace) -> int:
     print("hello from 4lm_helpers")
     return 0
@@ -413,6 +539,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_diag.add_argument("log_file", help="path to backend.log")
     p_diag.add_argument("backend_port", help="backend HTTP port")
 
+    p_out = sub.add_parser("outdated", help="check for outdated Python and Homebrew packages")
+    p_out.add_argument("repo_dir", help="path to 4lm repo root")
+    p_out.add_argument("--porcelain", action="store_true", help="emit JSON instead of rich table")
+
     return parser
 
 
@@ -428,6 +558,8 @@ def main() -> int:
         return cmd_models_list(args)
     if args.command == "diag":
         return cmd_diag(args)
+    if args.command == "outdated":
+        return cmd_outdated(args)
 
     parser.print_help()
     return 1

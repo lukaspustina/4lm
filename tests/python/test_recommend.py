@@ -36,8 +36,9 @@ def test_normalize_already_clean(helpers):
 def test_recommend_five_rows_in_top():
     result = run_recommend(FIXTURES / "rec.json", FIXTURES / "lm.json", "", 5)
     assert result.returncode == 0
-    # Count lines that look like data rows (start with spaces then a rank number)
-    rows = [l for l in result.stdout.splitlines() if l.strip() and l.strip()[0].isdigit()]
+    # Count rank rows: leading spaces, then a digit, then a space (e.g. " 1  Model…")
+    import re
+    rows = [l for l in result.stdout.splitlines() if re.match(r"^\s+\d+ ", l)]
     assert len(rows) == 5
 
 
