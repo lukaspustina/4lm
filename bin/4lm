@@ -1151,41 +1151,67 @@ cmd_models_list() {
   echo "${C_DIM}─── 4lm Models ───${C_RST}"
   echo
 
-  local active=""
-  [[ -L "${ACTIVE_CONFIG}" ]] && active="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
-  local missing_count=0
-
+  # Collect all model entries: "model_path|backend|profile_name"
+  local all_entries="" be model_path _served _od pname
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
-    local pname backend_label
     pname="$(basename "${profile_yaml}" .yaml)"
-    local be
     be="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
-    backend_label="${C_DIM}(${be})${C_RST}"
-    if [[ "${pname}" == "${active}" ]]; then
-      printf "  ${C_GRN}* %s${C_RST} ${C_DIM}(active)${C_RST} %b\n" "${pname}" "${backend_label}"
-    else
-      printf "  ${C_DIM}  %s${C_RST} %b\n" "${pname}" "${backend_label}"
-    fi
-
-    while IFS='|' read -r served_name model_path slot_type; do
+    while IFS='|' read -r _served model_path _od; do
       [[ -z "${model_path}" ]] && continue
-      local od_label=""
-      [[ "${slot_type}" == "on_demand" ]] && od_label="  ${C_DIM}on-demand${C_RST}"
-      if [[ "${be}" == "ollama" ]]; then
-        printf "    ${C_DIM}~${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
-      elif hf_is_cached "${model_path}"; then
-        printf "    ${C_GRN}✓${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
-      else
-        printf "    ${C_YEL}✗${C_RST}  %-28s  %s%s\n" "${served_name}" "${model_path}" "${od_label}"
-        ((missing_count++)) || true
-      fi
+      all_entries="${all_entries}${model_path}|${be}|${pname}"$'\n'
     done < <(profile_model_entries "${profile_yaml}")
-    echo
   done
+
+  local seen_models="" missing_count=0
+  while IFS='|' read -r model_path be pname; do
+    [[ -z "${model_path}" ]] && continue
+    grep -qxF "${model_path}" <<<"${seen_models}" && continue
+    seen_models="${seen_models}${model_path}"$'\n'
+
+    local profs
+    profs="$(awk -F'|' -v m="${model_path}" \
+      'BEGIN{s=""} $1==m {p=$3; if ($2!="mlx") p=p" ("$2")"; s=(s=="")?p:s", "p} END{print s}' \
+      <<<"${all_entries}")"
+
+    if [[ "${be}" == "ollama" ]]; then
+      printf "  ${C_DIM}~${C_RST}  %-52s  %s\n" "${model_path}" "${profs}"
+    elif hf_is_cached "${model_path}"; then
+      printf "  ${C_GRN}✓${C_RST}  %-52s  %s\n" "${model_path}" "${profs}"
+    else
+      printf "  ${C_YEL}✗${C_RST}  %-52s  %s\n" "${model_path}" "${profs}"
+      ((missing_count++)) || true
+    fi
+  done <<<"${all_entries}"
+
+  # Show cached models not referenced in any profile.
+  local unreferenced=0
+  if command -v hf >/dev/null 2>&1; then
+    local hf_id hf_size
+    while IFS=$'\t' read -r hf_id hf_size _rest; do
+      [[ "${hf_id}" == "id" ]] && continue
+      [[ "${hf_id}" != model/* ]] && continue
+      local repo="${hf_id#model/}"
+      grep -qxF "${repo}" <<<"${seen_models}" && continue
+      printf "  ${C_DIM}✓  %-52s  (unreferenced)${C_RST}\n" "${repo}"
+      ((unreferenced++)) || true
+    done < <(hf cache list --format agent 2>/dev/null)
+  fi
+  if command -v ollama >/dev/null 2>&1; then
+    local ol_name
+    while IFS='|' read -r ol_name _rest; do
+      [[ -z "${ol_name}" ]] && continue
+      grep -qxF "${ol_name}" <<<"${seen_models}" && continue
+      printf "  ${C_DIM}~  %-52s  (unreferenced)${C_RST}\n" "${ol_name}"
+      ((unreferenced++)) || true
+    done < <(ollama list 2>/dev/null | awk 'NR>1 {print $1 "|" $3 " " $4}')
+  fi
+  echo
 
   if ((missing_count > 0)); then
     info "${missing_count} model(s) not cached — run: 4lm models download"
+  elif ((unreferenced > 0)); then
+    info "${unreferenced} unreferenced model(s) in cache — run: 4lm models cleanup"
   else
     ok "All models cached."
   fi
@@ -1270,6 +1296,99 @@ cmd_models_rm() {
   ok "Removed ${repo}"
 }
 
+cmd_models_cleanup() {
+  local confirm=false
+  while (($# > 0)); do
+    case "$1" in
+      --confirm) confirm=true ;;
+      *) die "Usage: 4lm models cleanup [--confirm]" ;;
+    esac
+    shift
+  done
+
+  [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
+
+  # Collect all model_paths referenced in any profile.
+  local hf_refs="" ollama_refs=""
+  local backend model_path _served _od
+  for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
+    [[ -f "${profile_yaml}" ]] || continue
+    backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
+    while IFS='|' read -r _served model_path _od; do
+      [[ -z "${model_path}" ]] && continue
+      if [[ "${backend}" == "ollama" ]]; then
+        ollama_refs="${ollama_refs}${model_path}"$'\n'
+      else
+        hf_refs="${hf_refs}${model_path}"$'\n'
+      fi
+    done < <(profile_model_entries "${profile_yaml}")
+  done
+
+  # stale_display: "model_path|size|backend" per stale model
+  local stale_display=() hf_stale_ids=() ollama_stale_names=()
+
+  # Find HF cached repos not referenced in any profile.
+  if command -v hf >/dev/null 2>&1; then
+    local hf_id hf_size
+    while IFS=$'\t' read -r hf_id hf_size _rest; do
+      [[ "${hf_id}" == "id" ]] && continue
+      [[ "${hf_id}" != model/* ]] && continue
+      local repo="${hf_id#model/}"
+      if ! grep -qxF "${repo}" <<<"${hf_refs}"; then
+        stale_display+=("${repo}|${hf_size}|hf")
+        hf_stale_ids+=("${hf_id}")
+      fi
+    done < <(hf cache list --format agent 2>/dev/null)
+  fi
+
+  # Find ollama models not referenced in any profile.
+  if command -v ollama >/dev/null 2>&1; then
+    local ol_name ol_size
+    while IFS='|' read -r ol_name ol_size; do
+      [[ -z "${ol_name}" ]] && continue
+      if ! grep -qxF "${ol_name}" <<<"${ollama_refs}"; then
+        stale_display+=("${ol_name}|${ol_size}|ollama")
+        ollama_stale_names+=("${ol_name}")
+      fi
+    done < <(ollama list 2>/dev/null | awk 'NR>1 {print $1 "|" $3 " " $4}')
+  fi
+
+  if [[ ${#stale_display[@]} -eq 0 ]]; then
+    ok "Nothing to remove — all cached models are referenced in a profile."
+    return 0
+  fi
+
+  echo "${C_DIM}─── Models not referenced in any profile ───${C_RST}"
+  echo
+  local m_path m_size m_be
+  for entry in "${stale_display[@]}"; do
+    IFS='|' read -r m_path m_size m_be <<<"${entry}"
+    printf "  %-55s  %8s  %s\n" "${m_path}" "${m_size}" "${m_be}"
+  done
+  echo
+
+  if [[ "${confirm}" == false ]]; then
+    echo "  Run with --confirm to remove the above."
+    return 0
+  fi
+
+  local hf_id
+  for hf_id in "${hf_stale_ids[@]+"${hf_stale_ids[@]}"}"; do
+    local repo="${hf_id#model/}"
+    info "Removing HF cache: ${repo}…"
+    hf cache rm "${hf_id}" --yes
+    ok "Removed ${repo}"
+  done
+  local ol_name
+  for ol_name in "${ollama_stale_names[@]+"${ollama_stale_names[@]}"}"; do
+    info "Removing ollama model: ${ol_name}…"
+    ollama rm "${ol_name}"
+    ok "Removed ${ol_name}"
+  done
+  echo
+  ok "Done."
+}
+
 cmd_models() {
   local subcmd="${1:-list}"
   shift || true
@@ -1277,8 +1396,9 @@ cmd_models() {
     list | ls) cmd_models_list ;;
     download | dl | pull) cmd_models_download "$@" ;;
     clean | prune) cmd_models_clean ;;
+    cleanup) cmd_models_cleanup "$@" ;;
     rm | remove) cmd_models_rm "$@" ;;
-    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | rm <repo>" ;;
+    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | cleanup [--confirm] | rm <repo>" ;;
   esac
 }
 
