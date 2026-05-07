@@ -90,24 +90,17 @@ for `search_web` and `fetch_url` to be offered to a model:
 **Prerequisite:** Web search provider must be configured first (Admin Panel →
 Settings → RAG → Web Search). DuckDuckGo requires no API key.
 
-**For qwen3.6-27b** (record exists, needs two additions):
+For each model in the active profile, create or update its OWUI record:
 
-1. OWUI → Workspace → Models → `qwen3.6-27b`
-2. **Advanced Parameters** → Function Calling → **Native**
-3. **Default Features** → enable **Web Search**
-4. Save
-
-**For qwen3-coder-30b** (no OWUI model record — must be created):
-
-1. OWUI → Workspace → Models → **New Model**
-2. Set base model to `qwen3-coder-30b`
+1. OWUI → **Workspace → Models** → find the model or click **New Model**
+2. If creating: set base model to the model's `served_model_name` from the profile YAML
 3. **Capabilities** → enable **Web Search**
 4. **Advanced Parameters** → Function Calling → **Native**
 5. **Default Features** → enable **Web Search**
 6. Save
 
-Apply to `gemma4-26b` once the upstream Stream(gpu,1) bug in mlx_lm is fixed
-(tracked at <https://github.com/cubist38/mlx-openai-server/issues>).
+Apply to: `qwen3-coder-next`, `gemma4-31b` (default/ollama profile). Apply to
+any MLX profile models that have `enable_auto_tool_choice: true` as well.
 
 ## Step 6 — OpenCode TUI
 
@@ -135,63 +128,56 @@ on subsequent runs.
 ## Profiles
 
 A "profile" is one YAML in `config/profiles/` (installed to
-`~/.4lm/config/profiles/`). It declares **which models load at backend
-start** and how much context each gets. The active profile is selected
-via the `~/.4lm/config/mlx-active` symlink; switch atomically with
+`~/.4lm/config/profiles/`). It declares the backend (`ollama`, `mlx`, or
+`mlx_lm`) and the models to load. The active profile is selected via the
+`~/.4lm/config/active-profile` symlink; switch atomically with
 `4lm profile set <name>`.
 
-The three shipped profiles trade memory for capability:
+### `default` (the daily driver — Ollama)
 
-### `default` (the daily driver)
+Two models via the Ollama backend:
 
-Four slots — two always-resident, two on-demand:
+| Model | Purpose | Size |
+|---|---|---|
+| Qwen3-Coder-Next (q4_K_M) | Code / tool calling | ~52 GB |
+| Gemma 4 31B Dense | Chat / reasoning / multimodal | ~20 GB |
 
-| Slot | Model | Purpose | Loaded |
-|---|---|---|---|
-| 1 | Qwen3-Coder-30B-A3B (4-bit, ~18 GB) | Build / code / tool calling | always |
-| 2 | Qwen3.6-27B (4-bit, ~17 GB) | Plan / knowledge / reasoning | always |
-| 3 | Gemma 4 26B-A4B (4-bit, ~10 GB) | Reasoning / multimodal / 128k context | on first request, unloads after 5 min idle |
-| 4 | GPT-OSS-120B (MXFP4, ~75 GB) | Heavy reasoning | on first request, unloads after 5 min idle |
+Both load on demand and stay resident as long as memory permits. On 128 GB
+unified memory both fit simultaneously with headroom for KV cache. Gemma 4
+runs via Ollama because its RotatingKVCache / sliding-window attention
+architecture is incompatible with the mlx backends (GPU stream thread-local
+bug, upstream unresolved as of 2026-05).
 
-Working set ≈ 35 GB resident with slots 3–4 unloaded; ~45 GB with slot 3
-loaded; up to ~110 GB when slot 4 fires. Both resident slots get
-`context_length: 65536` (64k tokens). Slot 3 gets `context_length: 131072`
-(128k). Slot 4 gets `context_length: 32768` (32k).
+### `mlx-coding`
 
-**Use when**: you want the full stack available — build and plan always
-resident, with Gemma 4 a request away for reasoning or image input, and
-GPT-OSS-120B for the heaviest tasks.
+Single model via mlx-openai-server: Qwen3-Coder-Next at 32k context.
 
-### `coding-only`
+**Use when**: you want the raw MLX path for the coder model (lower latency
+on this model, no Ollama overhead). Gemma 4 is not available.
 
-One slot: Qwen3-Coder-30B-A3B with `context_length: 131072` (128k tokens).
+### `mlx-knowledge`
 
-Working set ≈ 18 GB weights + a large KV cache (the long context is
-the whole point).
-
-**Use when**: a single sustained coding session that wants the full
-context window — ingesting a large repo for refactor, multi-file
-analysis, large-diff review. Slot 2's plan/knowledge model isn't
-loaded, so OpenCode's `plan` agent will get an HTTP 404 from
-`/v1/models` for `qwen3.6-27b`. Fine if you only use `build`.
-
-### `knowledge-only`
-
-One slot: Qwen3.6-27B with `context_length: 131072` (128k tokens).
-
-Working set ≈ 17 GB weights + a large KV cache.
+Single model via mlx-openai-server: Qwen3.6-27B at 128k context with
+thinking disabled (`qwen3-no-think.jinja` template).
 
 **Use when**: long-form synthesis over a large corpus — Obsidian vault
-analysis, research, document RAG over big inputs. Slot 1's coding
-model isn't loaded, so OpenCode's `build` agent will fail similarly
-on `qwen3-coder-30b`.
+analysis, document RAG over big inputs.
+
+### Experimental profiles
+
+| Profile | Purpose |
+|---|---|
+| `exp-mlx-full` | Tracks mlx-openai-server fix for Gemma 4 (both models on MLX when fixed) |
+| `exp-mlxlm-gemma4` | Tracks mlx_lm fix for Gemma 4 (single model, different runtime path) |
+
+These are broken until the upstream Stream(gpu,1) bug is resolved.
 
 ### When to switch
 
 ```sh
 4lm profile list                    # see installed profiles
 4lm profile current                 # see active
-4lm profile set coding-only         # atomic, validated, rolls back on failure
+4lm profile set mlx-coding          # atomic, validated, rolls back on failure
 ```
 
 Switching restarts the backend (~30-60 s cold load). Profile schema
