@@ -1,0 +1,64 @@
+#!/usr/bin/env bats
+# Phase 2: onboarding URL hints and cmd_health formatting.
+
+bats_require_minimum_version 1.5.0
+
+load helpers/setup
+
+setup() {
+  mkdir -p "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs" "${HOME}/.4lm/launchd"
+  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
+  ln -sfn "${HOME}/.4lm/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/active-profile"
+  cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
+mode: local
+backend_port: 8080
+webui_port: 3000
+YAML
+  # Install fake plists so service_start doesn't die "plist not found"
+  cp "${REPO_ROOT}/launchd/com.4lm.backend.plist" \
+     "${HOME}/.4lm/launchd/com.4lm.backend.plist"
+  cp "${REPO_ROOT}/launchd/com.4lm.webui.plist" \
+     "${HOME}/.4lm/launchd/com.4lm.webui.plist"
+  # Substitute __HOME__ placeholder
+  sed -i '' "s|__HOME__|${HOME}|g" \
+    "${HOME}/.4lm/launchd/com.4lm.backend.plist" \
+    "${HOME}/.4lm/launchd/com.4lm.webui.plist"
+  export LLM_HOME="${HOME}/.4lm"
+  export LAUNCHD_DIR="${HOME}/.4lm/launchd"
+}
+
+# ---- cmd_start first-run / subsequent-run hints ----------------------------
+
+@test "cmd_start: absent openwebui-data prints URL + account hint + 4lm open" {
+  # openwebui-data/ absent → first run
+  run "${REPO_ROOT}/bin/4lm" start
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ http://127\.0\.0\.1:[0-9]+ ]]
+  [[ "$output" == *"account"* ]]
+  [[ "$output" == *"4lm open"* ]]
+}
+
+@test "cmd_start: present openwebui-data prints URL + 4lm open but no account hint" {
+  mkdir -p "${HOME}/.4lm/openwebui-data"
+  run "${REPO_ROOT}/bin/4lm" start
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ http://127\.0\.0\.1:[0-9]+ ]]
+  [[ "$output" != *"account"* ]]
+  [[ "$output" == *"4lm open"* ]]
+}
+
+# ---- cmd_health formatting --------------------------------------------------
+
+@test "cmd_health: sysctl returns 0 → exit 1, stderr contains error:" {
+  # SYSCTL_WIRED_MB=0 makes the stub return 0 for iogpu.wired_limit_mb
+  SYSCTL_WIRED_MB=0 run "${REPO_ROOT}/bin/4lm" health
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"error:"* ]]
+}
+
+@test "cmd_health: sysctl returns 8192 above-threshold → exit 0, stdout contains GB and OK" {
+  SYSCTL_WIRED_MB=200000 run "${REPO_ROOT}/bin/4lm" health
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GB"* ]]
+  [[ "$output" == *"OK"* ]]
+}

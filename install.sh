@@ -315,6 +315,7 @@ echo "${C_GRN}══════════════════════
 echo
 echo "Next steps:"
 echo "  ${C_BLU}1.${C_RST} Pre-download models:"
+echo "       ${C_DIM}(default profile: ~140 GB download, 15-30 min on residential fiber — run from a reliable connection)${C_RST}"
 echo "       ${C_DIM}4lm models download${C_RST}"
 echo
 echo "  ${C_BLU}2.${C_RST} Start the stack:"

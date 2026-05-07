@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
 LOG="${SYSCTL_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/sysctl-calls}"
 echo "$*" >> "${LOG}"
+
+# Support SYSCTL_WIRED_MB override for cmd_health tests.
+if [[ "$*" == *"iogpu.wired_limit_mb"* && -n "${SYSCTL_WIRED_MB:-}" ]]; then
+  echo "${SYSCTL_WIRED_MB}"
+fi
 exit 0
