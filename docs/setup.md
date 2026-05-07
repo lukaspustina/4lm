@@ -10,7 +10,7 @@ local LLM stack on Apple Silicon.
   shfmt, bats-core from `Brewfile` and runs `pipx ensurepath`)
 - ~140 GB free disk for model weights
 
-> mlx-openai-server 1.7.1 requires Python `>=3.11,<3.13`, so install.sh
+> mlx-openai-server 1.8.1 requires Python `>=3.11,<3.13`, so install.sh
 > creates pipx venvs with `python3.12` even if your system default is newer.
 
 ## Step 1 — Install
@@ -277,12 +277,12 @@ Cold reload is 30-60 s. Subsequent prompts rebuild caches on demand.
 
 If it recurs within minutes (not hours), tune one of:
 
-1. **Drop context_length** in the active profile. The default profile
-   ships with `context_length: 65536` (64k) per resident slot — halve
-   that to 32k by editing `~/.4lm/config/profiles/default.yaml`, then
-   `4lm profile set default` to apply with rollback.
-2. **Switch to a single-model profile** to free the other slot's
-   ~30 GB: `4lm profile set coding-only` or `knowledge-only`.
+1. **Switch to a single-model MLX profile** to reduce memory pressure:
+   `4lm profile set mlx-coding` or `4lm profile set mlx-knowledge`.
+2. **Drop context_length** in an MLX profile. Edit the relevant entry in
+   `~/.4lm/config/profiles/<name>.yaml`, then `4lm profile set <name>`
+   to apply with rollback. (The default Ollama profile has no
+   `context_length` key — Ollama manages context internally.)
 3. **Raise `iogpu.wired_limit_mb`** if you're willing to give MLX more
    of the 128 GB. Going past ~104 GB (107520) starts crowding macOS
    itself. The sudoers rule pins exactly `98304`, so if you change the

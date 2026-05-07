@@ -1,23 +1,25 @@
 # 4lm — Local LLM control plane for Apple Silicon
 
-One MacBook. One command. Three model slots, two daemons, zero Docker.
+One MacBook. One command. Two models, two daemons, zero Docker.
 
-`4lm` runs `mlx-openai-server` (backend), `open-webui` (frontend), and
+`4lm` runs Ollama (default backend), `open-webui` (frontend), and
 `opencode` (TUI client) under launchd, controlled by a single CLI.
 Designed for a single engineer who wants their LLM stack to act like
 `brew services` — except with profile switching, atomic rollback, and a
 network-exposure command that refuses to bind to `0.0.0.0` without
-`--confirm`.
+`--confirm`. MLX profiles (`mlx-coding`, `mlx-knowledge`) are available
+for Apple Silicon acceleration when Ollama's overhead matters.
 
 ## What this is
 
 - **One CLI for the whole stack.** `4lm start | stop | status | logs |
   profile set <name> | expose lan | opencode`. No tab-juggling, no
   systemd cosplay.
-- **Three model slots, one YAML.** Build / Plan-Knowledge /
-  Heavy-Reasoning, switched atomically: validates the new profile,
-  swaps the active symlink, polls `/v1/models` for 30 s, rolls back
-  the symlink and restarts on failure.
+- **Profile-based model management.** The default profile runs two
+  Ollama models (coder + chat); MLX profiles offer additional slots.
+  Profiles switch atomically: validates the new profile, swaps the
+  active symlink, polls `/v1/models` for 30 s, rolls back the symlink
+  and restarts on failure.
 - **launchd, but quiet.** Plists live in `~/.4lm/launchd/` — not
   `~/Library/LaunchAgents/`. After every reboot the stack is stopped.
   You start it when you want it.
@@ -84,14 +86,14 @@ know or care about each other; the OpenAI-compatible API is the seam.
 
 | Layer | Project | Pinned at | Lifecycle |
 |---|---|---|---|
-| Inference | `mlx-openai-server` | 1.8.0 (pipx) | python@3.12 venv |
+| Inference | `mlx-openai-server` | 1.8.1 (pipx) | python@3.12 venv |
 | Web UI | `open-webui` | 0.9.2 (pipx) | python@3.12 venv |
-| HF cache CLI | `huggingface_hub[cli]` | 1.12.0 (pipx) | python@3.12 venv |
+| HF cache CLI | `huggingface_hub[cli]` | 1.13.0 (pipx) | python@3.12 venv |
 | TUI client | `opencode` | homebrew/core | brew formula |
 | Daemons | launchd user agents | — | `launchctl bootstrap` via `4lm start` |
 | Config | profiles + `network.yaml` | — | atomic profile switch with rollback |
 
-`mlx-openai-server` 1.7.x→1.8.x added KV-cache quantization, continuous
+`mlx-openai-server` 1.8.x added KV-cache quantization, continuous
 batching, and disk-backed prompt KV cache. The `<3.13` Python pin still
 applies, hence `python@3.12` in the Brewfile.
 
@@ -100,7 +102,7 @@ applies, hence `python@3.12` in the Brewfile.
 ```sh
 # Profile switching (atomic, validated, rollback on failure)
 4lm profile list
-4lm profile set coding-only
+4lm profile set mlx-coding
 
 # Check for newer versions across PyPI / Homebrew / HuggingFace
 4lm outdated
@@ -148,11 +150,11 @@ make uninstall                  # full: bootout, ~/.4lm/, sudoers/newsyslog, pip
 ├── bin/                         control + wrappers (called by launchd)
 ├── launchd/                     com.4lm.{backend,webui}.plist
 ├── config/
-│   ├── mlx-active               symlink → profiles/<active>.yaml
-│   ├── mlx-previous             plain text, used for rollback
+│   ├── active-profile           symlink → profiles/<active>.yaml
+│   ├── previous-profile         plain text, used for rollback
 │   ├── network.yaml             bind mode + ports
 │   ├── webui_secret_key         mode 0600, generated on first lan-mode start
-│   └── profiles/                default.yaml, coding-only.yaml, knowledge-only.yaml
+│   └── profiles/                default.yaml, mlx-coding.yaml, mlx-knowledge.yaml, exp-*.yaml
 ├── logs/                        backend.log, webui.log (merged stdout+stderr)
 └── openwebui-data/              Open WebUI database, settings, RAG index
 
