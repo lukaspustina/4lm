@@ -50,12 +50,13 @@ setup() {
   [[ "$output" == *"Unknown channel"* ]] || [[ "${stderr:-}" == *"Unknown channel"* ]]
 }
 
-@test "migrated command with missing venv prints FATAL and exits 1" {
+@test "migrated command with missing venv prints error: and make install hint, exits 1" {
   run env LLM_HELPERS_PYTHON=/nonexistent/python \
       LLM_4LM_REPO="${REPO_ROOT}" \
       "${REPO_ROOT}/bin/4lm" outdated
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FATAL: venv missing"* ]]
+  echo "$output" | grep -q "error:"
+  echo "$output" | grep -q "make install"
 }
 
 @test "upgrade warns when helpers have an outdated dep" {
@@ -95,10 +96,11 @@ FAKE
   [[ "$output" == *"(active)"* ]]
 }
 
-@test "expose lan without --confirm exits 1 with risk message" {
+@test "expose lan without --confirm exits 1 with error: prefix and --confirm hint" {
   run "${REPO_ROOT}/bin/4lm" expose lan
   [ "$status" -eq 1 ]
-  [[ "$output" == *"requires --confirm"* ]] || [[ "${stderr:-}" == *"requires --confirm"* ]]
+  echo "$output" | grep -q "error:"
+  echo "$output" | grep -q -- "--confirm"
 }
 
 @test "expose with invalid mode exits 1" {
