@@ -57,6 +57,15 @@ setup() {
   grep -q "^mode: lan" "${HOME}/.4lm/config/network.yaml"
 }
 
+@test "expose lan --confirm extraneous exits 1 with error: and LAN mode not applied" {
+  run "${REPO_ROOT}/bin/4lm" expose lan --confirm extraneous
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q "error:"
+  echo "$output" | grep -qi "unknown"
+  # LAN mode was NOT written because parser aborted on the unknown arg
+  ! grep -q "^mode: lan" "${HOME}/.4lm/config/network.yaml"
+}
+
 # ---- profile list empty state ------------------------------------------------
 
 @test "profile list with no yaml files prints No profiles and make install" {

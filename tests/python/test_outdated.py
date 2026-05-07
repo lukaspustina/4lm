@@ -147,7 +147,8 @@ def test_pypi_error_exits_one(helpers, tmp_path):
         finally:
             sys.stderr = old_err
     assert rc == 1
-    assert "error: could not reach PyPI" in err
+    assert "could not reach PyPI" in err
+    assert "URLError" in err  # verifies exception class name is wrapped
 
 
 @requires_venv
