@@ -288,6 +288,10 @@ def cmd_models_list(args: argparse.Namespace) -> int:
     for repo, src in unreferenced:
         table.add_row(f"[dim]{repo}[/]", f"[dim]{src}[/]", "[dim](unreferenced)[/]", "[dim]~[/]")
 
+    if table.row_count == 0:
+        console.print("No cached models found.")
+        return 0
+
     console.print(table)
     return 0
 

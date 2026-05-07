@@ -193,10 +193,13 @@ Default bind is `127.0.0.1`. To expose to your LAN:
 4lm expose lan --confirm
 ```
 
-Without `--confirm` the command refuses and prints the risk summary. With
-`--confirm` it writes `mode: lan` to `~/.4lm/config/network.yaml`, generates
-`~/.4lm/config/webui_secret_key` (mode 0600) on first webui start, sets
-`WEBUI_REGISTRATION_ENABLED=false`, and restarts running services.
+Without `--confirm` the command refuses. With `--confirm` it writes
+`mode: lan` to `~/.4lm/config/network.yaml` and restarts running services.
+
+Security hardening applied in all modes (not LAN-only):
+- `WEBUI_REGISTRATION_ENABLED=false` — no new accounts can register after setup
+- `DEFAULT_USER_ROLE=pending` — new accounts have no privileges until promoted
+- `WEBUI_SECRET_KEY` persisted to `~/.4lm/config/webui_secret_key` (mode 0600)
 
 Better than `lan`: bind to `127.0.0.1` and use Tailscale or another VPN that
 provides authentication.
