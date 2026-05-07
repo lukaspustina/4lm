@@ -7,7 +7,7 @@ selected via the `~/.4lm/config/active-profile` symlink.
 
 | Key | Type | Required | Notes |
 |-----|------|----------|-------|
-| `backend` | `mlx` \| `ollama` | no, default `mlx` | Selects the inference daemon for this profile |
+| `backend` | `mlx` \| `mlx_lm` \| `ollama` | no, default `mlx` | Selects the inference daemon for this profile |
 | `models` | list | yes | One or more model entries (see below) |
 
 ### `backend: mlx` (default)
@@ -15,6 +15,30 @@ selected via the `~/.4lm/config/active-profile` symlink.
 Uses `mlx-openai-server`. All model entry fields apply. The `server.host` and
 `server.port` from the YAML are ignored — they are set by `4lm-backend-start.sh`
 from `~/.4lm/config/network.yaml`.
+
+### `backend: mlx_lm`
+
+Uses `python3 -m mlx_lm server` (the direct MLX inference library). `python3`
+is resolved from the mlx-openai-server pipx venv — mlx_lm is co-installed there.
+
+**Constraints**:
+- Exactly one model entry (mlx_lm.server is single-model).
+- `context_length` is not required (set by the model's native config).
+- `tool_call_parser` is not supported (auto-detected from tokenizer).
+- Clients must use `model_path` as the model id (not `served_model_name`).
+- No server-level `repetition_penalty`; set `frequency_penalty` per-request if needed.
+
+Minimal mlx_lm profile skeleton:
+
+```yaml
+backend: mlx_lm
+
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit   # HF repo (also the /v1/models id)
+    served_model_name: gemma4-26b                         # informational only for mlx_lm
+```
+
+See `config/profiles/mlx-lm-gemma4.yaml` for a complete example.
 
 ### `backend: ollama`
 
@@ -134,9 +158,10 @@ The validator (`bin/4lm:validate_profile`) checks:
 2. Top-level `models:` key is present.
 3. At least one entry with `model_path:`.
 4. Every entry has `served_model_name:`.
-5. `backend:` value is `mlx`, `ollama`, or absent (defaults to `mlx`). Unknown
-   values are rejected.
-6. **mlx profiles only**: every entry has `context_length:` as a positive
+5. `backend:` value is `mlx`, `mlx_lm`, `ollama`, or absent (defaults to `mlx`).
+   Unknown values are rejected.
+6. **mlx_lm profiles only**: exactly one model entry.
+7. **mlx profiles only**: every entry has `context_length:` as a positive
    integer; any `tool_call_parser` value must be in the allowed enum above.
 
 A validation failure aborts the switch with a non-zero exit and leaves the

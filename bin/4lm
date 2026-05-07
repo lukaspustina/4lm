@@ -198,6 +198,7 @@ profile_backend() {
   val="$(grep '^backend:' "${yaml}" 2>/dev/null | awk '{print $2}' | tr -d "\"'")"
   case "${val}" in
     ollama) echo "ollama" ;;
+    mlx_lm) echo "mlx_lm" ;;
     mlx | "") echo "mlx" ;;
     *)
       echo "unknown backend '${val}' in ${yaml}" >&2
@@ -792,7 +793,15 @@ validate_profile() {
     return 1
   fi
 
-  # mlx-only checks.
+  # mlx_lm: single model only.
+  if [[ "${backend}" == "mlx_lm" ]]; then
+    if [[ "${n_paths}" -ne 1 ]]; then
+      echo "backend: mlx_lm supports exactly one model entry (found ${n_paths})" >&2
+      return 1
+    fi
+  fi
+
+  # mlx-only checks (context_length, tool_call_parser).
   if [[ "${backend}" == "mlx" ]]; then
     # context_length required per entry.
     local n_ctx
@@ -1033,6 +1042,12 @@ cmd_doctor() {
   # CLIs
   if command -v mlx-openai-server >/dev/null; then
     ok "mlx-openai-server: $(command -v mlx-openai-server)"
+    _mlx_lm_py="$(dirname "$(command -v mlx-openai-server)")/python3"
+    if [[ -x "${_mlx_lm_py}" ]]; then
+      ok "mlx_lm python3: ${_mlx_lm_py}"
+    else
+      warn "mlx_lm python3 not found at ${_mlx_lm_py} (mlx_lm backend unavailable)"
+    fi
   else
     warn "mlx-openai-server not in PATH (run: make install)"
     fail=1

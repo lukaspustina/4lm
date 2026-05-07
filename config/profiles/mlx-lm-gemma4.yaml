@@ -1,0 +1,19 @@
+# mlx_lm backend profile: Gemma 4 26B-A4B
+#
+# backend: mlx_lm uses python -m mlx_lm server directly, bypassing the
+# mlx-openai-server wrapper layer (which has unresolved Gemma 4 bugs).
+# python3 is resolved from the mlx-openai-server pipx venv — mlx_lm is
+# co-installed there and does not require a separate installation.
+#
+# Single model only (mlx_lm.server limitation).
+# Clients must use model_path as the model id (not served_model_name):
+#   model: mlx-community/gemma-4-26b-a4b-it-4bit
+# context_length is set by the model's native config (not required here).
+# No server-level repetition_penalty; set per-request via frequency_penalty
+# in your client if looping is observed.
+
+backend: mlx_lm
+
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
