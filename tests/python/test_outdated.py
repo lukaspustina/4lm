@@ -147,7 +147,7 @@ def test_pypi_error_exits_one(helpers, tmp_path):
         finally:
             sys.stderr = old_err
     assert rc == 1
-    assert err.startswith("error: could not reach PyPI:")
+    assert "error: could not reach PyPI" in err
 
 
 @requires_venv

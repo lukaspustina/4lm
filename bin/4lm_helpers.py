@@ -318,9 +318,8 @@ def cmd_diag(args: argparse.Namespace) -> int:
         console.print(f"[bold]Backend[/]")
         console.print(f"  {url} — [green]OK[/] ({ms}ms, {model_count} models loaded)")
     except (urllib.error.URLError, OSError) as e:
-        reason = getattr(e, "reason", str(e))
         console.print(f"[bold]Backend[/]")
-        console.print(f"  {url} — [yellow]unreachable[/]: {reason}")
+        console.print(f"  {url} — [yellow]unreachable[/]: could not reach backend ({type(e).__name__})")
 
     # ── Log analysis ────────────────────────────────────────────────────────
     log_path = Path(args.log_file)
@@ -443,7 +442,7 @@ def cmd_outdated(args: argparse.Namespace) -> int:
                     data = json.loads(resp.read())
                 latest = data["info"]["version"]
             except urllib.error.URLError as e:
-                print(f"error: could not reach PyPI: {e}", file=sys.stderr)
+                print(f"error: could not reach PyPI ({type(e).__name__})", file=sys.stderr)
                 return 1
             if latest != ver:
                 dest.append({"pkg": pkg, "installed": ver, "latest": latest})

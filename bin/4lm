@@ -71,8 +71,7 @@ info() { echo "${C_BLU}→${C_RST} $*"; }
 
 require_helpers_python() {
   if [[ ! -x "${HELPERS_PYTHON}" ]]; then
-    echo "FATAL: venv missing — run ./install.sh" >&2
-    exit 1
+    die "helpers venv missing — run: make install"
   fi
 }
 
@@ -228,7 +227,7 @@ profile_backend() {
     mlx_lm) echo "mlx_lm" ;;
     mlx | "") echo "mlx" ;;
     *)
-      echo "unknown backend '${val}' in ${yaml}" >&2
+      warn "unknown backend '${val}' in ${yaml}"
       return 1
       ;;
   esac
@@ -694,7 +693,7 @@ cmd_upgrade() {
 validate_profile() {
   local yaml_path="$1"
   [[ -r "${yaml_path}" ]] || {
-    echo "profile not readable: ${yaml_path}" >&2
+    warn "profile not readable: ${yaml_path}"
     return 1
   }
 
@@ -704,11 +703,11 @@ validate_profile() {
 
   # Both backends: models: key and at least one model_path: entry required.
   if ! grep -q '^models:' "${yaml_path}"; then
-    echo "missing top-level 'models:' key" >&2
+    warn "missing top-level 'models:' key"
     return 1
   fi
   if ! grep -qE '^[[:space:]]*-[[:space:]]*model_path:' "${yaml_path}"; then
-    echo "no model entries (expected at least one '- model_path:')" >&2
+    warn "no model entries (expected at least one '- model_path:')"
     return 1
   fi
 
@@ -717,14 +716,14 @@ validate_profile() {
   n_paths="$(grep -cE '^[[:space:]]*-[[:space:]]*model_path:[[:space:]]*\S' "${yaml_path}" || true)"
   n_names="$(grep -cE '^[[:space:]]*served_model_name:[[:space:]]*\S' "${yaml_path}" || true)"
   if [[ "${n_paths}" -ne "${n_names}" ]]; then
-    echo "every model entry must define served_model_name (paths=${n_paths}, names=${n_names})" >&2
+    warn "every model entry must define served_model_name (paths=${n_paths}, names=${n_names})"
     return 1
   fi
 
   # mlx_lm: single model only.
   if [[ "${backend}" == "mlx_lm" ]]; then
     if [[ "${n_paths}" -ne 1 ]]; then
-      echo "backend: mlx_lm supports exactly one model entry (found ${n_paths})" >&2
+      warn "backend: mlx_lm supports exactly one model entry (found ${n_paths})"
       return 1
     fi
   fi
@@ -735,7 +734,7 @@ validate_profile() {
     local n_ctx
     n_ctx="$(grep -cE '^[[:space:]]*context_length:[[:space:]]*[0-9]+' "${yaml_path}" || true)"
     if [[ "${n_ctx}" -ne "${n_paths}" ]]; then
-      echo "every model entry must define context_length as a positive integer" >&2
+      warn "every model entry must define context_length as a positive integer"
       return 1
     fi
 
@@ -748,7 +747,7 @@ validate_profile() {
       val="$(awk -F': ' '{print $2}' <<<"${line}" | tr -d '"' | tr -d "'" | tr -d ' ')"
       [[ -z "${val}" ]] && continue
       if ! grep -qw "${val}" <<<"${allowed_parsers}"; then
-        echo "invalid tool_call_parser '${val}'; allowed: ${allowed_parsers}" >&2
+        warn "invalid tool_call_parser '${val}'; allowed: ${allowed_parsers}"
         return 1
       fi
     done < <(grep -E '^[[:space:]]*tool_call_parser:[[:space:]]*' "${yaml_path}" || true)
@@ -819,8 +818,7 @@ cmd_profile_set() {
 
   # (a continued) Validate YAML schema.
   if ! validate_profile "${target}"; then
-    echo "Profile validation failed; active profile unchanged" >&2
-    exit 1
+    die "profile validation failed; active profile unchanged"
   fi
 
   # Detect current active profile name for same-name switch guard.
@@ -931,8 +929,7 @@ cmd_expose() {
   esac
 
   if [[ "${mode}" == "lan" && "${confirm}" != "--confirm" ]]; then
-    echo "LAN exposure requires --confirm. Risks: no auth on backend, WebUI first-user race. Prefer a host firewall rule or external VPN." >&2
-    exit 1
+    die "pass --confirm to expose on LAN"
   fi
 
   # Write network.yaml in place.
