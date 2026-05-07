@@ -31,7 +31,6 @@ readonly REQUIRED_WIRED_LIMIT_MB=98304
 
 # Python helpers — venv interpreter (overridable for bats tests).
 readonly HELPERS_PYTHON="${LLM_HELPERS_PYTHON:-${LLM_HOME}/venv/bin/python}"
-# shellcheck disable=SC2034  # used in Phase 2+ when Python-backed cmds are added
 readonly HELPERS_PY="${LLM_HOME}/bin/4lm_helpers.py"
 
 # Profile-switch /v1/models poll budget in seconds. Tests override via env.
@@ -82,15 +81,21 @@ net_mode() {
   fi
 }
 net_backend_port() {
+  local p
   if [[ -f "${NETWORK_YAML}" ]]; then
-    grep '^backend_port:' "${NETWORK_YAML}" | awk '{print $2}'
+    p="$(grep '^backend_port:' "${NETWORK_YAML}" | awk '{print $2}')"
+    [[ "${p}" =~ ^[0-9]+$ ]] || p="8000"
+    echo "${p}"
   else
     echo "8000"
   fi
 }
 net_webui_port() {
+  local p
   if [[ -f "${NETWORK_YAML}" ]]; then
-    grep '^webui_port:' "${NETWORK_YAML}" | awk '{print $2}'
+    p="$(grep '^webui_port:' "${NETWORK_YAML}" | awk '{print $2}')"
+    [[ "${p}" =~ ^[0-9]+$ ]] || p="3000"
+    echo "${p}"
   else
     echo "3000"
   fi
@@ -153,8 +158,8 @@ hf_is_cached() {
   [[ "${total_bytes}" -ge 1073741824 ]]
 }
 
-# Emit "served_name|model_path|permanent|on_demand" lines for every model
-# entry in a profile YAML, in order.
+# Emit "name|path|<od_value>" lines for every model entry in a profile YAML,
+# in order. <od_value> is "permanent" or "on_demand".
 profile_model_entries() {
   local yaml="$1"
   awk '
@@ -204,6 +209,9 @@ _ollama_ensure_serve() {
 
 # Return "mlx" (default) or "ollama" for a profile YAML.
 # Exits 1 with stderr on unrecognised backend value.
+# NOTE: this backend-detection logic is duplicated verbatim in
+# bin/4lm-backend-start.sh. Any change to allowed backend values
+# must be mirrored there.
 profile_backend() {
   local yaml="$1"
   local val
@@ -225,7 +233,8 @@ service_start() {
   [[ -f "${plist}" ]] || die "plist not found: ${plist} — run install.sh first"
   if is_loaded "${label}"; then
     info "${label} already loaded, kickstarting…"
-    launchctl kickstart -k "gui/${UID_NUM}/${label}" >/dev/null 2>&1 || true
+    launchctl kickstart -k "gui/${UID_NUM}/${label}" >/dev/null 2>&1 ||
+      warn "${label}: kickstart returned non-zero — check: 4lm logs $(basename "${label##*.}")"
   else
     launchctl bootstrap "gui/${UID_NUM}" "${plist}"
   fi
@@ -254,7 +263,8 @@ service_stop() {
     info "${label} not loaded"
     return 0
   fi
-  launchctl bootout "gui/${UID_NUM}/${label}" >/dev/null 2>&1 || true
+  launchctl bootout "gui/${UID_NUM}/${label}" >/dev/null 2>&1 ||
+    warn "${label}: bootout returned non-zero — service may still be running"
   ok "${label} stopped"
 }
 
@@ -366,6 +376,17 @@ cmd_health() {
     exit 1
   fi
   ok "iogpu.wired_limit_mb=${current}"
+
+  # Also probe the backend HTTP API if it's supposed to be running.
+  if is_loaded "${BACKEND_LABEL}"; then
+    local url
+    url="$(backend_url)/v1/models"
+    if curl --max-time 2 --silent --fail "${url}" >/dev/null 2>&1; then
+      ok "backend: HTTP OK"
+    else
+      warn "backend: loaded but not responding at ${url}"
+    fi
+  fi
 }
 
 # ---- Diagnostics -----------------------------------------------------------
@@ -391,9 +412,9 @@ cmd_diag() {
 }
 
 # ---- Outdated / Upgrade ---------------------------------------------------
-# Check three channels for newer versions: Python deps (PyPI), Homebrew
-# formulas, and HuggingFace model repos. `outdated` is read-only; `upgrade`
-# reuses the same enumeration then applies brew + hf changes.
+# Check HuggingFace model repos for newer versions. Python/Homebrew checking
+# is delegated to the Python helper. `outdated` is read-only; `upgrade`
+# reuses the same enumeration then applies hf changes.
 #
 # Pending updates collected by run_outdated_check, consumed by cmd_upgrade.
 #   OUTDATED_PY:   "pkg|cur|new"  (sed-bump requirements.txt + pipx reinstall)
@@ -403,61 +424,14 @@ declare -a OUTDATED_PY=()
 declare -a OUTDATED_BREW=()
 declare -a OUTDATED_HF=()
 
-# Print the per-channel report and populate the OUTDATED_* arrays. Pass a
-# scope of "all" (default) or one of "python" / "brew" / "models" to limit
-# the sections that are queried + printed.
+# Print the models report and populate OUTDATED_HF. Only handles the "models"
+# scope — Python and Homebrew channels are handled by the Python helper.
 run_outdated_check() {
-  local repo="$1" scope="${2:-all}"
-  OUTDATED_PY=()
-  OUTDATED_BREW=()
+  local repo="$1" scope="${2:-models}"
   OUTDATED_HF=()
 
-  # --- Python (PyPI) ---
-  if [[ "${scope}" == "all" || "${scope}" == "python" ]]; then
-    echo
-    echo "${C_DIM}Python (requirements.txt)${C_RST}"
-    local line pkg ver pkg_query latest
-    while IFS= read -r line; do
-      [[ -z "${line}" || "${line}" =~ ^# ]] && continue
-      pkg="${line%%==*}"
-      ver="${line#*==}"
-      pkg_query="${pkg%%[*}"
-      latest="$(pypi_latest_version "${pkg_query}")"
-      if [[ -z "${latest}" ]]; then
-        printf "  %s %-30s %s\n" "${C_YEL}?${C_RST}" "${pkg}" "${C_DIM}query failed${C_RST}"
-      elif [[ "${ver}" == "${latest}" ]]; then
-        printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${pkg}" "${C_DIM}${ver}${C_RST}"
-      else
-        printf "  %s %-30s %s → %s\n" "${C_YEL}→${C_RST}" "${pkg}" "${ver}" "${latest}"
-        OUTDATED_PY+=("${pkg}|${ver}|${latest}")
-      fi
-    done <"${repo}/requirements.txt"
-  fi
-
-  # --- Homebrew ---
-  if [[ "${scope}" == "all" || "${scope}" == "brew" ]]; then
-    echo
-    echo "${C_DIM}Homebrew (Brewfile)${C_RST}"
-    if ! command -v brew >/dev/null 2>&1; then
-      warn "brew not on PATH — skipping"
-    else
-      local formula out parsed
-      while IFS= read -r formula; do
-        [[ -z "${formula}" ]] && continue
-        out="$(brew outdated --formula --verbose "${formula}" 2>/dev/null || true)"
-        if [[ -z "${out}" ]]; then
-          printf "  %s %-30s %s\n" "${C_GRN}✓${C_RST}" "${formula}" "${C_DIM}up to date${C_RST}"
-        else
-          parsed="$(sed -nE 's/^[^ ]+ \(([^)]+)\) < (.+)$/\1 → \2/p' <<<"${out}")"
-          printf "  %s %-30s %s\n" "${C_YEL}→${C_RST}" "${formula}" "${parsed:-update available}"
-          OUTDATED_BREW+=("${formula}")
-        fi
-      done < <(awk '/^brew "/{gsub(/"/,"",$2); print $2}' "${repo}/Brewfile")
-    fi
-  fi
-
   # --- Models (HuggingFace) ---
-  if [[ "${scope}" == "all" || "${scope}" == "models" ]]; then
+  if [[ "${scope}" == "models" ]]; then
     echo
     echo "${C_DIM}Models (config/profiles/*.yaml)${C_RST}"
     local repos="" repo_id local_sha remote_sha _p _be _served _od
@@ -916,11 +890,13 @@ EOF
   # Restart only services currently running.
   if is_running "${BACKEND_LABEL}"; then
     info "Restarting backend…"
-    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
+    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 ||
+      warn "${BACKEND_LABEL}: kickstart returned non-zero — check: 4lm logs backend"
   fi
   if is_running "${WEBUI_LABEL}"; then
     info "Restarting WebUI…"
-    launchctl kickstart -k "gui/${UID_NUM}/${WEBUI_LABEL}" >/dev/null 2>&1 || true
+    launchctl kickstart -k "gui/${UID_NUM}/${WEBUI_LABEL}" >/dev/null 2>&1 ||
+      warn "${WEBUI_LABEL}: kickstart returned non-zero — check: 4lm logs webui"
   fi
 
   echo ""
@@ -1124,6 +1100,8 @@ cmd_models_download() {
   echo
 
   local seen_mlx="" seen_ollama="" seen_ollama_server=false backend model_path _served _od
+  # Register cleanup in case we exit early while ollama is running.
+  trap '[[ -n "${_ollama_tmp_pid:-}" ]] && kill "${_ollama_tmp_pid}" 2>/dev/null || true' EXIT
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
     backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
@@ -1323,9 +1301,9 @@ cmd_recommend() {
   local rec_tmpfile lm_tmpfile
   rec_tmpfile=$(mktemp)
   lm_tmpfile=$(mktemp)
+  trap 'rm -f "${rec_tmpfile:-}" "${lm_tmpfile:-}"' EXIT
 
   if ! llmfit "${llmfit_args[@]}" 2>/dev/null >"${rec_tmpfile}"; then
-    rm -f "${rec_tmpfile}" "${lm_tmpfile}"
     die "llmfit recommend failed"
   fi
 
@@ -1347,8 +1325,6 @@ cmd_recommend() {
   require_helpers_python
   "${HELPERS_PYTHON}" "${HELPERS_PY}" recommend \
     "${rec_tmpfile}" "${lm_tmpfile}" "${active_paths}" "${limit}"
-
-  rm -f "${rec_tmpfile}" "${lm_tmpfile}"
 }
 
 # ---- Help ------------------------------------------------------------------
