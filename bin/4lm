@@ -31,7 +31,14 @@ readonly REQUIRED_WIRED_LIMIT_MB=98304
 
 # Python helpers — venv interpreter (overridable for bats tests).
 readonly HELPERS_PYTHON="${LLM_HELPERS_PYTHON:-${LLM_HOME}/venv/bin/python}"
-readonly HELPERS_PY="${LLM_HOME}/bin/4lm_helpers.py"
+# Use helpers from the same directory as this script (repo or installed).
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${_script_dir}/4lm_helpers.py" ]]; then
+  readonly HELPERS_PY="${_script_dir}/4lm_helpers.py"
+else
+  readonly HELPERS_PY="${LLM_HOME}/bin/4lm_helpers.py"
+fi
+unset _script_dir
 
 # Profile-switch /v1/models poll budget in seconds. Tests override via env.
 readonly BACKEND_POLL_SECS="${BACKEND_POLL_SECS:-30}"
