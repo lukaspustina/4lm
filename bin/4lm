@@ -413,6 +413,8 @@ print_clients() {
 }
 
 cmd_diag() {
+  print_clients "$(net_backend_port)" "Backend"
+  print_clients "$(net_webui_port)" "WebUI"
   require_helpers_python
   "${HELPERS_PYTHON}" "${HELPERS_PY}" diag \
     "${LOG_DIR}/backend.log" "$(net_backend_port)"
@@ -1456,7 +1458,7 @@ ${C_DIM}Updates:${C_RST}
 
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
-  4lm diag                           Show live clients, recent inference, top CPU
+  4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
   4lm uninstall                      Bootout agents, remove ~/.local/bin/4lm
 EOF
 }
