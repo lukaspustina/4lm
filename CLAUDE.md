@@ -13,7 +13,7 @@ changing the model set, the backend choice, or the activation model.
 ```
 bin/                       # 4lm and the two launchd wrapper scripts
 launchd/                   # plist templates with __HOME__ placeholder
-config/profiles/           # default / coding-only / knowledge-only YAMLs
+config/profiles/           # default (ollama) / mlx-coding / mlx-knowledge / exp-* YAMLs
 config/network.example.yaml
 config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
 docs/                      # setup runbook + profile schema reference
