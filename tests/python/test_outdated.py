@@ -85,11 +85,13 @@ def test_parse_req_file_strips_extras(helpers, tmp_path):
     assert ("huggingface_hub", "0.24.0") in result
 
 
-def test_parse_req_file_unknown_format_skips(helpers, tmp_path):
+def test_parse_req_file_unknown_format_skips(helpers, tmp_path, capsys):
     req = tmp_path / "req.txt"
     req.write_text("somepackage~=1.0\n")
     result = helpers._parse_req_file(str(req))
     assert result == []
+    captured = capsys.readouterr()
+    assert "warning" in captured.err
 
 
 # ── outdated integration ─────────────────────────────────────────────────────
@@ -118,6 +120,7 @@ def test_porcelain_all_up_to_date(helpers, tmp_path):
     assert rc == 0
     data = json.loads(out)
     assert data["python"] == []
+    assert data["helpers"] == []
     assert data["brew"] == []
 
 

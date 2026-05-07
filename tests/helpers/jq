@@ -1,0 +1,33 @@
+#!/bin/bash
+# Minimal jq stub for 4lm bats tests.
+# Handles the three filter patterns used by cmd_upgrade porcelain parsing.
+
+# Skip flags (-r, -e, etc.) and find the first non-flag argument as the filter.
+FILTER=""
+for _arg; do
+  case "${_arg}" in
+    -*) ;;
+    *) FILTER="${_arg}"; break ;;
+  esac
+done
+INPUT="$(cat)"
+
+/usr/bin/python3 - "${FILTER}" <<EOPY
+import json, sys
+
+try:
+    data = json.loads("""${INPUT}""")
+except Exception as e:
+    print(f"jq stub parse error: {e}", file=sys.stderr)
+    sys.exit(1)
+
+f = sys.argv[1]
+if '.python[]' in f:
+    for e in data.get('python', []):
+        print(f"{e['pkg']}|{e['installed']}|{e['latest']}")
+elif '.brew[].formula' in f:
+    for e in data.get('brew', []):
+        print(e['formula'])
+elif '.helpers' in f:
+    print(len(data.get('helpers', [])))
+EOPY

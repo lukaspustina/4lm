@@ -50,6 +50,32 @@ setup() {
   [[ "$output" == *"Unknown channel"* ]] || [[ "${stderr:-}" == *"Unknown channel"* ]]
 }
 
+@test "migrated command with missing venv prints FATAL and exits 1" {
+  run env LLM_HELPERS_PYTHON=/nonexistent/python \
+      LLM_4LM_REPO="${REPO_ROOT}" \
+      "${REPO_ROOT}/bin/4lm" outdated
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FATAL: venv missing"* ]]
+}
+
+@test "upgrade warns when helpers have an outdated dep" {
+  local fake="${BATS_TMPDIR}/fake-python"
+  cat > "${fake}" << 'FAKE'
+#!/bin/sh
+for arg; do
+  [ "$arg" = "--porcelain" ] && {
+    echo '{"python":[],"helpers":[{"pkg":"rich","installed":"13.9","latest":"14.0"}],"brew":[]}'
+    exit 0
+  }
+done
+FAKE
+  chmod +x "${fake}"
+  run env LLM_HELPERS_PYTHON="${fake}" \
+      LLM_4LM_REPO="${REPO_ROOT}" \
+      "${REPO_ROOT}/bin/4lm" upgrade python
+  [[ "$output" == *"venv deps outdated"* ]]
+}
+
 @test "status is dispatched (no args == status)" {
   run "${REPO_ROOT}/bin/4lm"
   [ "$status" -eq 0 ]
