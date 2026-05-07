@@ -95,6 +95,15 @@ for profile in "${SOURCE_DIR}"/config/profiles/*.yaml; do
   fi
 done
 
+# Warn about profiles in ~/.4lm/config/profiles/ that no longer exist in the repo.
+for installed in "${PROFILES_DIR}"/*.yaml; do
+  [[ -f "${installed}" ]] || continue
+  base="$(basename "${installed}")"
+  if [[ ! -f "${SOURCE_DIR}/config/profiles/${base}" ]]; then
+    warn "Orphaned profile (not in repo, remove if unused): ${base}"
+  fi
+done
+
 # ---- 4b. Install chat template files (always overwrite — not user-editable) -
 for tmpl in "${SOURCE_DIR}"/config/*.jinja; do
   [[ -f "${tmpl}" ]] || continue
