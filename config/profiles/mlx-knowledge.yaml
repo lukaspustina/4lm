@@ -1,4 +1,4 @@
-# Knowledge-only profile: Qwen3.6-27B with extended context for vault synthesis.
+# mlx-knowledge profile: Qwen3.6-27B with extended context for vault synthesis.
 #
 # server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
 

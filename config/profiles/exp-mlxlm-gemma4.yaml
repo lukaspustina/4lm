@@ -1,0 +1,11 @@
+# EXPERIMENT: Gemma 4 26B-A4B via mlx_lm backend.
+#
+# Tracks fix for https://github.com/ml-explore/mlx-lm/issues/1256
+# (RotatingKVCache / GPU stream thread-local bug). Currently broken —
+# use the ollama backend (default.yaml) for working Gemma 4 inference.
+
+backend: mlx_lm
+
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b

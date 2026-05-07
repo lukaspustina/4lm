@@ -1,49 +1,19 @@
-# Default profile: Qwen3-Coder-30B-A3B (Build) + Qwen3.6-27B (Plan/Knowledge)
+# Default profile: Qwen3-Coder-Next (coding) + Gemma 4 31B Dense (chat/reasoning)
+# via Ollama backend.
 #
-# Slot 1 + 2 loaded permanently. Slots 3 + 4 load on demand and unload
-# after on_demand_idle_timeout seconds idle.
+# Both models load on demand and stay resident while memory permits.
+# On 128 GB unified memory both models (~52 GB + ~20 GB) stay loaded
+# simultaneously with ample headroom for KV cache.
 #
-# server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
+# Note: Gemma 4 requires ollama — the RotatingKVCache / sliding-window
+# attention architecture is incompatible with mlx-openai-server and mlx_lm
+# (GPU stream thread-local bug, upstream unresolved as of 2026-05).
 
-server:
-  host: "127.0.0.1"
-  port: 8000
+backend: ollama
 
 models:
-  - model_path: mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit
-    served_model_name: qwen3-coder-30b
-    model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: qwen3_coder
-    context_length: 65536
-    default_max_tokens: 8192
+  - model_path: qwen3-coder-next:q4_K_M
+    served_model_name: qwen3-coder-next
 
-  - model_path: mlx-community/Qwen3.6-27B-4bit
-    served_model_name: qwen3.6-27b
-    model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: qwen3
-    reasoning_parser: qwen3_vl
-    chat_template_file: /Users/lukas/.4lm/config/qwen3.6-27b-chat-template.jinja
-    context_length: 65536
-    default_max_tokens: 8192
-
-  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
-    served_model_name: gemma4-26b
-    model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: gemma4
-    reasoning_parser: gemma4
-    on_demand: true
-    on_demand_idle_timeout: 300
-    context_length: 131072
-    default_max_tokens: 8192
-
-  - model_path: LibraxisAI/gpt-oss-120b-mlx-mxfp4
-    served_model_name: gpt-oss-120b
-    model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: harmony
-    on_demand: true
-    on_demand_idle_timeout: 300
-    context_length: 32768
+  - model_path: gemma4:31b
+    served_model_name: gemma4-31b

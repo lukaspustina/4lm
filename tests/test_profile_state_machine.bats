@@ -4,19 +4,19 @@ load helpers/setup
 
 setup() {
   mkdir -p "${HOME}/.4lm/launchd" "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs"
-  cp "${REPO_ROOT}/config/profiles/default.yaml"      "${HOME}/.4lm/config/profiles/default.yaml"
-  cp "${REPO_ROOT}/config/profiles/coding-only.yaml"  "${HOME}/.4lm/config/profiles/coding-only.yaml"
-  ln -sfn "${HOME}/.4lm/config/profiles/default.yaml" "${HOME}/.4lm/config/active-profile"
-  cp "${REPO_ROOT}/config/network.example.yaml"       "${HOME}/.4lm/config/network.yaml"
+  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml"    "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
+  cp "${REPO_ROOT}/config/profiles/mlx-knowledge.yaml" "${HOME}/.4lm/config/profiles/mlx-knowledge.yaml"
+  ln -sfn "${HOME}/.4lm/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/active-profile"
+  cp "${REPO_ROOT}/config/network.example.yaml"         "${HOME}/.4lm/config/network.yaml"
 }
 
 @test "valid profile switch succeeds (backend not loaded → no poll, just symlink swap)" {
   # launchctl print returns non-zero by default → is_loaded false → no poll path.
-  run "${REPO_ROOT}/bin/4lm" profile set coding-only
+  run "${REPO_ROOT}/bin/4lm" profile set mlx-knowledge
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Switched to coding-only"* ]]
+  [[ "$output" == *"Switched to mlx-knowledge"* ]]
   target="$(readlink "${HOME}/.4lm/config/active-profile")"
-  [[ "${target}" == *"coding-only.yaml" ]]
+  [[ "${target}" == *"mlx-knowledge.yaml" ]]
 }
 
 @test "invalid profile name (path traversal) is rejected before any FS op" {
@@ -49,10 +49,10 @@ setup() {
 }
 
 @test "valid switch succeeds and leaves previous-profile = old profile" {
-  run "${REPO_ROOT}/bin/4lm" profile set coding-only
+  run "${REPO_ROOT}/bin/4lm" profile set mlx-knowledge
   [ "$status" -eq 0 ]
   [ -f "${HOME}/.4lm/config/previous-profile" ]
-  [ "$(cat "${HOME}/.4lm/config/previous-profile")" = "default" ]
+  [ "$(cat "${HOME}/.4lm/config/previous-profile")" = "mlx-coding" ]
 }
 
 @test "switch fails to load and rolls back when backend loaded but /v1/models never responds" {
@@ -61,11 +61,11 @@ setup() {
   # caps the wait so the test runs in seconds rather than minutes.
   export LAUNCHCTL_PRINT_OUTPUT="state = running
 pid = 12345"
-  echo "default" > "${HOME}/.4lm/config/previous-profile"
-  BACKEND_POLL_SECS=2 run "${REPO_ROOT}/bin/4lm" profile set coding-only
+  echo "mlx-coding" > "${HOME}/.4lm/config/previous-profile"
+  BACKEND_POLL_SECS=2 run "${REPO_ROOT}/bin/4lm" profile set mlx-knowledge
   [ "$status" -eq 1 ]
   target="$(readlink "${HOME}/.4lm/config/active-profile")"
-  [[ "${target}" == *"default.yaml" ]]
+  [[ "${target}" == *"mlx-coding.yaml" ]]
 }
 
 # ---- Ollama backend profile tests (Phase 2) ---------------------------------
@@ -105,7 +105,7 @@ YAML
   run "${REPO_ROOT}/bin/4lm" profile set ollama-test
   [ "$status" -eq 0 ]
   [ -f "${HOME}/.4lm/config/previous-profile" ]
-  [ "$(cat "${HOME}/.4lm/config/previous-profile")" = "default" ]
+  [ "$(cat "${HOME}/.4lm/config/previous-profile")" = "mlx-coding" ]
 }
 
 @test "ollama profile with extra mlx fields (context_length) still validates" {
@@ -303,8 +303,8 @@ YAML
   rm -f "${HF_LOG}" "${OLLAMA_LOG}"
   run make -C "${REPO_ROOT}" models
   [ "$status" -eq 0 ]
-  # config/profiles/ollama-gemma4.yaml has backend: ollama + gemma4:26b
-  grep -q "gemma4:26b" "${OLLAMA_LOG}"
-  # config/profiles/default.yaml and coding-only.yaml have mlx models
+  # config/profiles/default.yaml has backend: ollama + qwen3-coder-next + gemma4:31b
+  grep -q "gemma4:31b" "${OLLAMA_LOG}"
+  # config/profiles/mlx-coding.yaml and mlx-knowledge.yaml have mlx models
   [ -s "${HF_LOG}" ]
 }
