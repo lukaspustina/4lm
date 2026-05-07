@@ -286,6 +286,104 @@ def cmd_models_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_diag(args: argparse.Namespace) -> int:
+    import re
+    import time
+    import urllib.error
+    import urllib.request
+    from datetime import datetime, timedelta
+
+    from rich.console import Console
+
+    console = Console()
+
+    # ── HTTP probe ──────────────────────────────────────────────────────────
+    url = f"http://127.0.0.1:{args.backend_port}/v1/models"
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read())
+        ms = int((time.time() - t0) * 1000)
+        model_count = len(data.get("data", []))
+        console.print(f"[bold]Backend[/]")
+        console.print(f"  {url} — [green]OK[/] ({ms}ms, {model_count} models loaded)")
+    except (urllib.error.URLError, OSError) as e:
+        reason = getattr(e, "reason", str(e))
+        console.print(f"[bold]Backend[/]")
+        console.print(f"  {url} — [yellow]unreachable[/]: {reason}")
+
+    # ── Log analysis ────────────────────────────────────────────────────────
+    log_path = Path(args.log_file)
+    if not log_path.exists() or log_path.stat().st_size == 0:
+        console.print(f"\nNo log data found at {log_path}")
+        return 0
+
+    admit_pat = re.compile(r"BatchScheduler admitted uid=(\w+)")
+    finish_pat = re.compile(r"BatchScheduler.*uid=(\w+).*finished")
+    worker_pat = re.compile(r"worker pid=(\d+)")
+
+    cutoff = datetime.now() - timedelta(minutes=10)
+    # admits: uid -> timestamp (for recent admits only)
+    recent_admits: dict[str, datetime] = {}
+    finished_uids: set[str] = set()
+    worker_pids: set[str] = set()
+    all_admit_uids: set[str] = set()
+
+    with open(log_path) as f:
+        for line in f:
+            line = line.rstrip()
+            # extract timestamp prefix
+            ts_str = line[:19] if len(line) >= 19 else ""
+            try:
+                ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                ts = datetime.min
+
+            m = admit_pat.search(line)
+            if m:
+                uid = m.group(1)
+                all_admit_uids.add(uid)
+                if ts >= cutoff:
+                    recent_admits[uid] = ts
+
+            m = finish_pat.search(line)
+            if m:
+                finished_uids.add(m.group(1))
+
+            m = worker_pat.search(line)
+            if m:
+                worker_pids.add(m.group(1))
+
+    # In-flight: recent admits without matching finish
+    inflight = {uid: ts for uid, ts in recent_admits.items() if uid not in finished_uids}
+
+    console.print(f"\n[bold]In-flight inference (admitted, not yet finished, last 10 min)[/]")
+    if inflight:
+        for uid, ts in sorted(inflight.items(), key=lambda x: x[1]):
+            console.print(f"  {ts.strftime('%Y-%m-%d %H:%M:%S')}  uid={uid}")
+    else:
+        console.print("  (none)")
+
+    console.print(f"\n[bold]Backend worker processes[/]")
+    if worker_pids:
+        for pid in sorted(worker_pids):
+            console.print(f"  pid={pid}")
+    else:
+        console.print("  (none)")
+
+    # Orphaned workers: worker pids in the log but no admission events at all.
+    # (log format doesn't link pids to uids, so any worker in a log with no
+    # admits is treated as having processed nothing — i.e. orphaned)
+    orphaned = worker_pids if (worker_pids and not all_admit_uids) else set()
+
+    if orphaned:
+        console.print(f"\n[bold]Orphaned workers[/]")
+        for pid in sorted(orphaned):
+            console.print(f"  pid={pid}")
+
+    return 0
+
+
 def cmd_hello(args: argparse.Namespace) -> int:
     print("hello from 4lm_helpers")
     return 0
@@ -311,6 +409,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_ml.add_argument("profiles_dir", help="path to profiles directory")
     p_ml.add_argument("hf_cache_dir", help="HuggingFace cache root (~/.cache/huggingface)")
 
+    p_diag = sub.add_parser("diag", help="show backend diagnostics and log analysis")
+    p_diag.add_argument("log_file", help="path to backend.log")
+    p_diag.add_argument("backend_port", help="backend HTTP port")
+
     return parser
 
 
@@ -324,6 +426,8 @@ def main() -> int:
         return cmd_recommend(args)
     if args.command == "models-list":
         return cmd_models_list(args)
+    if args.command == "diag":
+        return cmd_diag(args)
 
     parser.print_help()
     return 1
