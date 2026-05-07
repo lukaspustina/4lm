@@ -1,6 +1,7 @@
 # SDD: Product Review Remediation
 
-Status: Implemented
+Status: Done
+Finished: 2026-05-07
 Original: specs/sdd/product-review.md
 Refined: 2026-05-07
 
