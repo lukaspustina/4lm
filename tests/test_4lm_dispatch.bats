@@ -113,9 +113,23 @@ FAKE
 
 @test "start backend invokes launchctl bootstrap" {
   run "${REPO_ROOT}/bin/4lm" start backend
-  # The launchctl stub returns 0 by default and the readiness loop is short.
-  # Status may be 0 (started) — we mainly assert bootstrap was called.
+  [ "$status" -eq 0 ]
   grep -q "bootstrap" "${LAUNCHCTL_LOG}"
+}
+
+@test "expose lan --confirm writes lan mode to network.yaml" {
+  run "${REPO_ROOT}/bin/4lm" expose lan --confirm
+  [ "$status" -eq 0 ]
+  grep -q "^mode: lan" "${HOME}/.4lm/config/network.yaml"
+}
+
+@test "expose local writes local mode to network.yaml" {
+  # First set to lan, then restore
+  run "${REPO_ROOT}/bin/4lm" expose lan --confirm
+  [ "$status" -eq 0 ]
+  run "${REPO_ROOT}/bin/4lm" expose local
+  [ "$status" -eq 0 ]
+  grep -q "^mode: local" "${HOME}/.4lm/config/network.yaml"
 }
 
 @test "4lm_helpers.py passes py_compile syntax check" {
