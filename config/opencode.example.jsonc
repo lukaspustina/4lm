@@ -2,25 +2,33 @@
 // install.sh copies this to ~/.config/opencode/opencode.jsonc on first run.
 // Edit the installed copy; this file is the template.
 //
+// Model IDs must match what the active profile's backend serves:
+//   ollama backend  → ollama pull tag  (e.g. qwen3-coder-next:q4_K_M)
+//   mlx backend     → served_model_name from profile YAML
+//   mlx_lm backend  → model_path from profile YAML
+//
 // Schema reference: https://opencode.ai/config.json
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
     "mlx-4lm": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Local MLX (4lm)",
+      "name": "Local LLM (4lm)",
       "options": {
         "baseURL": "http://127.0.0.1:8000/v1"
       },
       "models": {
-        // default profile
-        "qwen3-coder-30b": { "name": "Qwen3-Coder-30B (build/code)" },
+        // default profile (ollama)
+        "qwen3-coder-next:q4_K_M": { "name": "Qwen3-Coder-Next (build/code)" },
+        "gemma4:31b":              { "name": "Gemma 4 31B Dense (reasoning/chat)" },
+        // mlx-coding profile (mlx-openai-server)
+        "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code, mlx)" },
+        // mlx-knowledge profile (mlx-openai-server)
         "qwen3.6-27b": { "name": "Qwen3.6-27B (plan/knowledge)" },
-        "gemma4-26b": { "name": "Gemma 4 26B (reasoning/multimodal, on-demand)" },
-        "gpt-oss-120b": { "name": "GPT-OSS-120B (heavy reasoning, on-demand)" },
-        // next profile
-        "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code)" },
-        "qwen3-next-80b": { "name": "Qwen3-Next-80B (plan/knowledge/chat)" }
+        // exp-mlx-full profile (mlx-openai-server, experimental — Gemma 4 broken)
+        "gemma4-31b": { "name": "Gemma 4 31B Dense (exp-mlx)" },
+        // exp-mlxlm-gemma4 profile (mlx_lm, experimental — tracking upstream fix)
+        "mlx-community/gemma-4-26b-a4b-it-4bit": { "name": "Gemma 4 26B MoE (exp-mlx_lm)" }
       }
     }
   }
