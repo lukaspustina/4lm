@@ -8,6 +8,7 @@ HELPERS = Path(__file__).parents[2] / "bin" / "4lm_helpers.py"
 VENV_PYTHON = Path.home() / ".4lm" / "venv" / "bin" / "python"
 
 
+# Note: sdd_python-migration_p1_c1_help_exits_zero.py::test_helpers_help_exits_zero is identical in behavior.
 def test_help_exits_zero():
     result = subprocess.run(
         [sys.executable, str(HELPERS), "--help"],
