@@ -73,7 +73,43 @@ Open the WebUI in private browsing **immediately** and register your account.
 to admin from the WebUI admin panel after registering. Until then the account
 has no privileges.
 
-## Step 5 — OpenCode TUI
+## Step 5 — Open WebUI model configuration
+
+OWUI ships built-in tools (`search_web`, `fetch_url`, `execute_code`, etc.)
+that models can call autonomously during chat. Two conditions must both hold
+for `search_web` and `fetch_url` to be offered to a model:
+
+1. **Function Calling = Native** in the model's OWUI record — without this,
+   OWUI never calls `get_builtin_tools()` at all.
+2. **Web Search enabled as a default feature** — OWUI only includes the web
+   tools when `features.web_search = true` in the chat request. The frontend
+   sends this automatically when the web-search globe is ON, and the globe
+   defaults to ON only when the model record has `defaultFeatureIds` including
+   `web_search`.
+
+**Prerequisite:** Web search provider must be configured first (Admin Panel →
+Settings → RAG → Web Search). DuckDuckGo requires no API key.
+
+**For qwen3.6-27b** (record exists, needs two additions):
+
+1. OWUI → Workspace → Models → `qwen3.6-27b`
+2. **Advanced Parameters** → Function Calling → **Native**
+3. **Default Features** → enable **Web Search**
+4. Save
+
+**For qwen3-coder-30b** (no OWUI model record — must be created):
+
+1. OWUI → Workspace → Models → **New Model**
+2. Set base model to `qwen3-coder-30b`
+3. **Capabilities** → enable **Web Search**
+4. **Advanced Parameters** → Function Calling → **Native**
+5. **Default Features** → enable **Web Search**
+6. Save
+
+Apply to `gemma4-26b` once the upstream Stream(gpu,1) bug in mlx_lm is fixed
+(tracked at <https://github.com/cubist38/mlx-openai-server/issues>).
+
+## Step 6 — OpenCode TUI
 
 `make bootstrap` installs the homebrew/core `opencode` formula (anomalyco's
 distribution; sst/opencode no longer exists). `make install` seeds
