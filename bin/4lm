@@ -765,9 +765,10 @@ cmd_profile() {
       [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
       local current=""
       [[ -L "${ACTIVE_CONFIG}" ]] && current="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
-      echo "Available profiles in ${PROFILES_DIR}:"
+      local found=false
       for p in "${PROFILES_DIR}"/*.yaml; do
         [[ -f "${p}" ]] || continue
+        found=true
         local name
         name="$(basename "${p}" .yaml)"
         if [[ "${name}" == "${current}" ]]; then
@@ -776,6 +777,9 @@ cmd_profile() {
           printf "    %s\n" "${name}"
         fi
       done
+      if [[ "${found}" != "true" ]]; then
+        printf 'No profiles found in %s — run: make install\n' "${PROFILES_DIR}"
+      fi
       ;;
     set | use)
       cmd_profile_set "${2:-}"
@@ -924,13 +928,23 @@ cmd_profile_set() {
 
 # ---- Network exposure ------------------------------------------------------
 cmd_expose() {
-  local mode="${1:-}" confirm="${2:-}"
+  local mode="${1:-}"
+  shift || true
   case "${mode}" in
     local | lan) ;;
     *) die "expose: mode must be 'local' or 'lan'" ;;
   esac
 
-  if [[ "${mode}" == "lan" && "${confirm}" != "--confirm" ]]; then
+  local confirm=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --confirm) confirm=true ;;
+      *) die "unknown argument: $1" ;;
+    esac
+    shift
+  done
+
+  if [[ "${mode}" == "lan" && "${confirm}" != "true" ]]; then
     die "pass --confirm to expose on LAN"
   fi
 
@@ -1093,6 +1107,25 @@ cmd_opencode() {
 
 # ---- Uninstall (runtime side: bootout + remove ~/.local/bin/4lm) ----------
 cmd_uninstall() {
+  local confirm=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --confirm) confirm=true ;;
+      *) die "unknown argument: $1" ;;
+    esac
+    shift
+  done
+  if [[ "${confirm}" != "true" ]]; then
+    printf 'Would remove:\n'
+    printf '  %s\n' \
+      "${LLM_HOME}" \
+      "${HOME}/.local/bin/4lm" \
+      "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" \
+      "${HOME}/Library/LaunchAgents/com.4lm.webui.plist" \
+      "/usr/local/etc/newsyslog.d/4lm.conf"
+    printf 'Pass --confirm to proceed.\n'
+    return 0
+  fi
   echo "${C_DIM}─── Uninstalling 4lm services ───${C_RST}"
   service_stop "${WEBUI_LABEL}"
   service_stop "${BACKEND_LABEL}"
@@ -1227,12 +1260,23 @@ cmd_models_download() {
 cmd_models_clean() {
   command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
   info "Pruning orphaned HuggingFace cache revisions…"
-  hf cache prune
+  hf cache prune --yes
 }
 
 cmd_models_rm() {
-  local repo="${1:-}"
-  [[ -n "${repo}" ]] || die "Usage: 4lm models rm <repo>"
+  local repo="" confirm=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --confirm) confirm=true ;;
+      *) repo="$1" ;;
+    esac
+    shift
+  done
+  [[ -n "${repo}" ]] || die "Usage: 4lm models rm <repo> [--confirm]"
+  if [[ "${confirm}" != "true" ]]; then
+    printf 'Pass --confirm to remove: %s\n' "${repo}"
+    return 0
+  fi
   command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
   info "Removing ${repo} from cache…"
   hf cache rm "${repo}"
@@ -1447,7 +1491,8 @@ ${C_DIM}Models:${C_RST}
   4lm models [list]                  List models from all profiles with cache status
   4lm models download [repo...]      Download missing models (all profiles), or specific repo(s)
   4lm models clean                   Prune orphaned HuggingFace cache revisions
-  4lm models rm <repo>               Remove a cached model repo
+  4lm models cleanup [--confirm]     Remove cached models not referenced in any profile
+  4lm models rm <repo> [--confirm]   Remove a cached model repo
 
 ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
@@ -1484,7 +1529,7 @@ main() {
     recommend | rec) cmd_recommend "$@" ;;
     open) cmd_open "$@" ;;
     opencode | code) cmd_opencode "$@" ;;
-    uninstall | remove) cmd_uninstall ;;
+    uninstall | remove) cmd_uninstall "$@" ;;
     help | --help | -h) cmd_help ;;
     *) die "Unknown command: ${cmd}. Try \`4lm help\`." ;;
   esac

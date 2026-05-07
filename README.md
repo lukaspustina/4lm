@@ -23,11 +23,10 @@ for Apple Silicon acceleration when Ollama's overhead matters.
 - **launchd, but quiet.** Plists live in `~/.4lm/launchd/` — not
   `~/Library/LaunchAgents/`. After every reboot the stack is stopped.
   You start it when you want it.
-- **`expose lan` is two-factor.** Refuses without `--confirm`, prints
-  the threat model, and on confirmation generates a persistent
-  `WEBUI_SECRET_KEY` (mode 0600), forces
-  `WEBUI_REGISTRATION_ENABLED=false`, and pins
-  `DEFAULT_USER_ROLE=pending`. Tailscale is still the better answer.
+- **`expose lan` is two-factor.** Refuses without `--confirm`. Security
+  hardening applies in all modes: persistent `WEBUI_SECRET_KEY` (mode 0600),
+  `WEBUI_REGISTRATION_ENABLED=false`, `DEFAULT_USER_ROLE=pending`.
+  Tailscale is still the better answer.
 - **Honest health check.** `4lm health` exits 1 if
   `iogpu.wired_limit_mb` is below the threshold the 80B-class models
   actually need.
