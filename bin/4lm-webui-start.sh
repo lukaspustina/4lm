@@ -66,18 +66,16 @@ export DEFAULT_USER_ROLE="pending"
 export ANONYMIZED_TELEMETRY="False"
 export DO_NOT_TRACK="true"
 export SCARF_NO_ANALYTICS="true"
+export WEBUI_REGISTRATION_ENABLED="false"
 
-# ---- LAN-mode hardening ----------------------------------------------------
-if [[ "${NET_MODE}" == "lan" ]]; then
-  if [[ ! -f "${SECRET_KEY_FILE}" ]]; then
-    umask 077
-    openssl rand -hex 32 >"${SECRET_KEY_FILE}"
-    chmod 600 "${SECRET_KEY_FILE}"
-  fi
-  WEBUI_SECRET_KEY="$(cat "${SECRET_KEY_FILE}")"
-  export WEBUI_SECRET_KEY
-  export WEBUI_REGISTRATION_ENABLED="false"
+# ---- Secret key (all modes) -----------------------------------------------
+if [[ ! -f "${SECRET_KEY_FILE}" ]]; then
+  umask 077
+  openssl rand -hex 32 >"${SECRET_KEY_FILE}"
+  chmod 600 "${SECRET_KEY_FILE}"
 fi
+WEBUI_SECRET_KEY="$(<"${SECRET_KEY_FILE}")"
+export WEBUI_SECRET_KEY
 
 # ---- Launch ----------------------------------------------------------------
 echo "[$(date -Iseconds)] Starting Open WebUI"
