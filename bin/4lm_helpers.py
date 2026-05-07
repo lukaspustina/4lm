@@ -405,7 +405,8 @@ def _parse_req_file(path: str) -> list[tuple[str, str]]:
         elif ">=" in line:
             ver = line.split(">=", 1)[1].split(",")[0].strip()
             result.append((name, ver))
-        # else: unsupported pin format — skip silently
+        else:
+            print(f"warning: skipping unrecognised pin format: {line!r}", file=sys.stderr)
     return result
 
 
@@ -460,7 +461,7 @@ def cmd_outdated(args: argparse.Namespace) -> int:
             name = formula.get("name", "")
             if name in brewfile_formulae:
                 brew_outdated.append({
-                    "pkg": name,
+                    "formula": name,
                     "installed": (formula.get("installed_versions") or ["?"])[0],
                     "latest": formula.get("current_version", "?"),
                 })
@@ -498,7 +499,7 @@ def cmd_outdated(args: argparse.Namespace) -> int:
         table = Table(title="Homebrew", show_edge=False, pad_edge=False)
         table.add_column("Formula")
         table.add_column("Status")
-        brew_outdated_map = {e["pkg"]: e for e in brew_outdated}
+        brew_outdated_map = {e["formula"]: e for e in brew_outdated}
         for formula in sorted(brewfile_formulae):
             if formula in brew_outdated_map:
                 e = brew_outdated_map[formula]

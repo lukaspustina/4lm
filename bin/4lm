@@ -601,7 +601,31 @@ cmd_upgrade() {
     die "Run from your 4lm clone or set LLM_4LM_REPO=<path>."
 
   echo "${C_DIM}─── 4lm Upgrade ───${C_RST}"
-  run_outdated_check "${repo}" "${channel}"
+
+  # Python + Homebrew channels: delegate to Python helper via porcelain JSON.
+  if [[ "${channel}" == "all" || "${channel}" == "python" || "${channel}" == "brew" ]]; then
+    require_helpers_python
+    local porcelain
+    porcelain="$("${HELPERS_PYTHON}" "${HELPERS_PY}" outdated --porcelain "${repo}")" || return
+    if [[ "${channel}" == "all" || "${channel}" == "python" ]]; then
+      while IFS= read -r _line; do
+        [[ -n "${_line}" ]] && OUTDATED_PY+=("${_line}")
+      done < <(jq -r '.python[] | "\(.pkg)|\(.installed)|\(.latest)"' <<<"${porcelain}")
+    fi
+    if [[ "${channel}" == "all" || "${channel}" == "brew" ]]; then
+      while IFS= read -r _line; do
+        [[ -n "${_line}" ]] && OUTDATED_BREW+=("${_line}")
+      done < <(jq -r '.brew[].formula' <<<"${porcelain}")
+    fi
+    local helpers_count
+    helpers_count="$(jq '.helpers | length' <<<"${porcelain}")"
+    ((helpers_count > 0)) && warn "venv deps outdated — update requirements-helpers.txt and re-run install.sh"
+  fi
+
+  # Models channel: HF SHA comparison stays in bash.
+  if [[ "${channel}" == "all" || "${channel}" == "models" ]]; then
+    run_outdated_check "${repo}" "models"
+  fi
 
   if ((${#names[@]} > 0)); then
     apply_item_filter "${channel}" "${names[@]}"
