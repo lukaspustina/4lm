@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
+
 load helpers/setup
 
 BACKEND_START="${REPO_ROOT}/bin/4lm-backend-start.sh"
@@ -90,8 +92,7 @@ YAML
 @test "ollama profile: ollama absent from PATH exits 127 with FATAL message" {
   _write_ollama_profile
   # Remove ollama from PATH by using a PATH without tests/helpers
-  run env PATH="/usr/bin:/bin" "${BACKEND_START}"
-  [ "$status" -eq 127 ]
+  run -127 env PATH="/usr/bin:/bin" "${BACKEND_START}"
   [[ "$output" == *"FATAL: ollama not found"* ]]
 }
 
@@ -132,7 +133,6 @@ YAML
   local bin="${BATS_TMPDIR}/no-python3"
   mkdir -p "${bin}"
   ln -sfn "${REPO_ROOT}/tests/helpers/mlx-openai-server" "${bin}/mlx-openai-server"
-  run env PATH="${bin}:/usr/bin:/bin" "${BACKEND_START}"
-  [ "$status" -eq 127 ]
+  run -127 env PATH="${bin}:/usr/bin:/bin" "${BACKEND_START}"
   [[ "$output" == *"FATAL: python3 not found"* ]]
 }

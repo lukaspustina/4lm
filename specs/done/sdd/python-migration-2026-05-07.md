@@ -1,6 +1,7 @@
 # SDD: Partial Bash → Python Migration
 
-Status: Ready for Implementation
+Status: Done
+Finished: 2026-05-07
 Original: specs/sdd/python-migration.md
 Refined: 2026-05-07
 
