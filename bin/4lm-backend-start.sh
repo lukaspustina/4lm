@@ -19,6 +19,12 @@ if [[ ! -L "${ACTIVE_CONFIG}" && ! -f "${ACTIVE_CONFIG}" ]]; then
   exit 78 # EX_CONFIG
 fi
 
+if ! grep -q '^backend:' "${ACTIVE_CONFIG}" 2>/dev/null ||
+  ! grep -q '^models:' "${ACTIVE_CONFIG}" 2>/dev/null; then
+  echo "[$(date -Iseconds)] FATAL: profile invalid: missing backend or models key" >&2
+  exit 78
+fi
+
 # ---- Bind host / port from network.yaml ------------------------------------
 NET_MODE="local"
 NET_PORT="8000"
