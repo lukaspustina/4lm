@@ -144,6 +144,74 @@ YAML
   [[ "$output" == *"context_length"* ]] || [[ "$output" == *"validation failed"* ]]
 }
 
+# ---- mlx_lm backend profile tests ------------------------------------------
+
+@test "mlx_lm single-model profile validates (profile set succeeds)" {
+  cat > "${HOME}/.4lm/config/profiles/mlxlm-test.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set mlxlm-test
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Switched to mlxlm-test"* ]]
+}
+
+@test "mlx_lm two-model profile is rejected with single-model error" {
+  cat > "${HOME}/.4lm/config/profiles/mlxlm-multi.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/model-a
+    served_model_name: model-a
+  - model_path: mlx-community/model-b
+    served_model_name: model-b
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set mlxlm-multi
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one model"* ]] || [[ "$output" == *"validation failed"* ]]
+}
+
+@test "mlx_lm profile without context_length validates (not required)" {
+  cat > "${HOME}/.4lm/config/profiles/mlxlm-noctx.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
+YAML
+  run "${REPO_ROOT}/bin/4lm" profile set mlxlm-noctx
+  [ "$status" -eq 0 ]
+}
+
+@test "models list: mlx_lm profile annotated with (mlx_lm)" {
+  cat > "${HOME}/.4lm/config/profiles/mlxlm-ann.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
+YAML
+  run "${REPO_ROOT}/bin/4lm" models list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(mlx_lm)"* ]]
+}
+
+@test "models download: mlx_lm profile uses hf download not ollama pull" {
+  export HF_LOG="${BATS_TMPDIR}/hf-mlxlm-calls"
+  export OLLAMA_LOG="${BATS_TMPDIR}/ollama-mlxlm-calls"
+  export CURL_STUB_RESPONSE='{"version":"0.0.0"}'
+  rm -f "${HF_LOG}" "${OLLAMA_LOG}"
+  cat > "${HOME}/.4lm/config/profiles/mlxlm-dl.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
+    served_model_name: gemma4-26b
+YAML
+  run "${REPO_ROOT}/bin/4lm" models download
+  [ "$status" -eq 0 ]
+  grep -q "mlx-community/gemma-4-26b-a4b-it-4bit" "${HF_LOG}"
+  [ ! -f "${OLLAMA_LOG}" ] || ! grep -q "pull" "${OLLAMA_LOG}"
+}
+
 # ---- Model download backend dispatch tests (Phase 4) ------------------------
 
 @test "models download: mlx and ollama profiles dispatch to correct backends" {
@@ -226,7 +294,7 @@ YAML
   # Cache column shows ~ (hf_is_cached is not called for ollama entries).
   [[ "$output" == *"~"* ]]
   # The hf CLI stub is never invoked for models list.
-  [ ! -f "${HF_LOG}" ] || ! grep -q "gemma4:27b" "${HF_LOG}"
+  [ ! -f "${HF_LOG}" ] || ! grep -q "gemma4:26b" "${HF_LOG}"
 }
 
 @test "make models: dispatches hf for mlx profiles and ollama pull for ollama profiles" {
@@ -235,8 +303,8 @@ YAML
   rm -f "${HF_LOG}" "${OLLAMA_LOG}"
   run make -C "${REPO_ROOT}" models
   [ "$status" -eq 0 ]
-  # config/profiles/ollama-gemma4.yaml has backend: ollama + gemma4:27b
-  grep -q "gemma4:27b" "${OLLAMA_LOG}"
+  # config/profiles/ollama-gemma4.yaml has backend: ollama + gemma4:26b
+  grep -q "gemma4:26b" "${OLLAMA_LOG}"
   # config/profiles/default.yaml and coding-only.yaml have mlx models
   [ -s "${HF_LOG}" ]
 }

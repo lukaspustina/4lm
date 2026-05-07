@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+LOG="${MLXLM_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/mlxlm-calls}"
+echo "$*" >> "${LOG}"
+exit "${MLXLM_STUB_EXIT:-0}"

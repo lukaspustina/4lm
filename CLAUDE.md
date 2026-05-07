@@ -69,7 +69,9 @@ On timeout it restores the previous symlink and kickstarts again.
 - Bash scripts: `set -euo pipefail`, `shellcheck` clean, formatted by `shfmt`.
 - Plists: `__HOME__` placeholder, substituted by `install.sh`.
 - Profile YAMLs validated by `validate_profile` in `bin/4lm`. Schema reference
-  in `docs/profile-schema.md`.
+  in `docs/profile-schema.md`. Three backends: `mlx` (mlx-openai-server,
+  multi-model), `mlx_lm` (python -m mlx_lm server, single-model, no wrapper
+  bugs), `ollama` (llama.cpp/Metal).
 - No `Co-Authored-By: Claude` lines in commits.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
