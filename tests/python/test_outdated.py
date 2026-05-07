@@ -167,6 +167,18 @@ def test_brew_failure_exits_one(helpers, tmp_path):
 
 
 @requires_venv
+def test_porcelain_extras_syntax_no_error(helpers, tmp_path):
+    repo = _make_repo(tmp_path, req_txt="huggingface_hub[cli]==0.24.0\n", req_helpers="", brewfile="")
+    brew_json = json.dumps({"formulae": [], "casks": []})
+    with patch("urllib.request.urlopen", side_effect=_pypi_mock({"huggingface_hub": "0.24.0"})), \
+         patch("subprocess.run", return_value=MagicMock(returncode=0, stdout=brew_json, stderr="")):
+        rc, out = _run_outdated(helpers, repo, porcelain=True)
+    assert rc == 0
+    data = json.loads(out)
+    assert data["python"] == []
+
+
+@requires_venv
 def test_helpers_floor_pin_in_porcelain(helpers, tmp_path):
     repo = _make_repo(tmp_path, req_txt="", req_helpers="rich>=13.9,<14\n", brewfile="")
     brew_json = json.dumps({"formulae": [], "casks": []})
