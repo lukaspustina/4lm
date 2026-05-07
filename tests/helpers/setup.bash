@@ -5,6 +5,9 @@
 REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 export REPO_ROOT
 
+# Capture real home before sandbox so Python helper path survives the override.
+_REAL_4LM_VENV="${HOME}/.4lm/venv/bin/python"
+
 # Prepend stub helpers so launchctl/curl in scripts resolve to stubs.
 export PATH="${BATS_TEST_DIRNAME}/helpers:${PATH}"
 
@@ -15,4 +18,7 @@ mkdir -p "${HOME}"
 
 # Default log file for launchctl stub.
 export LAUNCHCTL_LOG="${BATS_TMPDIR}/launchctl.log"
-: > "${LAUNCHCTL_LOG}"
+: >"${LAUNCHCTL_LOG}"
+
+# Point 4lm at the real venv so bats tests avoid the python3 PATH stub.
+export LLM_HELPERS_PYTHON="${_REAL_4LM_VENV}"

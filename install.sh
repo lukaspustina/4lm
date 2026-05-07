@@ -76,7 +76,7 @@ mkdir -p "${LLM_HOME}/bin" \
 
 # ---- 3. Install scripts ---------------------------------------------------
 info "Installing scripts…"
-for script in 4lm 4lm-backend-start.sh 4lm-webui-start.sh; do
+for script in 4lm 4lm-backend-start.sh 4lm-webui-start.sh 4lm_helpers.py; do
   cp "${SOURCE_DIR}/bin/${script}" "${LLM_HOME}/bin/${script}"
   chmod 755 "${LLM_HOME}/bin/${script}"
 done
@@ -228,6 +228,17 @@ if pipx list --short 2>/dev/null | grep -q "^huggingface-hub "; then
     fi
   done
 fi
+
+# ---- 9c. Python helpers venv ------------------------------------------------
+info "Setting up Python helpers venv…"
+if [[ ! -x "${LLM_HOME}/venv/bin/python" ]]; then
+  "${PIPX_PYTHON}" -m venv "${LLM_HOME}/venv"
+  ok "venv created at ${LLM_HOME}/venv"
+else
+  ok "venv already exists at ${LLM_HOME}/venv"
+fi
+"${LLM_HOME}/venv/bin/pip" install --quiet -r "${SOURCE_DIR}/requirements-helpers.txt"
+ok "helpers deps installed from requirements-helpers.txt"
 
 # ---- 10. newsyslog log rotation ------------------------------------------
 NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"

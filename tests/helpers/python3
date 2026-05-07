@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
 LOG="${MLXLM_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/mlxlm-calls}"
-echo "$*" >> "${LOG}"
+echo "$*" >>"${LOG}"
+
+# Simulate `python3 -m venv <path>`: create minimal venv structure so that
+# subsequent `venv/bin/pip install` calls resolve to the pip stub.
+if [[ "$1" == "-m" && "$2" == "venv" && -n "$3" ]]; then
+  mkdir -p "$3/bin"
+  ln -sf "$(command -v python3)" "$3/bin/python" 2>/dev/null || true
+  # pip stub: log args and exit 0
+  cat >"$3/bin/pip" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "$3/bin/pip"
+fi
+
 exit "${MLXLM_STUB_EXIT:-0}"
