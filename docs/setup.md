@@ -207,21 +207,15 @@ provides authentication.
 
 `4lm diag` is the live-traffic view. It prints, in order:
 
-- **Backend / WebUI clients** — established TCP connections to `:8000`
-  and `:3000`, with client process name and PID. An OpenCode session
-  shows as `opencode pid=… 127.0.0.1:NNNN→:8000`. Browser tabs show as
-  `com.apple.WebKit.Networking → :3000`.
-- **Last 5 finished inference requests** with timestamp, uid,
-  finish_reason, generated tokens.
+- **Backend clients** — established TCP connections to the backend port,
+  with client process name and PID.
+- **WebUI clients** — established TCP connections to the WebUI port.
 - **In-flight inference** — admits in the last 10 min without a
   matching finish. A non-empty list here means a request is still
   generating (or stuck).
-- **Backend worker processes** — master + each `multiprocessing.spawn`
-  worker, with %CPU, RSS in GB, etime. This is the section that catches
-  the wedged-scheduler scenario.
-- **Top CPU consumers** system-wide.
-- A copy-paste line for `sudo powermetrics --samplers gpu_power` (out
-  of `diag` because it needs sudo and prints a lot).
+- **Backend worker processes** — PIDs seen in the backend log.
+- **Orphaned workers** — worker PIDs that appear in the log but have
+  received zero admitted requests in the current session.
 
 `4lm doctor` is the *static* sweep (prereqs, file paths, sudoers,
 binaries on PATH). `4lm diag` is the *runtime* sweep. Use `doctor`
