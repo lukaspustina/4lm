@@ -231,6 +231,16 @@ def cmd_models_list(args: argparse.Namespace) -> int:
             seen[mp] = {"backend": e["backend"], "profiles": []}
         seen[mp]["profiles"].append(e["profile"])
 
+    # Build set of locally-present ollama models once
+    ollama_cached: set[str] = set()
+    _ob = subprocess.run(["which", "ollama"], capture_output=True, text=True)
+    if _ob.returncode == 0:
+        _ol = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+        for _line in _ol.stdout.splitlines()[1:]:
+            _parts = _line.split()
+            if _parts:
+                ollama_cached.add(_parts[0])
+
     console = Console()
     table = Table(title="4lm Models", show_edge=False, pad_edge=False)
     table.add_column("Model", no_wrap=True)
@@ -246,7 +256,7 @@ def cmd_models_list(args: argparse.Namespace) -> int:
         else:
             profs = ", ".join(f"{p} ({be})" for p in info["profiles"])
         if be == "ollama":
-            cached_str = "[dim]~[/]"
+            cached_str = "[green]✓[/]" if mp in ollama_cached else "[yellow]—[/]"
         elif _hf_is_cached(hf_cache_dir, mp):
             cached_str = "[green]✓[/]"
         else:
@@ -271,13 +281,9 @@ def cmd_models_list(args: argparse.Namespace) -> int:
             if repo not in seen_paths:
                 unreferenced.append((repo, "hf"))
 
-    ollama_bin = subprocess.run(["which", "ollama"], capture_output=True, text=True)
-    if ollama_bin.returncode == 0:
-        r = subprocess.run(["ollama", "list"], capture_output=True, text=True)
-        for line in r.stdout.splitlines()[1:]:  # skip header
-            name = line.split()[0] if line.split() else ""
-            if name and name not in seen_paths:
-                unreferenced.append((name, "ollama"))
+    for name in ollama_cached:
+        if name not in seen_paths:
+            unreferenced.append((name, "ollama"))
 
     for repo, src in unreferenced:
         table.add_row(f"[dim]{repo}[/]", f"[dim]{src}[/]", "[dim](unreferenced)[/]", "[dim]~[/]")
@@ -474,40 +480,38 @@ def cmd_outdated(args: argparse.Namespace) -> int:
     from rich.table import Table
 
     console = Console()
+    table = Table(title="4lm Outdated", show_edge=False, pad_edge=False)
+    table.add_column("Package")
+    table.add_column("Kind")
+    table.add_column("Installed")
+    table.add_column("Latest")
 
-    def _pkg_table(title: str, all_pkgs: list[tuple], outdated: list[dict]) -> None:
-        if not all_pkgs:
-            return
-        table = Table(title=title, show_edge=False, pad_edge=False)
-        table.add_column("Package")
-        table.add_column("Installed")
-        table.add_column("")
-        table.add_column("Latest")
-        outdated_map = {e["pkg"]: e for e in outdated}
-        for pkg, ver in all_pkgs:
-            if pkg in outdated_map:
-                e = outdated_map[pkg]
-                table.add_row(pkg, e["installed"], "→", e["latest"])
-            else:
-                table.add_row(pkg, ver, "", "")
-        console.print(table)
+    py_outdated_map = {e["pkg"]: e for e in py_outdated}
+    for pkg, ver in python_pkgs:
+        if pkg in py_outdated_map:
+            table.add_row(pkg, "python", py_outdated_map[pkg]["installed"],
+                          f"[yellow]→ {py_outdated_map[pkg]['latest']}[/]")
+        else:
+            table.add_row(pkg, "python", ver, "")
 
-    _pkg_table("Python", python_pkgs, py_outdated)
-    _pkg_table("Helpers", helpers_pkgs, helpers_outdated)
+    helpers_outdated_map = {e["pkg"]: e for e in helpers_outdated}
+    for pkg, ver in helpers_pkgs:
+        if pkg in helpers_outdated_map:
+            table.add_row(pkg, "helpers", helpers_outdated_map[pkg]["installed"],
+                          f"[yellow]→ {helpers_outdated_map[pkg]['latest']}[/]")
+        else:
+            table.add_row(pkg, "helpers", ver, "")
 
-    if brewfile_formulae:
-        table = Table(title="Homebrew", show_edge=False, pad_edge=False)
-        table.add_column("Formula")
-        table.add_column("Status")
-        brew_outdated_map = {e["formula"]: e for e in brew_outdated}
-        for formula in sorted(brewfile_formulae):
-            if formula in brew_outdated_map:
-                e = brew_outdated_map[formula]
-                table.add_row(formula, f"→ {e['latest']}")
-            else:
-                table.add_row(formula, "✓")
-        console.print(table)
+    brew_outdated_map = {e["formula"]: e for e in brew_outdated}
+    for formula in sorted(brewfile_formulae):
+        if formula in brew_outdated_map:
+            e = brew_outdated_map[formula]
+            table.add_row(formula, "brew", e["installed"],
+                          f"[yellow]→ {e['latest']}[/]")
+        else:
+            table.add_row(formula, "brew", "[green]✓[/]", "")
 
+    console.print(table)
     return 0
 
 
