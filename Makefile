@@ -5,7 +5,7 @@ SHELL       := /bin/bash
 SCRIPTS        := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh uninstall.sh tests/lint-profiles.sh
 PLISTS         := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
 SHFMT_OPTS     := -i 2 -ci
-HELPERS_PYTHON := $(HOME)/.4lm/venv/bin/python
+HELPERS_PYTHON ?= $(HOME)/.4lm/venv/bin/python
 
 
 .PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint models models-list models-clean models-rm help
