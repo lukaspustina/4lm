@@ -5,6 +5,7 @@
 brew "shellcheck"
 brew "shfmt"
 brew "bats-core"
+brew "jq"
 
 # Python tooling. mlx-openai-server requires Python >=3.11,<3.13, so we pin
 # python@3.12 even when the system default is newer.

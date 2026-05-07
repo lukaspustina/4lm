@@ -563,15 +563,22 @@ cmd_outdated() {
   repo="$(find_4lm_repo)" ||
     die "Run from your 4lm clone or set LLM_4LM_REPO=<path>."
 
+  require_helpers_python
   echo "${C_DIM}─── 4lm Outdated ───${C_RST}"
-  run_outdated_check "${repo}"
 
-  local pending=$((${#OUTDATED_PY[@]} + ${#OUTDATED_BREW[@]} + ${#OUTDATED_HF[@]}))
+  # Python packages (requirements.txt + requirements-helpers.txt) and Homebrew:
+  # delegated to Python helper for PyPI queries and display.
+  "${HELPERS_PYTHON}" "${HELPERS_PY}" outdated "${repo}" || return
+
+  # HF models: reuse run_outdated_check scoped to the models channel.
+  run_outdated_check "${repo}" "models"
+
+  local pending=${#OUTDATED_HF[@]}
   echo
   if ((pending == 0)); then
     ok "Everything up to date."
   else
-    info "${pending} update(s) available. Run \`4lm upgrade\` to install."
+    info "${pending} model update(s) available. Run \`4lm upgrade models\` to install."
   fi
 }
 
