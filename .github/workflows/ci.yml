@@ -14,5 +14,10 @@ jobs:
       - name: Install tooling
         run: brew bundle --file=Brewfile
 
+      - name: Set up helpers venv
+        run: |
+          python3.12 -m venv ~/.4lm/venv
+          ~/.4lm/venv/bin/pip install --quiet -r requirements-helpers.txt
+
       - name: make check
         run: make check
