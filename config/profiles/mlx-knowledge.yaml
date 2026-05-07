@@ -2,6 +2,8 @@
 #
 # server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
 
+backend: mlx
+
 server:
   host: "127.0.0.1"
   port: 8000

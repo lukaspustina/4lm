@@ -32,6 +32,14 @@ case "${NET_MODE}" in
 esac
 [[ -n "${WEBUI_PORT}" ]] || WEBUI_PORT="3000"
 [[ -n "${BACKEND_PORT}" ]] || BACKEND_PORT="8000"
+[[ "$WEBUI_PORT" =~ ^[0-9]+$ ]] || {
+  echo "[$(date -Iseconds)] WARN: invalid WEBUI_PORT, using 3000" >&2
+  WEBUI_PORT=3000
+}
+[[ "$BACKEND_PORT" =~ ^[0-9]+$ ]] || {
+  echo "[$(date -Iseconds)] WARN: invalid BACKEND_PORT, using 8080" >&2
+  BACKEND_PORT=8080
+}
 
 readonly BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}/v1"
 

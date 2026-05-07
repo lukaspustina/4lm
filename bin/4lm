@@ -40,7 +40,7 @@ else
 fi
 unset _script_dir
 
-# Profile-switch /v1/models poll budget in seconds. Tests override via env.
+# Profile-switch /v1/models poll budget in elapsed wall-clock seconds. Tests override via env.
 readonly BACKEND_POLL_SECS="${BACKEND_POLL_SECS:-30}"
 
 # Cache uid once.
@@ -659,6 +659,9 @@ cmd_upgrade() {
       warn "no python3.11/3.12 on PATH — skipping Python upgrades"
     else
       local entry p cur_new new_ver pkg_base
+      local _req_tmp="${repo}/requirements.txt.tmp"
+      trap 'rm -f "${_req_tmp}"' EXIT
+      cp "${repo}/requirements.txt" "${_req_tmp}"
       for entry in "${OUTDATED_PY[@]}"; do
         p="${entry%%|*}"
         cur_new="${entry#*|}"
@@ -666,10 +669,11 @@ cmd_upgrade() {
         pkg_base="${p%%[*}"
         info "Python: ${p} ${cur_new%%|*} → ${new_ver}"
         sed -i '' -E "s|^(${pkg_base}(\[[^]]+\])?)==[^[:space:]]*$|\1==${new_ver}|" \
-          "${repo}/requirements.txt"
+          "${_req_tmp}"
         pipx install --python "${pipx_py}" --force "${p}==${new_ver}" ||
           warn "pipx install ${p}==${new_ver} failed"
       done
+      mv "${_req_tmp}" "${repo}/requirements.txt"
     fi
   fi
 
@@ -818,12 +822,41 @@ cmd_profile_set() {
     exit 1
   fi
 
-  # (b) Save previous profile name.
-  local previous=""
+  # Detect current active profile name for same-name switch guard.
+  local current_name=""
   if [[ -L "${ACTIVE_CONFIG}" ]]; then
-    previous="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+    current_name="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
   fi
-  if [[ -n "${previous}" && "${previous}" != "${name}" ]]; then
+
+  # Same-name switch: avoid writing previous-profile to itself; only kickstart if loaded.
+  if [[ "${name}" == "${current_name}" ]]; then
+    if ! is_loaded "${BACKEND_LABEL}"; then
+      return 0
+    fi
+    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
+    local _start=$SECONDS _timed_out=0
+    local url
+    url="$(backend_url)/v1/models"
+    while true; do
+      if curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+        break
+      fi
+      if ((SECONDS - _start >= BACKEND_POLL_SECS)); then
+        _timed_out=1
+        break
+      fi
+      sleep 1
+    done
+    if [[ "${_timed_out}" -eq 1 ]]; then
+      die "backend did not start"
+    fi
+    return 0
+  fi
+
+  # (b) Save previous profile name (only when switching to a different profile).
+  local previous=""
+  if [[ -n "${current_name}" ]]; then
+    previous="${current_name}"
     echo "${previous}" >"${PREVIOUS_PROFILE_FILE}"
   fi
 
@@ -834,30 +867,52 @@ cmd_profile_set() {
   if is_loaded "${BACKEND_LABEL}"; then
     launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
 
-    # (e) Poll /v1/models for up to 30 s.
-    local url="$(backend_url)/v1/models"
-    local ok_load=0
-    for _ in $(seq 1 "${BACKEND_POLL_SECS}"); do
-      if curl --max-time 1 --silent --fail "${url}" >/dev/null 2>&1; then
-        ok_load=1
+    # (e) Poll /v1/models with elapsed-wall-clock budget.
+    local url
+    url="$(backend_url)/v1/models"
+    local _start=$SECONDS _timed_out=0
+    while true; do
+      if curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+        _timed_out=0
+        break
+      fi
+      if ((SECONDS - _start >= BACKEND_POLL_SECS)); then
+        _timed_out=1
         break
       fi
       sleep 1
     done
 
-    if [[ "${ok_load}" -eq 0 ]]; then
+    if [[ "${_timed_out}" -eq 1 ]]; then
       # (g) Roll back.
       if [[ -n "${previous}" && -f "${PROFILES_DIR}/${previous}.yaml" ]]; then
         ln -sfn "${PROFILES_DIR}/${previous}.yaml" "${ACTIVE_CONFIG}"
         if ! launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1; then
-          echo "WARN: rollback kickstart failed — backend may be in unknown state. Run: 4lm logs backend" >&2
+          warn "rollback kickstart failed — backend may be in unknown state. Run: 4lm logs backend"
           exit 1
         fi
-        echo "Profile switch failed; reverted to ${previous}" >&2
+        # Poll for rollback backend to respond.
+        _start=$SECONDS
+        _timed_out=0
+        while true; do
+          if curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+            _timed_out=0
+            break
+          fi
+          if ((SECONDS - _start >= BACKEND_POLL_SECS)); then
+            _timed_out=1
+            break
+          fi
+          sleep 1
+        done
+        if [[ "${_timed_out}" -eq 0 ]]; then
+          ok "reverted to ${previous}"
+        else
+          warn "reverted profile did not respond within ${BACKEND_POLL_SECS}s"
+        fi
         exit 1
       else
-        echo "Profile switch failed and no previous profile to revert to" >&2
-        exit 1
+        die "backend did not respond; reverting — no previous profile to revert to"
       fi
     fi
   fi

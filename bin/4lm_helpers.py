@@ -292,6 +292,10 @@ def cmd_models_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def is_orphaned(worker_pid: str, log_entries: list[str], window_admissions: int) -> bool:
+    return any(worker_pid in line for line in log_entries) and window_admissions == 0
+
+
 def cmd_diag(args: argparse.Namespace) -> int:
     import re
     import time
@@ -334,10 +338,12 @@ def cmd_diag(args: argparse.Namespace) -> int:
     finished_uids: set[str] = set()
     worker_pids: set[str] = set()
     all_admit_uids: set[str] = set()
+    log_lines: list[str] = []
 
     with open(log_path) as f:
         for line in f:
             line = line.rstrip()
+            log_lines.append(line)
             # extract timestamp prefix
             ts_str = line[:19] if len(line) >= 19 else ""
             try:
@@ -377,10 +383,8 @@ def cmd_diag(args: argparse.Namespace) -> int:
     else:
         console.print("  (none)")
 
-    # Orphaned workers: worker pids in the log but no admission events at all.
-    # (log format doesn't link pids to uids, so any worker in a log with no
-    # admits is treated as having processed nothing — i.e. orphaned)
-    orphaned = worker_pids if (worker_pids and not all_admit_uids) else set()
+    window_admissions = len(all_admit_uids)
+    orphaned = {pid for pid in worker_pids if is_orphaned(pid, log_lines, window_admissions)}
 
     if orphaned:
         console.print(f"\n[bold]Orphaned workers[/]")

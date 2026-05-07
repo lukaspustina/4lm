@@ -33,6 +33,7 @@ YAML
 
 _write_mlx_profile() {
   cat > "${BATS_TMPDIR}/mlx-test.yaml" <<'YAML'
+backend: mlx
 models:
   - model_path: mlx-community/test-model
     served_model_name: test-model
@@ -135,4 +136,29 @@ YAML
   ln -sfn "${REPO_ROOT}/tests/helpers/mlx-openai-server" "${bin}/mlx-openai-server"
   run -127 env PATH="${bin}:/usr/bin:/bin" "${BACKEND_START}"
   [[ "$output" == *"FATAL: python3 not found"* ]]
+}
+
+# ---- Phase 1: inline profile validation -------------------------------------
+
+@test "backend-start: profile missing models: key exits non-zero with profile+invalid on stderr" {
+  cat > "${BATS_TMPDIR}/no-models.yaml" <<'YAML'
+backend: mlx
+YAML
+  ln -sfn "${BATS_TMPDIR}/no-models.yaml" "${HOME}/.4lm/config/active-profile"
+  run "${BACKEND_START}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"profile"* ]] && [[ "$output" == *"invalid"* ]]
+}
+
+@test "backend-start: profile missing backend: key exits non-zero with profile+invalid on stderr" {
+  cat > "${BATS_TMPDIR}/no-backend.yaml" <<'YAML'
+models:
+  - model_path: mlx-community/test
+    served_model_name: test
+    context_length: 4096
+YAML
+  ln -sfn "${BATS_TMPDIR}/no-backend.yaml" "${HOME}/.4lm/config/active-profile"
+  run "${BACKEND_START}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"profile"* ]] && [[ "$output" == *"invalid"* ]]
 }
