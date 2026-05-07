@@ -6,6 +6,7 @@ __version__ = "0.1.0"
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -181,6 +182,110 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     return 0
 
 
+def _hf_is_cached(hf_cache_dir: str, repo: str) -> bool:
+    """Two-condition cache check matching hf_is_cached() in bin/4lm."""
+    slug = "models--" + repo.replace("/", "--")
+    base = Path(hf_cache_dir) / "hub" / slug
+    if not (base / "refs" / "main").is_file():
+        return False
+    blobs = base / "blobs"
+    if not blobs.is_dir():
+        return False
+    total = sum(f.stat().st_size for f in blobs.iterdir() if f.is_file())
+    return total >= 1_073_741_824
+
+
+def cmd_models_list(args: argparse.Namespace) -> int:
+    import subprocess
+
+    import yaml
+    from rich.console import Console
+    from rich.table import Table
+
+    profiles_dir = Path(args.profiles_dir)
+    hf_cache_dir = args.hf_cache_dir
+
+    # Parse all profile YAMLs
+    entries: list[dict] = []  # {model_path, backend, profile}
+    for yaml_path in sorted(profiles_dir.glob("*.yaml")):
+        try:
+            with open(yaml_path) as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            print(f"error: failed to parse {yaml_path.name}: {e}", file=sys.stderr)
+            return 1
+        if not isinstance(data, dict):
+            continue
+        backend = data.get("backend", "mlx")
+        profile = yaml_path.stem
+        for model in data.get("models", []):
+            mp = model.get("model_path", "")
+            if mp:
+                entries.append({"model_path": mp, "backend": backend, "profile": profile})
+
+    # Deduplicate by model_path, collecting all profiles per model
+    seen: dict[str, dict] = {}  # model_path -> {backend, profiles: list}
+    for e in entries:
+        mp = e["model_path"]
+        if mp not in seen:
+            seen[mp] = {"backend": e["backend"], "profiles": []}
+        seen[mp]["profiles"].append(e["profile"])
+
+    console = Console()
+    table = Table(title="4lm Models", show_edge=False, pad_edge=False)
+    table.add_column("Model", no_wrap=True)
+    table.add_column("Backend", no_wrap=True)
+    table.add_column("Profiles")
+    table.add_column("Cached", justify="center")
+
+    for mp, info in seen.items():
+        be = info["backend"]
+        # Annotate profile names with backend when not mlx (backward compat)
+        if be == "mlx":
+            profs = ", ".join(info["profiles"])
+        else:
+            profs = ", ".join(f"{p} ({be})" for p in info["profiles"])
+        if be == "ollama":
+            cached_str = "[dim]~[/]"
+        elif _hf_is_cached(hf_cache_dir, mp):
+            cached_str = "[green]✓[/]"
+        else:
+            cached_str = "[yellow]—[/]"
+        table.add_row(mp, be, profs, cached_str)
+
+    # Unreferenced HF models
+    seen_paths = set(seen.keys())
+    unreferenced: list[tuple[str, str]] = []
+
+    hf_bin = subprocess.run(["which", "hf"], capture_output=True, text=True)
+    if hf_bin.returncode == 0:
+        r = subprocess.run(
+            ["hf", "cache", "list", "--format", "agent"],
+            capture_output=True, text=True,
+        )
+        for line in r.stdout.splitlines():
+            parts = line.split("\t")
+            if not parts or not parts[0].startswith("model/"):
+                continue
+            repo = parts[0][len("model/"):]
+            if repo not in seen_paths:
+                unreferenced.append((repo, "hf"))
+
+    ollama_bin = subprocess.run(["which", "ollama"], capture_output=True, text=True)
+    if ollama_bin.returncode == 0:
+        r = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+        for line in r.stdout.splitlines()[1:]:  # skip header
+            name = line.split()[0] if line.split() else ""
+            if name and name not in seen_paths:
+                unreferenced.append((name, "ollama"))
+
+    for repo, src in unreferenced:
+        table.add_row(f"[dim]{repo}[/]", f"[dim]{src}[/]", "[dim](unreferenced)[/]", "[dim]~[/]")
+
+    console.print(table)
+    return 0
+
+
 def cmd_hello(args: argparse.Namespace) -> int:
     print("hello from 4lm_helpers")
     return 0
@@ -202,6 +307,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_rec.add_argument("active_paths", help="comma-separated active profile model paths")
     p_rec.add_argument("limit", help="number of top models to display")
 
+    p_ml = sub.add_parser("models-list", help="list models across profiles")
+    p_ml.add_argument("profiles_dir", help="path to profiles directory")
+    p_ml.add_argument("hf_cache_dir", help="HuggingFace cache root (~/.cache/huggingface)")
+
     return parser
 
 
@@ -213,6 +322,8 @@ def main() -> int:
         return cmd_hello(args)
     if args.command == "recommend":
         return cmd_recommend(args)
+    if args.command == "models-list":
+        return cmd_models_list(args)
 
     parser.print_help()
     return 1

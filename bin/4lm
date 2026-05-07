@@ -1159,74 +1159,9 @@ cmd_restart() {
 # ---- Models ----------------------------------------------------------------
 
 cmd_models_list() {
-  [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
-  echo "${C_DIM}─── 4lm Models ───${C_RST}"
-  echo
-
-  # Collect all model entries: "model_path|backend|profile_name"
-  local all_entries="" be model_path _served _od pname
-  for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
-    [[ -f "${profile_yaml}" ]] || continue
-    pname="$(basename "${profile_yaml}" .yaml)"
-    be="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
-    while IFS='|' read -r _served model_path _od; do
-      [[ -z "${model_path}" ]] && continue
-      all_entries="${all_entries}${model_path}|${be}|${pname}"$'\n'
-    done < <(profile_model_entries "${profile_yaml}")
-  done
-
-  local seen_models="" missing_count=0
-  while IFS='|' read -r model_path be pname; do
-    [[ -z "${model_path}" ]] && continue
-    grep -qxF "${model_path}" <<<"${seen_models}" && continue
-    seen_models="${seen_models}${model_path}"$'\n'
-
-    local profs
-    profs="$(awk -F'|' -v m="${model_path}" \
-      'BEGIN{s=""} $1==m {p=$3; if ($2!="mlx") p=p" ("$2")"; s=(s=="")?p:s", "p} END{print s}' \
-      <<<"${all_entries}")"
-
-    if [[ "${be}" == "ollama" ]]; then
-      printf "  ${C_DIM}~${C_RST}  %-52s  %s\n" "${model_path}" "${profs}"
-    elif hf_is_cached "${model_path}"; then
-      printf "  ${C_GRN}✓${C_RST}  %-52s  %s\n" "${model_path}" "${profs}"
-    else
-      printf "  ${C_YEL}✗${C_RST}  %-52s  %s\n" "${model_path}" "${profs}"
-      ((missing_count++)) || true
-    fi
-  done <<<"${all_entries}"
-
-  # Show cached models not referenced in any profile.
-  local unreferenced=0
-  if command -v hf >/dev/null 2>&1; then
-    local hf_id hf_size
-    while IFS=$'\t' read -r hf_id hf_size _rest; do
-      [[ "${hf_id}" == "id" ]] && continue
-      [[ "${hf_id}" != model/* ]] && continue
-      local repo="${hf_id#model/}"
-      grep -qxF "${repo}" <<<"${seen_models}" && continue
-      printf "  ${C_DIM}✓  %-52s  (unreferenced)${C_RST}\n" "${repo}"
-      ((unreferenced++)) || true
-    done < <(hf cache list --format agent 2>/dev/null)
-  fi
-  if command -v ollama >/dev/null 2>&1; then
-    local ol_name
-    while IFS='|' read -r ol_name _rest; do
-      [[ -z "${ol_name}" ]] && continue
-      grep -qxF "${ol_name}" <<<"${seen_models}" && continue
-      printf "  ${C_DIM}~  %-52s  (unreferenced)${C_RST}\n" "${ol_name}"
-      ((unreferenced++)) || true
-    done < <(ollama list 2>/dev/null | awk 'NR>1 {print $1 "|" $3 " " $4}')
-  fi
-  echo
-
-  if ((missing_count > 0)); then
-    info "${missing_count} model(s) not cached — run: 4lm models download"
-  elif ((unreferenced > 0)); then
-    info "${unreferenced} unreferenced model(s) in cache — run: 4lm models cleanup"
-  else
-    ok "All models cached."
-  fi
+  require_helpers_python
+  "${HELPERS_PYTHON}" "${HELPERS_PY}" models-list \
+    "${PROFILES_DIR}" "${HF_HOME:-${HOME}/.cache/huggingface}"
 }
 
 # Download a single HF repo and print size progress until done.

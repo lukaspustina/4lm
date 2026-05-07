@@ -184,6 +184,7 @@ YAML
 }
 
 @test "models list: mlx_lm profile annotated with (mlx_lm)" {
+  [[ -x "${LLM_HELPERS_PYTHON:-}" ]] || skip "venv not installed — run: make install"
   cat > "${HOME}/.4lm/config/profiles/mlxlm-ann.yaml" <<'YAML'
 backend: mlx_lm
 models:
@@ -279,6 +280,7 @@ YAML
 }
 
 @test "models list: ollama profile annotated with (ollama) and shows ~ not hf cache path" {
+  [[ -x "${LLM_HELPERS_PYTHON:-}" ]] || skip "venv not installed — run: make install"
   export HF_LOG="${BATS_TMPDIR}/hf-list-calls"
   rm -f "${HF_LOG}"
   cat > "${HOME}/.4lm/config/profiles/ollama-ann.yaml" <<'YAML'

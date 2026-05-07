@@ -1,0 +1,8 @@
+backend: ollama
+
+models:
+  - model_path: mlx-community/Shared-8bit
+    served_model_name: shared
+
+  - model_path: ollama-only-model:q4
+    served_model_name: ollama-model
