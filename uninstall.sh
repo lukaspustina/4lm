@@ -71,6 +71,10 @@ if [[ -L "${BIN_DIR}/4lm" ]]; then
 fi
 
 # ---- 3. Remove ~/.4lm/ ----------------------------------------------------
+if [[ -d "${LLM_HOME}/venv" ]]; then
+  rm -rf "${LLM_HOME}/venv"
+  ok "removed ${LLM_HOME}/venv"
+fi
 if [[ -d "${LLM_HOME}" ]]; then
   rm -rf "${LLM_HOME}"
   ok "removed ${LLM_HOME}"

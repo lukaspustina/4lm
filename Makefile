@@ -2,9 +2,10 @@ SHELL       := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := check
 
-SCRIPTS    := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh uninstall.sh tests/lint-profiles.sh
-PLISTS     := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
-SHFMT_OPTS := -i 2 -ci
+SCRIPTS        := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh install.sh uninstall.sh tests/lint-profiles.sh
+PLISTS         := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
+SHFMT_OPTS     := -i 2 -ci
+HELPERS_PYTHON := $(HOME)/.4lm/venv/bin/python
 
 
 .PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint models models-list models-clean models-rm help
@@ -28,11 +29,17 @@ lint: ## shellcheck + shfmt -d on all scripts
 fmt: ## shfmt -w (rewrites scripts in place)
 	shfmt $(SHFMT_OPTS) -w $(SCRIPTS)
 
-syntax: ## bash -n on all scripts (literal SDD R37)
+syntax: ## bash -n on all scripts + py_compile on helpers
 	@for f in $(SCRIPTS); do bash -n $$f && echo "OK   $$f"; done
+	python3 -m py_compile bin/4lm_helpers.py && echo "OK   bin/4lm_helpers.py"
 
-test: ## Run the bats suite
+test: ## Run the bats suite + pytest (if venv installed)
 	bats tests/
+	@if [ -x "$(HELPERS_PYTHON)" ]; then \
+	  $(HELPERS_PYTHON) -m pytest tests/python/ -q; \
+	else \
+	  echo "skip: pytest — venv not installed (run make install)"; \
+	fi
 
 plist-lint: ## plutil -lint + xmllint --noout on all plists
 	plutil -lint $(PLISTS)
