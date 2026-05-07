@@ -49,6 +49,20 @@ YAML
 
 # ---- cmd_health formatting --------------------------------------------------
 
+@test "cmd_doctor: active profile with uncached mlx model prints warn: and download hint" {
+  # Use mlx-coding profile (has mlx backend + models), point HF_HOME at empty dir.
+  # Doctor may exit non-zero due to wired-memory check in sandbox; only assert output.
+  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml" \
+     "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
+  ln -sfn "${HOME}/.4lm/config/profiles/mlx-coding.yaml" \
+     "${HOME}/.4lm/config/active-profile"
+  export HF_HOME="${BATS_TMPDIR}/empty-hf-cache"
+  mkdir -p "${HF_HOME}/hub"
+  run "${REPO_ROOT}/bin/4lm" doctor
+  echo "$output" | grep -q "warn:"
+  echo "$output" | grep -q "download"
+}
+
 @test "cmd_health: sysctl returns 0 → exit 1, stderr contains error:" {
   # SYSCTL_WIRED_MB=0 makes the stub return 0 for iogpu.wired_limit_mb
   SYSCTL_WIRED_MB=0 run "${REPO_ROOT}/bin/4lm" health

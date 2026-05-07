@@ -139,6 +139,19 @@ FAKE
   [ "$status" -eq 0 ]
 }
 
+@test "bin/4lm has no raw echo >&2 outside die/warn helper definitions" {
+  # Only the die() and warn() function bodies contain echo ... >&2 (exactly 2 lines)
+  count="$(grep -c 'echo.*>&2' "${REPO_ROOT}/bin/4lm")"
+  [ "$count" -eq 2 ]
+}
+
+@test "profile set with invalid YAML exits 1 with error: prefix" {
+  printf 'backend: mlx\n' > "${HOME}/.4lm/config/profiles/badprofile.yaml"
+  run "${REPO_ROOT}/bin/4lm" profile set badprofile
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q "error:"
+}
+
 @test "make test skips pytest and exits 0 when venv absent" {
   run bash -c '
     HELPERS_PYTHON=/nonexistent/python
