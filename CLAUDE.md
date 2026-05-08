@@ -34,7 +34,7 @@ specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
 | Bootstrap dev tools | `make bootstrap` (runs Brewfile + `pipx ensurepath`) |
 | Install / re-install | `make install` (or `./install.sh`) |
 | Full uninstall | `make uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
-| Pre-download models | `make models` (idempotent; `models-list`, `models-clean`, `models-rm`) |
+| Pre-download models | `make models` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download` |
 | Start everything | `4lm start` |
 | Stop everything | `4lm stop` |
 | Status | `4lm` (alias for `4lm status`) |

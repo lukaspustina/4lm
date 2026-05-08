@@ -32,7 +32,7 @@ Refined: 2026-05-04
             ├─ [mlx]    exec mlx-openai-server launch --config ...
             └─ [ollama] OLLAMA_HOST=<host>:<port> exec ollama serve
 
-4lm models download
+4lm model download
   └─ cmd_models_download()
        ├─ [per mlx profile]    _hf_download_with_progress <model_path>
        └─ [per ollama profile]  ollama pull <model_path>
@@ -48,10 +48,10 @@ Health-poll after kickstart (`GET /v1/models`) is unchanged — both Ollama and 
 4. `validate_profile` shall continue to require `context_length:` (positive integer) and valid `tool_call_parser:` values for all `mlx` profiles (existing rules unchanged).
 5. `4lm-backend-start.sh` shall read `backend:` from the active profile and start either `mlx-openai-server launch` (existing behaviour) or `ollama serve` (with `OLLAMA_HOST` set).
 6. The wired-memory limit sysctl shall only be applied for `mlx` profiles.
-7. `4lm models download` (no-arg form) shall dispatch to `hf download` for mlx-backend models and `ollama pull` for ollama-backend models, processing every profile in `~/.4lm/config/profiles/`. Each unique `model_path` per backend type is processed exactly once.
-8. `4lm models download <repo> [<repo>...]` (explicit-arg form) shall remain HF-only. Users must invoke `ollama pull` directly for Ollama models; passing any arg containing `:` (Ollama tag heuristic) prints `error: explicit download is HF-only; use: ollama pull <tag>` and exits 1.
+7. `4lm model download` (no-arg form) shall dispatch to `hf download` for mlx-backend models and `ollama pull` for ollama-backend models, processing every profile in `~/.4lm/config/profiles/`. Each unique `model_path` per backend type is processed exactly once.
+8. `4lm model download <repo> [<repo>...]` (explicit-arg form) shall remain HF-only. Users must invoke `ollama pull` directly for Ollama models; passing any arg containing `:` (Ollama tag heuristic) prints `error: explicit download is HF-only; use: ollama pull <tag>` and exits 1.
 9. The `make models` target shall perform the same backend-aware dispatch as R7.
-10. `4lm models list` shall annotate each profile name with its backend type (e.g. `(mlx)` or `(ollama)`) and shall not query the HuggingFace cache for Ollama model entries; instead it shall show `~` in the cache-path column.
+10. `4lm model list` shall annotate each profile name with its backend type (e.g. `(mlx)` or `(ollama)`) and shall not query the HuggingFace cache for Ollama model entries; instead it shall show `~` in the cache-path column.
 11. `4lm doctor` shall report whether the `ollama` binary is available: `ok` if found, `warn` if absent. Exit code remains 0 in both cases. The check must not set `fail=1` (ollama is optional).
 12. `install.sh` shall migrate the `mlx-active` symlink to `active-profile` and the `mlx-previous` file to `previous-profile` on existing installations, then remove the old names.
 13. `install.sh` shall warn (not fail) if the `ollama` binary is absent, printing: `warn: ollama not found — needed only for profiles with backend: ollama` and `    Install: brew install ollama`.
@@ -175,7 +175,7 @@ The rest of the `run_outdated_check()` models section (HF API calls) is unchange
 | Unknown `backend:` value | `profile_backend()` called on profile with e.g. `backend: llamacpp` | Return 1 | `unknown backend 'llamacpp' in <path>` on stderr |
 | `ollama` binary absent at start | `4lm-backend-start.sh` with ollama profile, binary not in PATH | Exit 127 | `FATAL: ollama not found in PATH — Install: brew install ollama` |
 | `ollama pull` failure | `cmd_models_download()` | `die` (exits 1) | `ollama pull failed: <model_path>` |
-| Explicit-arg with Ollama tag | `4lm models download gemma4:27b` (arg contains `:`) | Exit 1 | `error: explicit download is HF-only; use: ollama pull <tag>` |
+| Explicit-arg with Ollama tag | `4lm model download gemma4:27b` (arg contains `:`) | Exit 1 | `error: explicit download is HF-only; use: ollama pull <tag>` |
 | `ollama serve` exits before poll | Health poll in `cmd_profile_set()` times out | Rollback to previous profile; kickstart previous backend | `WARN: rollback kickstart failed — backend may be in unknown state` (existing message) |
 | `ollama` absent at install | `install.sh` `command -v ollama` check | Continue; warn; do not set `fail=1` | `warn: ollama not found — needed only for profiles with backend: ollama` + hint |
 
@@ -393,7 +393,7 @@ THEN `OLLAMA_HOST` is `0.0.0.0:8000`
 
 ## Phase 4 — Backend-aware model download
 
-Make `4lm models download` and `make models` dispatch per backend. Fix `cmd_models_list()`, `run_outdated_check()`, and `cmd_doctor()`.
+Make `4lm model download` and `make models` dispatch per backend. Fix `cmd_models_list()`, `run_outdated_check()`, and `cmd_doctor()`.
 
 **Changes:**
 
@@ -439,20 +439,20 @@ exit "${HF_STUB_EXIT:-0}"
 
 Add model download and list tests to `tests/test_profile_state_machine.bats`.
 
-**Phase complete when:** `4lm models download` logs `hf download` for mlx models and `ollama pull` for Ollama models; `make models` does the same; `4lm models list` shows `(ollama)` for Ollama profiles; `make check` passes.
+**Phase complete when:** `4lm model download` logs `hf download` for mlx models and `ollama pull` for Ollama models; `make models` does the same; `4lm model list` shows `(ollama)` for Ollama profiles; `make check` passes.
 
 ### Test Scenarios
 
 GIVEN profiles dir has one mlx profile (model path `org/ModelA`) and one ollama profile (model path `gemma4:27b`), with `hf` and `ollama` stubs in PATH
-WHEN `4lm models download` is run (no args)
+WHEN `4lm model download` is run (no args)
 THEN `$BATS_TMPDIR/ollama-calls` records exactly one line `pull gemma4:27b`; `$BATS_TMPDIR/hf-calls` records exactly one line containing `org/ModelA`
 
 GIVEN two ollama profiles both referencing `gemma4:27b`
-WHEN `4lm models download` is run
+WHEN `4lm model download` is run
 THEN `$BATS_TMPDIR/ollama-calls` records exactly one line (deduplicated by model_path)
 
 GIVEN the profiles dir includes one ollama profile
-WHEN `4lm models list` is run
+WHEN `4lm model list` is run
 THEN output contains `(ollama)` for that profile; `$BATS_TMPDIR/hf-calls` does not contain the ollama model path
 
 GIVEN `ollama` is not in PATH
@@ -463,7 +463,7 @@ GIVEN profiles dir has one mlx and one ollama profile, with stubs in PATH
 WHEN `make models` is run
 THEN `hf download` is invoked for the mlx model; `ollama pull` is invoked for the ollama model; make exits 0
 
-GIVEN `4lm models download gemma4:27b` is run (arg contains `:`)
+GIVEN `4lm model download gemma4:27b` is run (arg contains `:`)
 WHEN the command executes
 THEN exit code is 1; output contains "explicit download is HF-only"
 
@@ -522,7 +522,7 @@ None.
 
 - Concurrent mlx + Ollama backends with request routing.
 - Ollama-native API (`/api/chat`) exposure through WebUI (`ENABLE_OLLAMA_API`).
-- Automatic `ollama pull` during `4lm profile set` (users must pre-pull via `4lm models download`).
-- `4lm models rm` / `models-clean` for Ollama models.
+- Automatic `ollama pull` during `4lm profile set` (users must pre-pull via `4lm model download`).
+- `4lm model rm` / `models-clean` for Ollama models.
 - Support for any backend other than `mlx` and `ollama`.
 - Windows or Linux support.
