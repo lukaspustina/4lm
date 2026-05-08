@@ -300,6 +300,73 @@ def is_orphaned(worker_pid: str, log_entries: list[str], window_admissions: int)
     return any(worker_pid in line for line in log_entries) and window_admissions == 0
 
 
+def _smoke_one(base_url: str, model_id: str, console: "Console") -> bool:
+    import time
+    import urllib.error
+    import urllib.request
+
+    payload = json.dumps({
+        "model": model_id,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 128,
+        "stream": False,
+    }).encode()
+    req = urllib.request.Request(
+        f"{base_url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        ms = int((time.time() - t0) * 1000)
+        msg = result.get("choices", [{}])[0].get("message", {})
+        content = (msg.get("content") or "").strip()
+        thinking = (msg.get("thinking") or "").strip()
+        completion_tokens = result.get("usage", {}).get("completion_tokens", 0)
+        if content or thinking or completion_tokens > 0:
+            console.print(f"  [green]✓[/] smoke test: {model_id} responded in {ms}ms")
+            return True
+        console.print(f"  [yellow]warn:[/] smoke test: empty response from {model_id}")
+        return False
+    except urllib.error.HTTPError as e:
+        console.print(f"  [yellow]warn:[/] smoke test: HTTP {e.code} from {model_id}")
+        return False
+    except (urllib.error.URLError, OSError) as e:
+        ms = int((time.time() - t0) * 1000)
+        console.print(f"  [yellow]warn:[/] smoke test: {model_id} failed after {ms}ms ({type(e).__name__})")
+        return False
+
+
+def cmd_smoke(args: argparse.Namespace) -> int:
+    import urllib.error
+    import urllib.request
+
+    from rich.console import Console
+
+    console = Console()
+    base_url = args.base_url
+
+    try:
+        with urllib.request.urlopen(f"{base_url}/v1/models", timeout=5) as resp:
+            data = json.loads(resp.read())
+        models = data.get("data", [])
+        if not models:
+            console.print("  [yellow]warn:[/] smoke test: no models loaded")
+            return 1
+    except (urllib.error.URLError, OSError) as e:
+        console.print(f"  [yellow]warn:[/] smoke test: cannot reach backend ({type(e).__name__})")
+        return 1
+
+    failed = 0
+    for model in models:
+        if not _smoke_one(base_url, model["id"], console):
+            failed += 1
+    return 1 if failed else 0
+
+
 def cmd_diag(args: argparse.Namespace) -> int:
     import re
     import time
@@ -547,6 +614,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_ml.add_argument("profiles_dir", help="path to profiles directory")
     p_ml.add_argument("hf_cache_dir", help="HuggingFace cache root (~/.cache/huggingface)")
 
+    p_smoke = sub.add_parser("smoke", help="send a minimal inference request to verify the backend end-to-end")
+    p_smoke.add_argument("base_url", help="backend base URL (e.g. http://127.0.0.1:8080)")
+
     p_diag = sub.add_parser("diag", help="show backend diagnostics and log analysis")
     p_diag.add_argument("log_file", help="path to backend.log")
     p_diag.add_argument("backend_port", help="backend HTTP port")
@@ -568,6 +638,8 @@ def main() -> int:
         return cmd_recommend(args)
     if args.command == "models-list":
         return cmd_models_list(args)
+    if args.command == "smoke":
+        return cmd_smoke(args)
     if args.command == "diag":
         return cmd_diag(args)
     if args.command == "outdated":
