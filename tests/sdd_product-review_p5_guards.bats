@@ -17,17 +17,17 @@ setup() {
   export LAUNCHD_DIR="${HOME}/.4lm/launchd"
 }
 
-# ---- models rm --confirm guard -----------------------------------------------
+# ---- model rm --confirm guard -----------------------------------------------
 
-@test "models rm without --confirm exits 0 and prints --confirm hint and repo name" {
-  run "${REPO_ROOT}/bin/4lm" models rm org/myrepo
+@test "model rm without --confirm exits 0 and prints --confirm hint and repo name" {
+  run "${REPO_ROOT}/bin/4lm" model rm org/myrepo
   [ "$status" -eq 0 ]
   echo "$output" | grep -q -- "--confirm"
   echo "$output" | grep -q "org/myrepo"
 }
 
-@test "models rm with --confirm invokes hf cache rm with correct repo" {
-  run "${REPO_ROOT}/bin/4lm" models rm org/myrepo --confirm
+@test "model rm with --confirm invokes hf cache rm with correct repo" {
+  run "${REPO_ROOT}/bin/4lm" model rm org/myrepo --confirm
   [ "$status" -eq 0 ]
   grep -q "cache rm org/myrepo" "${BATS_TMPDIR}/hf-calls"
 }
@@ -76,18 +76,18 @@ setup() {
   echo "$output" | grep -q "make install"
 }
 
-# ---- help surface: models cleanup entry ------------------------------------
+# ---- help surface: model cleanup entry ------------------------------------
 
-@test "4lm help contains models cleanup entry" {
+@test "4lm help contains model cleanup entry" {
   run "${REPO_ROOT}/bin/4lm" help
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "models cleanup"
+  echo "$output" | grep -q "model cleanup"
 }
 
 # ---- hf cache prune --yes ---------------------------------------------------
 
-@test "models clean invokes hf cache prune with --yes" {
-  run "${REPO_ROOT}/bin/4lm" models clean
+@test "model clean invokes hf cache prune with --yes" {
+  run "${REPO_ROOT}/bin/4lm" model clean
   [ "$status" -eq 0 ]
   # The hf stub logs its arguments; verify --yes was passed.
   grep -q -- "cache prune --yes" "${BATS_TMPDIR}/hf-calls"

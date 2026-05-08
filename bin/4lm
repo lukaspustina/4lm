@@ -1082,7 +1082,7 @@ _doctor_check_models_cached() {
     fi
   done < <(profile_model_entries "${ACTIVE_CONFIG}")
   if [[ "${found}" -eq 0 ]]; then
-    warn "no models cached — run: 4lm models download"
+    warn "no models cached — run: 4lm model download"
   fi
 }
 
@@ -1272,7 +1272,7 @@ cmd_models_rm() {
     esac
     shift
   done
-  [[ -n "${repo}" ]] || die "Usage: 4lm models rm <repo> [--confirm]"
+  [[ -n "${repo}" ]] || die "Usage: 4lm model rm <repo> [--confirm]"
   if [[ "${confirm}" != "true" ]]; then
     printf 'Pass --confirm to remove: %s\n' "${repo}"
     return 0
@@ -1288,7 +1288,7 @@ cmd_models_cleanup() {
   while (($# > 0)); do
     case "$1" in
       --confirm) confirm=true ;;
-      *) die "Usage: 4lm models cleanup [--confirm]" ;;
+      *) die "Usage: 4lm model cleanup [--confirm]" ;;
     esac
     shift
   done
@@ -1385,7 +1385,8 @@ cmd_models() {
     clean | prune) cmd_models_clean ;;
     cleanup) cmd_models_cleanup "$@" ;;
     rm | remove) cmd_models_rm "$@" ;;
-    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | cleanup [--confirm] | rm <repo>" ;;
+    recommend | rec) cmd_recommend "$@" ;;
+    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | cleanup [--confirm] | rm <repo> | recommend" ;;
   esac
 }
 
@@ -1488,18 +1489,18 @@ ${C_DIM}Clients:${C_RST}
   4lm open [webui|backend]           Open URL in browser (default: webui)
 
 ${C_DIM}Models:${C_RST}
-  4lm models [list]                  List models from all profiles with cache status
-  4lm models download [repo...]      Download missing models (all profiles), or specific repo(s)
-  4lm models clean                   Prune orphaned HuggingFace cache revisions
-  4lm models cleanup [--confirm]     Remove cached models not referenced in any profile
-  4lm models rm <repo> [--confirm]   Remove a cached model repo
+  4lm model [list]                   List models from all profiles with cache status
+  4lm model download [repo...]       Download missing models (all profiles), or specific repo(s)
+  4lm model clean                    Prune orphaned HuggingFace cache revisions
+  4lm model cleanup [--confirm]      Remove cached models not referenced in any profile
+  4lm model rm <repo> [--confirm]    Remove a cached model repo
+  4lm model recommend [<use-case>]   Top model picks for this hardware (llmfit + localmaxxing benchmarks)
+               [-n N] [--runtime R]  use-case: coding|reasoning|chat|general. R: mlx|llamacpp
 
 ${C_DIM}Updates:${C_RST}
   4lm outdated                       Check PyPI / Homebrew / HF for newer versions
   4lm upgrade [chan] [name...]       Apply updates (brew, models, python). chan: brew | models | python.
                                      No args = all channels. Names limit to specific entries.
-  4lm recommend [<use-case>]         Top model picks for this hardware (llmfit + localmaxxing benchmarks)
-               [-n N] [--runtime R]  use-case: coding|reasoning|chat|general. R: mlx|llamacpp
 
 ${C_DIM}Other:${C_RST}
   4lm doctor                         Check prerequisites
@@ -1523,10 +1524,9 @@ main() {
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor ;;
     diag | diagnose) cmd_diag ;;
-    models | model | m) cmd_models "$@" ;;
+    model | m) cmd_models "$@" ;;
     outdated | out) cmd_outdated ;;
     upgrade | up) cmd_upgrade "$@" ;;
-    recommend | rec) cmd_recommend "$@" ;;
     open) cmd_open "$@" ;;
     opencode | code) cmd_opencode "$@" ;;
     uninstall | remove) cmd_uninstall "$@" ;;

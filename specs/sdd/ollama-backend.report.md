@@ -26,10 +26,10 @@
 | R4 | mlx profiles still require `context_length` and valid `tool_call_parser` | satisfied |
 | R5 | `4lm-backend-start.sh` dispatches mlx vs `ollama serve` with `OLLAMA_HOST` | satisfied |
 | R6 | Wired-memory sysctl gated to mlx only | satisfied |
-| R7 | `4lm models download` (no-arg) dispatches per backend with dedup | satisfied |
+| R7 | `4lm model download` (no-arg) dispatches per backend with dedup | satisfied |
 | R8 | Explicit-arg form HF-only; `:` arg exits 1 with error | satisfied |
 | R9 | `make models` backend-aware dispatch | satisfied |
-| R10 | `4lm models list` annotates backend; `~` for ollama | satisfied |
+| R10 | `4lm model list` annotates backend; `~` for ollama | satisfied |
 | R11 | `4lm doctor` warns on missing ollama, exit 0, no fail | satisfied |
 | R12 | `install.sh` migrates mlx-active → active-profile | satisfied |
 | R13 | `install.sh` warns (non-fatal) on missing ollama | satisfied |
@@ -48,9 +48,9 @@
 2. `4lm profile set ollama-gemma4` — expected: "Switched to ollama-gemma4"; symlink points to `ollama-gemma4.yaml`
 3. `4lm start` with ollama profile active — expected: `ollama serve` launched on port 8000; `OLLAMA_HOST=127.0.0.1:8000`
 4. `4lm start` with mlx profile active — expected: `mlx-openai-server launch` called; wired-memory sysctl applied
-5. `4lm models list` — expected: mlx profiles show `(mlx)`, ollama profiles show `(ollama)`; ollama models show `~` in cache column
-6. `4lm models download` — expected: logs `hf download` for mlx models, `ollama pull` for ollama models
-7. `4lm models download gemma4:27b` — expected: exit 1 with "explicit download is HF-only"
+5. `4lm model list` — expected: mlx profiles show `(mlx)`, ollama profiles show `(ollama)`; ollama models show `~` in cache column
+6. `4lm model download` — expected: logs `hf download` for mlx models, `ollama pull` for ollama models
+7. `4lm model download gemma4:27b` — expected: exit 1 with "explicit download is HF-only"
 8. `4lm doctor` without ollama installed — expected: warns about ollama, exit 0
 9. `./install.sh` on system with `mlx-active` symlink — expected: migrated to `active-profile`, old name removed
 10. `4lm profile set bad-backend` (profile with `backend: llamacpp`) — expected: exit 1, "unknown backend"

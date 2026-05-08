@@ -191,7 +191,7 @@ models:
   - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
     served_model_name: gemma4-26b
 YAML
-  run "${REPO_ROOT}/bin/4lm" models list
+  run "${REPO_ROOT}/bin/4lm" model list
   [ "$status" -eq 0 ]
   [[ "$output" == *"(mlx_lm)"* ]]
 }
@@ -207,7 +207,7 @@ models:
   - model_path: mlx-community/gemma-4-26b-a4b-it-4bit
     served_model_name: gemma4-26b
 YAML
-  run "${REPO_ROOT}/bin/4lm" models download
+  run "${REPO_ROOT}/bin/4lm" model download
   [ "$status" -eq 0 ]
   grep -q "mlx-community/gemma-4-26b-a4b-it-4bit" "${HF_LOG}"
   [ ! -f "${OLLAMA_LOG}" ] || ! grep -q "pull" "${OLLAMA_LOG}"
@@ -235,7 +235,7 @@ models:
     served_model_name: gemma4-27b
 YAML
 
-  run "${REPO_ROOT}/bin/4lm" models download
+  run "${REPO_ROOT}/bin/4lm" model download
   [ "$status" -eq 0 ]
   grep -q "pull gemma4:27b" "${OLLAMA_LOG}"
   grep -q "org/ModelA" "${HF_LOG}"
@@ -260,14 +260,14 @@ models:
     served_model_name: gemma4-dup
 YAML
 
-  run "${REPO_ROOT}/bin/4lm" models download
+  run "${REPO_ROOT}/bin/4lm" model download
   [ "$status" -eq 0 ]
   count="$(grep -c "pull gemma4:27b" "${OLLAMA_LOG}" || true)"
   [ "${count}" -eq 1 ]
 }
 
 @test "models download: explicit arg with colon is rejected with HF-only error" {
-  run "${REPO_ROOT}/bin/4lm" models download "gemma4:27b"
+  run "${REPO_ROOT}/bin/4lm" model download "gemma4:27b"
   [ "$status" -eq 1 ]
   [[ "$output" == *"explicit download is HF-only"* ]]
 }
@@ -289,7 +289,7 @@ models:
   - model_path: gemma4:27b
     served_model_name: gemma4-27b
 YAML
-  run "${REPO_ROOT}/bin/4lm" models list
+  run "${REPO_ROOT}/bin/4lm" model list
   [ "$status" -eq 0 ]
   # Profile is annotated with backend type.
   [[ "$output" == *"(ollama)"* ]]
