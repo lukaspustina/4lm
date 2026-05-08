@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Phase 2: onboarding URL hints and cmd_health formatting.
+# Phase 2: onboarding URL hints and cmd_doctor formatting.
 
 bats_require_minimum_version 1.5.0
 
@@ -47,7 +47,7 @@ YAML
   [[ "$output" == *"4lm open"* ]]
 }
 
-# ---- cmd_health formatting --------------------------------------------------
+# ---- cmd_doctor formatting --------------------------------------------------
 
 @test "cmd_doctor: active profile with uncached mlx model prints warn: and download hint" {
   # Use mlx-coding profile (has mlx backend + models), point HF_HOME at empty dir.
@@ -63,16 +63,8 @@ YAML
   echo "$output" | grep -q "download"
 }
 
-@test "cmd_health: sysctl returns 0 → exit 1, stderr contains error:" {
-  # SYSCTL_WIRED_MB=0 makes the stub return 0 for iogpu.wired_limit_mb
-  SYSCTL_WIRED_MB=0 run "${REPO_ROOT}/bin/4lm" health
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"error:"* ]]
-}
-
-@test "cmd_health: sysctl returns 8192 above-threshold → exit 0, stdout contains GB and OK" {
-  SYSCTL_WIRED_MB=200000 run "${REPO_ROOT}/bin/4lm" health
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"GB"* ]]
-  [[ "$output" == *"OK"* ]]
+@test "cmd_doctor: backend not loaded skips smoke test" {
+  # Backend is not loaded in the test environment; smoke test must be absent from output.
+  run "${REPO_ROOT}/bin/4lm" doctor
+  [[ "$output" != *"smoke test"* ]]
 }

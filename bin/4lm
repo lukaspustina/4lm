@@ -361,6 +361,17 @@ cmd_status() {
       printf "  %-10s http://%s:%s\n" "Backend" "${ip}" "${backend_port}"
     fi
   fi
+
+  if is_loaded "${BACKEND_LABEL}"; then
+    echo ""
+    local _url
+    _url="$(backend_url)/v1/models"
+    if curl --max-time 1 --silent --fail "${_url}" >/dev/null 2>&1; then
+      ok "backend: HTTP OK"
+    else
+      warn "backend: loaded but not responding at ${_url}"
+    fi
+  fi
 }
 
 # ---- Logs ------------------------------------------------------------------
@@ -371,29 +382,6 @@ cmd_logs() {
     webui | ui) tail -F "${LOG_DIR}/webui.log" ;;
     *) die "Unknown log target: ${target}. Use: backend or webui" ;;
   esac
-}
-
-# ---- Health ----------------------------------------------------------------
-cmd_health() {
-  local current
-  current="$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
-  if [[ "${current}" -lt "${REQUIRED_WIRED_LIMIT_MB}" ]]; then
-    die "wired memory ${current} MB is below threshold"
-  fi
-  local human_gb
-  human_gb=$(((current + 512) / 1024))
-  ok "GPU wired memory: ${human_gb} GB (${current} MB) — OK"
-
-  # Also probe the backend HTTP API if it's supposed to be running.
-  if is_loaded "${BACKEND_LABEL}"; then
-    local url
-    url="$(backend_url)/v1/models"
-    if curl --max-time 2 --silent --fail "${url}" >/dev/null 2>&1; then
-      ok "backend: HTTP OK"
-    else
-      warn "backend: loaded but not responding at ${url}"
-    fi
-  fi
 }
 
 # ---- Diagnostics -----------------------------------------------------------
@@ -1036,11 +1024,20 @@ cmd_doctor() {
   # CLIs
   if command -v mlx-openai-server >/dev/null; then
     ok "mlx-openai-server: $(command -v mlx-openai-server)"
-    _mlx_lm_py="$(dirname "$(command -v mlx-openai-server)")/python3"
-    if [[ -x "${_mlx_lm_py}" ]]; then
+    _mlx_lm_py=""
+    for _candidate in \
+      "$(dirname "$(command -v mlx-openai-server)")/python3" \
+      "${HOME}/.local/pipx/venvs/mlx-openai-server/bin/python3" \
+      "$(command -v python3.12 || true)"; do
+      [[ -n "${_candidate}" && -x "${_candidate}" ]] && {
+        _mlx_lm_py="${_candidate}"
+        break
+      }
+    done
+    if [[ -n "${_mlx_lm_py}" ]]; then
       ok "mlx_lm python3: ${_mlx_lm_py}"
     else
-      warn "mlx_lm python3 not found at ${_mlx_lm_py} (mlx_lm backend unavailable)"
+      warn "mlx_lm python3 not found (mlx_lm backend unavailable)"
     fi
   else
     warn "mlx-openai-server not in PATH (run: make install)"
@@ -1066,6 +1063,13 @@ cmd_doctor() {
 
   _doctor_check_models_cached
 
+  if is_loaded "${BACKEND_LABEL}"; then
+    require_helpers_python
+    if ! "${HELPERS_PYTHON}" "${HELPERS_PY}" smoke "$(backend_url)"; then
+      fail=1
+    fi
+  fi
+
   return "${fail}"
 }
 
@@ -1073,17 +1077,23 @@ _doctor_check_models_cached() {
   [[ -L "${ACTIVE_CONFIG}" ]] || return 0
   local backend
   backend="$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || echo "mlx")"
-  local found=0
+  local _ollama_list=""
+  [[ "${backend}" == "ollama" ]] && _ollama_list="$(ollama list 2>/dev/null)"
   while IFS='|' read -r name _path _od; do
     if [[ "${backend}" == "ollama" ]]; then
-      ollama list 2>/dev/null | grep -qF "${name}" && found=1 && break
+      if echo "${_ollama_list}" | grep -qF "${_path}"; then
+        ok "model cached: ${_path}"
+      else
+        warn "model not cached: ${_path} — run: 4lm model download"
+      fi
     else
-      hf_is_cached "${name}" && found=1 && break
+      if hf_is_cached "${name}"; then
+        ok "model cached: ${_path}"
+      else
+        warn "model not cached: ${_path} — run: 4lm model download"
+      fi
     fi
   done < <(profile_model_entries "${ACTIVE_CONFIG}")
-  if [[ "${found}" -eq 0 ]]; then
-    warn "no models cached — run: 4lm model download"
-  fi
 }
 
 # ---- Open ------------------------------------------------------------------
@@ -1469,8 +1479,9 @@ ${C_DIM}Service control:${C_RST}
   4lm start [backend|webui|all]      Start service(s) (default: all)
   4lm stop  [backend|webui|all]      Stop service(s)
   4lm restart [backend|webui|all]    Restart service(s)
-  4lm status                         Show service state with launchd detail
-  4lm health                         Check iogpu.wired_limit_mb (exit 1 if low)
+  4lm status                         Show service state, URLs, and backend HTTP ping
+  4lm doctor                         Check prerequisites; smoke-tests inference if backend is running
+  4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
 
 ${C_DIM}Logs:${C_RST}
   4lm logs [backend|webui]           tail -F log file (default: backend)
@@ -1503,8 +1514,6 @@ ${C_DIM}Updates:${C_RST}
                                      No args = all channels. Names limit to specific entries.
 
 ${C_DIM}Other:${C_RST}
-  4lm doctor                         Check prerequisites
-  4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
   4lm uninstall                      Bootout agents, remove ~/.local/bin/4lm
 EOF
 }
@@ -1519,7 +1528,6 @@ main() {
     restart) cmd_restart "$@" ;;
     status | st | "") cmd_status ;;
     logs | log) cmd_logs "$@" ;;
-    health | check) cmd_health ;;
     profile | prof | p) cmd_profile "$@" ;;
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor ;;
