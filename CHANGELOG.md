@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-08
+
+### Added
+- `4lm doctor` runs a smoke test (`POST /v1/chat/completions`) for every model
+  in `/v1/models` when the backend is running; handles thinking models via
+  `completion_tokens` fallback (dd0feaa)
+- `4lm status` probes backend HTTP and reports OK/unreachable (dd0feaa)
+- `4lm doctor` and `4lm diag` moved into the Service Control help group (dd0feaa)
+
+### Changed
+- `_doctor_check_models_cached` reports each model individually with `ok`/`warn`
+  instead of a single aggregate warning (dd0feaa)
+
+### Fixed
+- Ollama model cache check grepped `served_model_name` against `ollama list`
+  output (which uses `model_path` format), causing spurious "no models cached"
+  warnings — now greps `model_path` (dd0feaa)
+
+### Removed
+- `4lm health` command — GPU check absorbed into `4lm doctor`, HTTP probe
+  into `4lm status` (dd0feaa)
+
 ## [0.3.0] - 2026-05-08
 
 ### Added

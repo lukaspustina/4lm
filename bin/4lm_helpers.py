@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """4lm_helpers — Python helper commands for the 4lm bash script."""
 
-__version__ = "0.1.0"
+__version__ = "0.4.0"
 
 import argparse
 import json
