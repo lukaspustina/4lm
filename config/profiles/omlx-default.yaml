@@ -1,0 +1,28 @@
+# omlx-default: Qwen3-Coder-Next (coding) + Gemma 4 31B Dense (chat/reasoning)
+# via omlx backend.
+#
+# Mirrors config/profiles/default.yaml but uses omlx instead of ollama.
+# omlx fixes the RotatingKVCache / BatchRotatingKVCache bug that forced
+# Gemma 4 onto ollama with mlx-openai-server and mlx_lm.
+#
+# On 128 GB unified memory both models (~55 GB + ~20 GB) stay loaded
+# simultaneously with ample headroom for KV cache.
+#
+# Manual gate: run `4lm profile set omlx-default`, verify both models appear
+# in `curl http://127.0.0.1:8000/v1/models`, and send a 32k-token prompt to
+# gemma4-31b to confirm the RotatingKVCache fix holds.
+
+backend: omlx
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    model_type: lm
+    pin: true
+    ttl: null
+
+  - model_path: mlx-community/gemma-4-31b-it-4bit
+    served_model_name: gemma4-31b
+    model_type: lm
+    pin: false
+    ttl: 600
