@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-09
+
+### Added
+- `4lm autostart enable|disable|status` subcommand for opt-in login autostart
+  via LaunchAgents symlinks; `KeepAlive`+`ThrottleInterval` in plists (cd82714)
+- `backend: omlx` as primary MLX backend: paged KV cache, continuous batching,
+  multi-model EnginePool, DFlash speculative decoding for Qwen models (f3ea0b4)
+- `4lm model purge [--confirm]` removes all cached models (HF + ollama) (a575a7c)
+- `4lm model prune` (renamed from `clean`): prune stale HF snapshot revisions (a575a7c)
+- `4lm uninstall --purge [--confirm]`: wipes ~/.4lm/, ~/.omlx/, all model
+  caches — nothing left (a575a7c, 2f9fb00)
+- `4lm status` shows active backend type, autostart state per service, and
+  loaded model IDs; checks WebUI HTTP alongside backend (a575a7c, aee8134)
+- omlx-coding.yaml profile: Qwen3-Coder-Next + BGE-M3 on omlx (e38a874)
+
+### Changed
+- Default MLX profiles (default, mlx-coding, mlx-knowledge) migrated from
+  mlx-openai-server to `backend: omlx` (9d6ca82)
+- `4lm autostart` service token renamed from `omlx` to `backend` for
+  consistency with other subcommands (83207cd)
+- Help text: removed stale phase3-ready, 4lm health, and mlx-openai-server
+  references; clarified model prune vs cleanup vs purge (6fbfd48, b55c639)
+
+### Removed
+- `mlx-openai-server` backend (`backend: mlx` value); omlx supersedes it
+  across all MLX inference use cases (c78861d)
+
+### Fixed
+- `4lm profile set` now stages omlx model-dir when same profile re-selected
+  and backend is not loaded (595b6b9)
+- model_settings.json written in omlx dict format; --model-dir passed to
+  omlx serve (85dd1fe)
+- `hf_is_cached` uses model_path not served_model_name (34d8b69)
+- omlx installed from GitHub (not PyPI) (4666ad0)
+- `4lm autostart enable` removes symlink on bootstrap failure (4511486)
+- `4lm uninstall --purge` requires explicit `--confirm` to execute (2f9fb00)
+
 ## [0.4.0] - 2026-05-08
 
 ### Added
