@@ -1820,13 +1820,13 @@ ${C_DIM}Service control:${C_RST}
   4lm stop  [backend|webui|all]      Stop service(s)
   4lm restart [backend|webui|all]    Restart service(s)
   4lm status                         Show service state, URLs, and backend HTTP ping
-  4lm doctor [phase3-ready]          Check prerequisites; smoke-tests inference if backend is running
+  4lm doctor                         Check prerequisites; smoke-tests inference if backend is running
   4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
 
 ${C_DIM}Autostart:${C_RST}
   4lm autostart status               Show whether each service auto-starts at login
-  4lm autostart enable  [svc|all]    Enable login autostart (svc: backend|webui|all)
-  4lm autostart disable [svc|all]    Disable login autostart and stop the service
+  4lm autostart enable  [backend|webui|all]    Enable login autostart (default: backend)
+  4lm autostart disable [backend|webui|all]    Disable login autostart and bootout service (default: backend)
 
 ${C_DIM}Logs:${C_RST}
   4lm logs [backend|webui]           tail -F log file (default: backend)
@@ -1859,7 +1859,7 @@ ${C_DIM}Updates:${C_RST}
                                      No args = all channels. Names limit to specific entries.
 
 ${C_DIM}Other:${C_RST}
-  4lm uninstall                      Bootout agents, remove ~/.local/bin/4lm
+  4lm uninstall [--confirm]          Stop services, remove autostart symlinks and ~/.local/bin/4lm; keeps ~/.4lm
 EOF
 }
 

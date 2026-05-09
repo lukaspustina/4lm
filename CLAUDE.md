@@ -38,7 +38,6 @@ specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
 | Start everything | `4lm start` |
 | Stop everything | `4lm stop` |
 | Status | `4lm` (alias for `4lm status`) |
-| Health check | `4lm health` |
 | Switch profile | `4lm profile set <name>` |
 | Toggle LAN exposure | `4lm expose lan --confirm` |
 | OpenCode TUI | `4lm opencode` (alias `4lm code`) |
