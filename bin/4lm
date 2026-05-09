@@ -333,34 +333,92 @@ print_service_status() {
 }
 
 cmd_status() {
-  echo "${C_DIM}─── 4lm Status ───${C_RST}"
+  local json=false
+  [[ "${1:-}" == "--json" ]] && json=true
 
   local profile="(none)" backend_type=""
   if [[ -L "${ACTIVE_CONFIG}" ]]; then
     profile="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
     backend_type="$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || true)"
   fi
-  printf "%-10s %s%s\n" "Profile:" "${profile}" "${backend_type:+  (${backend_type})}"
 
   local mode
   mode="$(net_mode)"
+
+  local be_auto webui_auto
+  [[ -L "${LA_DIR}/${BACKEND_LABEL}.plist" ]] && be_auto="enabled" || be_auto="disabled"
+  [[ -L "${LA_DIR}/${WEBUI_LABEL}.plist" ]] && webui_auto="enabled" || webui_auto="disabled"
+
+  local be_loaded=false be_running=false webui_loaded=false webui_running=false
+  is_loaded "${BACKEND_LABEL}" && be_loaded=true
+  is_running "${BACKEND_LABEL}" && be_running=true
+  is_loaded "${WEBUI_LABEL}" && webui_loaded=true
+  is_running "${WEBUI_LABEL}" && webui_running=true
+
+  local backend_port webui_port
+  backend_port="$(net_backend_port)"
+  webui_port="$(net_webui_port)"
+
+  local be_http="null" model_ids_json="[]" webui_http="null"
+  if [[ "${be_loaded}" == "true" ]]; then
+    local _url models_raw
+    _url="$(backend_url)/v1/models"
+    models_raw="$(curl --max-time 1 --silent --fail "${_url}" 2>/dev/null || true)"
+    if [[ -n "${models_raw}" ]]; then
+      be_http='"ok"'
+      model_ids_json="$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' <<<"${models_raw}" |
+        grep -oE '"[^"]+"$' | tr '\n' ',' | sed 's/^/[/' | sed 's/,$/]/')"
+      [[ "${model_ids_json}" == "[" ]] && model_ids_json="[]"
+    else
+      be_http='"fail"'
+    fi
+  fi
+  if [[ "${webui_loaded}" == "true" ]]; then
+    if curl --max-time 1 --silent --fail "$(webui_url)" >/dev/null 2>&1; then
+      webui_http='"ok"'
+    else
+      webui_http='"fail"'
+    fi
+  fi
+
+  if [[ "${json}" == "true" ]]; then
+    local lan_ip_val="null"
+    if [[ "${mode}" == "lan" ]]; then
+      local _ip
+      _ip="$(lan_ip)"
+      [[ -n "${_ip}" ]] && lan_ip_val="\"${_ip}\""
+    fi
+    printf '{"profile":%s,"backend":%s,"network":{"mode":%s,"lan_ip":%s,"backend_port":%s,"webui_port":%s},"autostart":{"backend":%s,"webui":%s},"services":{"backend":{"loaded":%s,"running":%s},"webui":{"loaded":%s,"running":%s}},"http":{"backend":%s,"webui":%s},"models":%s}\n' \
+      "\"${profile}\"" \
+      "${backend_type:+\"${backend_type}\"}${backend_type:-null}" \
+      "\"${mode}\"" \
+      "${lan_ip_val}" \
+      "${backend_port}" \
+      "${webui_port}" \
+      "\"${be_auto}\"" \
+      "\"${webui_auto}\"" \
+      "${be_loaded}" \
+      "${be_running}" \
+      "${webui_loaded}" \
+      "${webui_running}" \
+      "${be_http}" \
+      "${webui_http}" \
+      "${model_ids_json}"
+    return
+  fi
+
+  echo "${C_DIM}─── 4lm Status ───${C_RST}"
+  printf "%-10s %s%s\n" "Profile:" "${profile}" "${backend_type:+  (${backend_type})}"
   if [[ "${mode}" == "lan" ]]; then
     printf "%-10s %s\n" "Network:" "${C_YEL}⚠ LAN — reachable by anyone on the network${C_RST}"
   else
     printf "%-10s %s\n" "Network:" "${mode}"
   fi
-
-  local be_auto webui_auto
-  [[ -L "${LA_DIR}/${BACKEND_LABEL}.plist" ]] && be_auto="enabled" || be_auto="disabled"
-  [[ -L "${LA_DIR}/${WEBUI_LABEL}.plist" ]] && webui_auto="enabled" || webui_auto="disabled"
   printf "%-10s backend %s  ·  webui %s\n" "Autostart:" "${be_auto}" "${webui_auto}"
 
   print_service_status "${BACKEND_LABEL}" "Backend"
   print_service_status "${WEBUI_LABEL}" "WebUI"
 
-  local backend_port webui_port
-  backend_port="$(net_backend_port)"
-  webui_port="$(net_webui_port)"
   echo ""
   echo "${C_DIM}  localhost${C_RST}"
   printf "  %-10s http://127.0.0.1:%s\n" "WebUI" "${webui_port}"
@@ -377,21 +435,18 @@ cmd_status() {
   fi
 
   echo ""
-  if is_loaded "${BACKEND_LABEL}"; then
-    local _url models_raw model_ids
-    _url="$(backend_url)/v1/models"
-    models_raw="$(curl --max-time 1 --silent --fail "${_url}" 2>/dev/null || true)"
-    if [[ -n "${models_raw}" ]]; then
+  if [[ "${be_http}" != "null" ]]; then
+    if [[ "${be_http}" == '"ok"' ]]; then
       ok "backend: HTTP OK"
-      model_ids="$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' <<<"${models_raw}" |
-        grep -oE '"[^"]+"$' | tr -d '"' | tr '\n' ',' | sed 's/,$//')"
-      [[ -n "${model_ids}" ]] && printf "  %-8s %s\n" "models:" "${model_ids}"
+      local model_ids
+      model_ids="$(echo "${model_ids_json}" | tr -d '[]"' | tr ',' ' ')"
+      [[ -n "${model_ids// /}" ]] && printf "  %-8s %s\n" "models:" "${model_ids}"
     else
-      warn "backend: loaded but not responding at ${_url}"
+      warn "backend: loaded but not responding at $(backend_url)/v1/models"
     fi
   fi
-  if is_loaded "${WEBUI_LABEL}"; then
-    if curl --max-time 1 --silent --fail "$(webui_url)" >/dev/null 2>&1; then
+  if [[ "${webui_http}" != "null" ]]; then
+    if [[ "${webui_http}" == '"ok"' ]]; then
       ok "webui:   HTTP OK"
     else
       warn "webui: loaded but not responding at $(webui_url)"
@@ -985,8 +1040,37 @@ cmd_profile() {
       echo "# Profile: ${name}"
       cat "${yaml}"
       ;;
+    validate | lint)
+      local fail=0
+      if [[ "${2:-}" == "--all" ]]; then
+        [[ -d "${PROFILES_DIR}" ]] || die "no profiles dir at ${PROFILES_DIR}"
+        local found=false
+        for p in "${PROFILES_DIR}"/*.yaml; do
+          [[ -f "${p}" ]] || continue
+          found=true
+          local name
+          name="$(basename "${p}" .yaml)"
+          if validate_profile "${p}" 2>&1; then
+            ok "${name}"
+          else
+            fail=1
+          fi
+        done
+        [[ "${found}" == "true" ]] || die "no profiles found in ${PROFILES_DIR}"
+      else
+        [[ -L "${ACTIVE_CONFIG}" ]] || die "no active profile set"
+        local name
+        name="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+        if validate_profile "${ACTIVE_CONFIG}" 2>&1; then
+          ok "${name}"
+        else
+          fail=1
+        fi
+      fi
+      return "${fail}"
+      ;;
     *)
-      die "Unknown profile subcommand: ${subcmd}. Use: list | set <name> | current | show [<name>]"
+      die "Unknown profile subcommand: ${subcmd}. Use: list | set <name> | current | show [<name>] | validate [--all]"
       ;;
   esac
 }
@@ -1925,7 +2009,7 @@ ${C_DIM}Service control:${C_RST}
   4lm start [backend|webui|all]      Start service(s) (default: all)
   4lm stop  [backend|webui|all]      Stop service(s)
   4lm restart [backend|webui|all]    Restart service(s)
-  4lm status                         Show service state, URLs, and backend HTTP ping
+  4lm status [--json]                Show service state, URLs, and backend HTTP ping
   4lm doctor                         Check prerequisites; smoke-tests inference if backend is running
   4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
 
@@ -1942,6 +2026,7 @@ ${C_DIM}Profiles:${C_RST}
   4lm profile set <name>             Atomic switch with rollback
   4lm profile current                Print active profile name
   4lm profile show [<name>]          Print profile YAML (active if no name given)
+  4lm profile validate [--all]       Validate active profile (or all profiles)
 
 ${C_DIM}Network exposure:${C_RST}
   4lm expose local|lan [--confirm]   Change bind mode
@@ -1979,7 +2064,7 @@ main() {
     start) cmd_start "$@" ;;
     stop) cmd_stop "$@" ;;
     restart) cmd_restart "$@" ;;
-    status | st | "") cmd_status ;;
+    status | st | "") cmd_status "$@" ;;
     logs | log) cmd_logs "$@" ;;
     profile | prof | p) cmd_profile "$@" ;;
     autostart) cmd_autostart "$@" ;;
