@@ -335,20 +335,25 @@ print_service_status() {
 cmd_status() {
   echo "${C_DIM}─── 4lm Status ───${C_RST}"
 
-  # Active profile
-  local profile="(none)"
+  local profile="(none)" backend_type=""
   if [[ -L "${ACTIVE_CONFIG}" ]]; then
     profile="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+    backend_type="$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || true)"
   fi
-  printf "%-8s %s\n" "Profile:" "${profile}"
+  printf "%-10s %s%s\n" "Profile:" "${profile}" "${backend_type:+  (${backend_type})}"
 
   local mode
   mode="$(net_mode)"
   if [[ "${mode}" == "lan" ]]; then
-    printf "%-8s %s\n" "Network:" "${C_YEL}⚠ LAN — reachable by anyone on the network${C_RST}"
+    printf "%-10s %s\n" "Network:" "${C_YEL}⚠ LAN — reachable by anyone on the network${C_RST}"
   else
-    printf "%-8s %s\n" "Network:" "${mode}"
+    printf "%-10s %s\n" "Network:" "${mode}"
   fi
+
+  local be_auto webui_auto
+  [[ -L "${LA_DIR}/${BACKEND_LABEL}.plist" ]] && be_auto="enabled" || be_auto="disabled"
+  [[ -L "${LA_DIR}/${WEBUI_LABEL}.plist" ]] && webui_auto="enabled" || webui_auto="disabled"
+  printf "%-10s backend %s  ·  webui %s\n" "Autostart:" "${be_auto}" "${webui_auto}"
 
   print_service_status "${BACKEND_LABEL}" "Backend"
   print_service_status "${WEBUI_LABEL}" "WebUI"
@@ -373,10 +378,14 @@ cmd_status() {
 
   if is_loaded "${BACKEND_LABEL}"; then
     echo ""
-    local _url
+    local _url models_raw model_ids
     _url="$(backend_url)/v1/models"
-    if curl --max-time 1 --silent --fail "${_url}" >/dev/null 2>&1; then
+    models_raw="$(curl --max-time 1 --silent --fail "${_url}" 2>/dev/null || true)"
+    if [[ -n "${models_raw}" ]]; then
       ok "backend: HTTP OK"
+      model_ids="$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' <<<"${models_raw}" |
+        grep -oE '"[^"]+"$' | tr -d '"' | tr '\n' ',' | sed 's/,$//')"
+      [[ -n "${model_ids}" ]] && printf "  %-8s %s\n" "models:" "${model_ids}"
     else
       warn "backend: loaded but not responding at ${_url}"
     fi
@@ -1363,10 +1372,14 @@ cmd_opencode() {
 
 # ---- Uninstall (runtime side: bootout + remove ~/.local/bin/4lm) ----------
 cmd_uninstall() {
-  local confirm=false
+  local confirm=false purge=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --confirm) confirm=true ;;
+      --purge)
+        purge=true
+        confirm=true
+        ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
@@ -1374,12 +1387,11 @@ cmd_uninstall() {
   if [[ "${confirm}" != "true" ]]; then
     printf 'Would remove:\n'
     printf '  %s\n' \
-      "${LLM_HOME}" \
       "${HOME}/.local/bin/4lm" \
       "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" \
-      "${HOME}/Library/LaunchAgents/com.4lm.webui.plist" \
-      "/usr/local/etc/newsyslog.d/4lm.conf"
-    printf 'Pass --confirm to proceed.\n'
+      "${HOME}/Library/LaunchAgents/com.4lm.webui.plist"
+    printf 'Configs and logs in %s are preserved.\n' "${LLM_HOME}"
+    printf 'Pass --confirm to proceed, or --purge to also wipe %s and all model caches.\n' "${LLM_HOME}"
     return 0
   fi
   echo "${C_DIM}─── Uninstalling 4lm services ───${C_RST}"
@@ -1396,7 +1408,19 @@ cmd_uninstall() {
     rm "${HOME}/.local/bin/4lm"
     ok "removed ${HOME}/.local/bin/4lm"
   fi
-  info "configs and data in ${LLM_HOME} preserved. Remove manually if desired."
+  if [[ "${purge}" == "true" ]]; then
+    cmd_models_purge --confirm
+    if [[ -d "${HOME}/.omlx" ]]; then
+      rm -rf "${HOME}/.omlx"
+      ok "removed ${HOME}/.omlx"
+    fi
+    if [[ -d "${LLM_HOME}" ]]; then
+      rm -rf "${LLM_HOME}"
+      ok "removed ${LLM_HOME}"
+    fi
+  else
+    info "configs and data in ${LLM_HOME} preserved. Remove manually or re-run with --purge."
+  fi
 }
 
 # ---- Service-level command dispatch ---------------------------------------
@@ -1607,7 +1631,7 @@ cmd_models_download() {
   ok "Done."
 }
 
-cmd_models_clean() {
+cmd_models_prune() {
   command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
   info "Pruning orphaned HuggingFace cache revisions…"
   hf cache prune --yes
@@ -1631,6 +1655,70 @@ cmd_models_rm() {
   info "Removing ${repo} from cache…"
   hf cache rm "${repo}"
   ok "Removed ${repo}"
+}
+
+cmd_models_purge() {
+  local confirm=false
+  while (($# > 0)); do
+    case "$1" in
+      --confirm) confirm=true ;;
+      *) die "Usage: 4lm model purge [--confirm]" ;;
+    esac
+    shift
+  done
+
+  local hf_ids=() hf_repos=() ollama_models=()
+
+  if command -v hf >/dev/null 2>&1; then
+    while IFS=$'\t' read -r hf_id _rest; do
+      [[ "${hf_id}" == "id" ]] && continue
+      [[ "${hf_id}" != model/* ]] && continue
+      hf_ids+=("${hf_id}")
+      hf_repos+=("${hf_id#model/}")
+    done < <(hf cache list --format agent 2>/dev/null)
+  fi
+
+  if command -v ollama >/dev/null 2>&1; then
+    local _ol_name
+    while IFS= read -r _ol_name; do
+      [[ -n "${_ol_name}" ]] && ollama_models+=("${_ol_name}")
+    done < <(ollama list 2>/dev/null | awk 'NR>1{print $1}')
+  fi
+
+  if [[ ${#hf_repos[@]} -eq 0 && ${#ollama_models[@]} -eq 0 ]]; then
+    ok "No cached models found."
+    return 0
+  fi
+
+  echo "${C_DIM}─── All cached models ───${C_RST}"
+  local repo
+  for repo in "${hf_repos[@]+"${hf_repos[@]}"}"; do
+    printf "  hf      %s\n" "${repo}"
+  done
+  local _m
+  for _m in "${ollama_models[@]+"${ollama_models[@]}"}"; do
+    printf "  ollama  %s\n" "${_m}"
+  done
+  echo
+
+  if [[ "${confirm}" == false ]]; then
+    echo "  Run with --confirm to remove all of the above."
+    return 0
+  fi
+
+  local hf_id
+  for hf_id in "${hf_ids[@]+"${hf_ids[@]}"}"; do
+    repo="${hf_id#model/}"
+    info "Removing HF: ${repo}…"
+    hf cache rm "${hf_id}" --yes
+    ok "Removed ${repo}"
+  done
+  for _m in "${ollama_models[@]+"${ollama_models[@]}"}"; do
+    info "Removing ollama: ${_m}…"
+    ollama rm "${_m}"
+    ok "Removed ${_m}"
+  done
+  ok "Done."
 }
 
 cmd_models_cleanup() {
@@ -1732,11 +1820,12 @@ cmd_models() {
   case "${subcmd}" in
     list | ls) cmd_models_list ;;
     download | dl | pull) cmd_models_download "$@" ;;
-    clean | prune) cmd_models_clean ;;
+    prune | clean) cmd_models_prune ;;
+    purge) cmd_models_purge "$@" ;;
     cleanup) cmd_models_cleanup "$@" ;;
     rm | remove) cmd_models_rm "$@" ;;
     recommend | rec) cmd_recommend "$@" ;;
-    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | clean | cleanup [--confirm] | rm <repo> | recommend" ;;
+    *) die "Unknown models subcommand: ${subcmd}. Use: list | download [repo...] | prune | purge [--confirm] | cleanup [--confirm] | rm <repo> | recommend" ;;
   esac
 }
 
@@ -1847,8 +1936,9 @@ ${C_DIM}Clients:${C_RST}
 ${C_DIM}Models:${C_RST}
   4lm model [list]                   List models from all profiles with cache status
   4lm model download [repo...]       Download missing models (all profiles), or specific repo(s)
-  4lm model clean                    Prune stale HuggingFace snapshot revisions (keeps current)
-  4lm model cleanup [--confirm]      Remove entire cached repos (HF + ollama) not in any profile
+  4lm model prune                    Prune stale HuggingFace snapshot revisions (keeps current)
+  4lm model purge [--confirm]        Remove ALL cached models (HF + ollama)
+  4lm model cleanup [--confirm]      Remove cached repos (HF + ollama) not referenced in any profile
   4lm model rm <repo> [--confirm]    Remove a cached model repo
   4lm model recommend [<use-case>]   Top model picks for this hardware (llmfit + localmaxxing benchmarks)
                [-n N] [--runtime R]  use-case: coding|reasoning|chat|general. R: mlx|llamacpp
@@ -1860,6 +1950,7 @@ ${C_DIM}Updates:${C_RST}
 
 ${C_DIM}Other:${C_RST}
   4lm uninstall [--confirm]          Stop services, remove autostart symlinks and ~/.local/bin/4lm; keeps ~/.4lm
+  4lm uninstall --purge              Same plus wipes ~/.4lm/ and all model caches (nothing left)
 EOF
 }
 
