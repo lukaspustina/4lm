@@ -76,5 +76,14 @@ On timeout it restores the previous symlink and kickstarts again.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
 
+## omlx path probe
+
+Phase 1 manual probe result (2026-05): omlx **does not** accept absolute HF
+snapshot paths in `model_settings.json`. Setting `model_path` to an absolute
+snapshot dir and starting `omlx serve --model-dir <empty>` returns no models
+from `/v1/models`. The staging layer (`stage_omlx_model_dir()` +
+`~/.4lm/runtime/<profile>/models/`) is therefore permanent; the TODO comment
+in `stage_omlx_model_dir()` remains as documentation of the probe outcome.
+
 See `specs/sdd/4lm-rework.md` for the rework SDD that this repo state
 implements.

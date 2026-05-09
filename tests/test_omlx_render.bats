@@ -156,6 +156,23 @@ YAML
   "${REAL_JQ}" -e '.models."bge-m3"' "${out}" >/dev/null
 }
 
+@test "render: empty models list exits non-zero with error" {
+  local yaml="${BATS_TMPDIR}/render-empty-models.yaml"
+  local out="${BATS_TMPDIR}/settings-empty.json"
+  cat > "${yaml}" <<'YAML'
+backend: omlx
+models: []
+YAML
+  run bash -c "
+    export JQ_BIN='${REAL_JQ}'
+    export HOME='${HOME}'
+    source '${REPO_ROOT}/bin/4lm'
+    render_omlx_settings '$yaml' '$out'
+  "
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no models"* ]]
+}
+
 @test "render: output directory ~/.omlx/ is created if absent" {
   local yaml="${BATS_TMPDIR}/render-mkdir.yaml"
   local out="${HOME}/.omlx/model_settings.json"

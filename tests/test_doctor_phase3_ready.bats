@@ -57,9 +57,10 @@ YAML
 # ---- Phase 3: red-path cases (marked pending until Phase 3 code lands) -----
 
 @test "phase3-ready: rollback log entry newer than active-profile symlink exits 1 with red" {
-  skip "Phase 3 red-path: requires log-vs-mtime comparison code"
   _make_omlx_active_profile
-  sleep 0.1
+  # Touch the symlink to ensure its mtime is before the log entry.
+  # Use sleep 1 to guarantee a different epoch second for the log timestamp.
+  sleep 1
   # Write a rollback log entry with a current timestamp (newer than the symlink)
   printf '%s\tmlx-coding\tomlx-test\tpoll_timeout\n' "$(date -Iseconds)" \
     > "${HOME}/.4lm/logs/profile-rollback.log"
@@ -69,7 +70,6 @@ YAML
 }
 
 @test "phase3-ready: active profile has backend: ollama exits 1 with red" {
-  skip "Phase 3 red-path: requires backend check code"
   cat > "${HOME}/.4lm/config/profiles/ollama-active.yaml" <<'YAML'
 backend: ollama
 models:

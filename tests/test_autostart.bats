@@ -22,8 +22,8 @@ setup() {
 @test "autostart status: both disabled by default" {
   run "${BIN}" autostart status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Backend: disabled"* ]]
-  [[ "$output" == *"WebUI: disabled"* ]]
+  [[ "$output" == *"backend"*"disabled"* ]]
+  [[ "$output" == *"webui"*"disabled"* ]]
 }
 
 @test "autostart status: shows enabled when LaunchAgents symlink present" {
@@ -31,8 +31,8 @@ setup() {
     "${HOME}/Library/LaunchAgents/com.4lm.backend.plist"
   run "${BIN}" autostart status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Backend: enabled"* ]]
-  [[ "$output" == *"WebUI: disabled"* ]]
+  [[ "$output" == *"backend"*"enabled"* ]]
+  [[ "$output" == *"webui"*"disabled"* ]]
 }
 
 # ---- enable -----------------------------------------------------------------
@@ -104,6 +104,50 @@ setup() {
   run "${BIN}" autostart disable backend
   [ "$status" -eq 0 ]
   [[ "$output" == *"was not enabled"* ]]
+}
+
+# ---- missing source plist ---------------------------------------------------
+
+@test "autostart enable backend: missing source plist exits 1 with error" {
+  rm -f "${HOME}/.4lm/launchd/com.4lm.backend.plist"
+  run "${BIN}" autostart enable backend
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source plist not found"* ]]
+}
+
+# ---- bootstrap failure cleanup ----------------------------------------------
+
+@test "autostart enable backend: bootstrap failure removes symlink" {
+  # Inject a launchctl stub that fails on bootstrap but makes is_loaded return false
+  local stub_bin="${BATS_TMPDIR}/fail-bootstrap-$$"
+  mkdir -p "${stub_bin}"
+  cat > "${stub_bin}/launchctl" <<'SH'
+#!/usr/bin/env bash
+if [[ "$1" == "bootstrap" ]]; then
+  echo "Bootstrap failed: error 125" >&2
+  exit 1
+fi
+if [[ "$1" == "print" ]]; then
+  # Simulate service not loaded so bootstrap is attempted
+  exit 1
+fi
+echo "$@" >> "${LAUNCHCTL_LOG:-/dev/null}"
+exit 0
+SH
+  chmod +x "${stub_bin}/launchctl"
+  PATH="${stub_bin}:${PATH}" run "${BIN}" autostart enable backend
+  [ "$status" -ne 0 ]
+  # Symlink must be cleaned up on failure
+  [ ! -L "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" ]
+}
+
+# ---- bare autostart ---------------------------------------------------------
+
+@test "autostart bare (no subcommand) exits 1 with usage error" {
+  run "${BIN}" autostart
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage"* ]]
+  [[ "$output" == *"enable|disable|status"* ]]
 }
 
 # ---- unknown subcommand -----------------------------------------------------

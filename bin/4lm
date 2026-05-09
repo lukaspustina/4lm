@@ -1223,8 +1223,9 @@ cmd_doctor_phase3_ready() {
   last_line="$(tail -1 "${log}")"
   last_ts="$(printf '%s' "${last_line}" | awk -F'\t' '{print $1}')"
 
-  # Convert ISO8601 timestamp to epoch for comparison.
-  last_epoch="$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "${last_ts}" +%s 2>/dev/null || echo 0)"
+  # date -Iseconds outputs "+HH:MM"; strip the colon so date -j %z gets "+HHMM".
+  local last_ts_fixed="${last_ts%:??}${last_ts##*:}"
+  last_epoch="$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "${last_ts_fixed}" +%s 2>/dev/null || echo 0)"
 
   if [[ "${last_epoch}" -gt "${symlink_mtime}" ]]; then
     echo "red: rollback event newer than active-profile symlink: ${last_line}"
@@ -1282,25 +1283,10 @@ cmd_doctor() {
   fi
 
   # CLIs
-  if command -v mlx-openai-server >/dev/null; then
-    ok "mlx-openai-server: $(command -v mlx-openai-server)"
-    _mlx_lm_py=""
-    for _candidate in \
-      "$(dirname "$(command -v mlx-openai-server)")/python3" \
-      "${HOME}/.local/pipx/venvs/mlx-openai-server/bin/python3" \
-      "$(command -v python3.12 || true)"; do
-      [[ -n "${_candidate}" && -x "${_candidate}" ]] && {
-        _mlx_lm_py="${_candidate}"
-        break
-      }
-    done
-    if [[ -n "${_mlx_lm_py}" ]]; then
-      ok "mlx_lm python3: ${_mlx_lm_py}"
-    else
-      warn "mlx_lm python3 not found (mlx_lm backend unavailable)"
-    fi
+  if command -v omlx >/dev/null; then
+    ok "omlx: $(command -v omlx)"
   else
-    warn "mlx-openai-server not in PATH (run: make install)"
+    warn "omlx not in PATH (run: make install)"
     fail=1
   fi
   if command -v open-webui >/dev/null; then
@@ -1483,23 +1469,31 @@ _autostart_pairs() {
 }
 
 _autostart_enable() {
-  local target="${1:-all}"
+  local target="${1:-backend}"
   _autostart_check_target "${target}"
   mkdir -p "${LA_DIR}"
   while IFS='|' read -r label plist; do
-    [[ -f "${plist}" ]] || die "plist not found: ${plist} — run install.sh first"
+    [[ -f "${plist}" ]] || die "error: source plist not found: ${plist}"
     local la_plist="${LA_DIR}/${label}.plist"
+    if [[ -L "${la_plist}" ]] && [[ "$(readlink "${la_plist}")" == "${plist}" ]]; then
+      ok "autostart ${label}: already enabled"
+      continue
+    fi
     ln -sfn "${plist}" "${la_plist}"
     ok "autostart ${label}: enabled"
     if ! is_loaded "${label}"; then
-      launchctl bootstrap "gui/${UID_NUM}" "${la_plist}" >/dev/null 2>&1 || true
+      local _bc_out
+      if ! _bc_out="$(launchctl bootstrap "gui/${UID_NUM}" "${la_plist}" 2>&1)"; then
+        rm -f "${la_plist}"
+        die "${_bc_out}"
+      fi
       ok "${label}: started"
     fi
   done < <(_autostart_pairs "${target}")
 }
 
 _autostart_disable() {
-  local target="${1:-all}"
+  local target="${1:-backend}"
   _autostart_check_target "${target}"
   while IFS='|' read -r label _plist; do
     local la_plist="${LA_DIR}/${label}.plist"
@@ -1517,23 +1511,24 @@ _autostart_disable() {
 }
 
 _autostart_status() {
-  for pair in "${BACKEND_LABEL}:Backend" "${WEBUI_LABEL}:WebUI"; do
+  for pair in "${BACKEND_LABEL}:backend" "${WEBUI_LABEL}:webui"; do
     local label="${pair%%:*}" name="${pair##*:}"
     if [[ -L "${LA_DIR}/${label}.plist" ]]; then
-      ok "autostart ${name}: enabled"
+      printf '%-8s  enabled\n' "${name}"
     else
-      info "autostart ${name}: disabled"
+      printf '%-8s  disabled\n' "${name}"
     fi
   done
 }
 
 cmd_autostart() {
-  local subcmd="${1:-status}"
+  local subcmd="${1:-}"
   shift || true
   case "${subcmd}" in
-    enable) _autostart_enable "${1:-all}" ;;
-    disable) _autostart_disable "${1:-all}" ;;
+    enable) _autostart_enable "${1:-backend}" ;;
+    disable) _autostart_disable "${1:-backend}" ;;
     status) _autostart_status ;;
+    "") die "error: usage: 4lm autostart {enable|disable|status} [backend|webui]" ;;
     *) die "autostart: unknown subcommand '${subcmd}'. Use enable|disable|status" ;;
   esac
 }

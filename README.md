@@ -40,8 +40,7 @@ for Apple Silicon acceleration when Ollama's overhead matters.
 
 - Not a multi-user server. Single-user, single-host, single login session.
 - Not a Docker or pip-into-system-Python project. PEP 668 is honoured
-  via pipx; Python 3.12 is pinned because mlx-openai-server still
-  requires `<3.13`.
+  via pipx; Python 3.12 is pinned for compatibility with the MLX ecosystem.
 - Not auto-starting. After reboot you run `4lm start`. On purpose — a
   70 GB working set is not something you want sneaking onto the wired
   memory list before you've made coffee.
@@ -66,7 +65,7 @@ After a reboot: `4lm start`. There's no autostart and that's a feature.
                               ▼
         ┌──────────────────────────────────┐    ┌──────────────────────────────────┐
         │ com.4lm.backend    │    │ com.4lm.webui      │
-        │   mlx-openai-server              │    │   open-webui serve               │
+        │   omlx | mlx_lm | ollama        │    │   open-webui serve               │
         │   :8000 (OpenAI API)             │←───│   :3000 (Web UI)                 │
         └──────────────────────────────────┘    └──────────────────────────────────┘
                   ▲                                ▲
@@ -85,16 +84,14 @@ know or care about each other; the OpenAI-compatible API is the seam.
 
 | Layer | Project | Pinned at | Lifecycle |
 |---|---|---|---|
-| Inference | `mlx-openai-server` | 1.8.1 (pipx) | python@3.12 venv |
+| Inference | `omlx` (primary MLX) | git (pipx) | python@3.12 venv |
+| Inference | `mlx_lm` (upstream MLX) | via omlx venv | co-installed with omlx |
+| Inference | `ollama` (GGUF/llama.cpp) | homebrew | brew formula |
 | Web UI | `open-webui` | 0.9.2 (pipx) | python@3.12 venv |
 | HF cache CLI | `huggingface_hub[cli]` | 1.13.0 (pipx) | python@3.12 venv |
 | TUI client | `opencode` | homebrew/core | brew formula |
 | Daemons | launchd user agents | — | `launchctl bootstrap` via `4lm start` |
 | Config | profiles + `network.yaml` | — | atomic profile switch with rollback |
-
-`mlx-openai-server` 1.8.x added KV-cache quantization, continuous
-batching, and disk-backed prompt KV cache. The `<3.13` Python pin still
-applies, hence `python@3.12` in the Brewfile.
 
 ## Common operations
 
@@ -229,7 +226,7 @@ Qwen3-Coder-30B-A3B (~18 GB at 4-bit) + Qwen3.6-27B (~17 GB at 4-bit) =
 ## Documentation
 
 - [`docs/setup.md`](docs/setup.md) — operator runbook (sudoers, troubleshooting, model pulls)
-- [`docs/profile-schema.md`](docs/profile-schema.md) — YAML key reference for `mlx-openai-server`
+- [`docs/profile-schema.md`](docs/profile-schema.md) — YAML key reference for all backends
 - [`specs/sdd/4lm-rework.md`](specs/sdd/4lm-rework.md) — the design doc this repo implements
 - [`CLAUDE.md`](CLAUDE.md) — orientation for AI assistants working in this repo
 
