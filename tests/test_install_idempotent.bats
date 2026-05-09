@@ -24,7 +24,7 @@ SH
 #!/usr/bin/env bash
 case "$1" in
   list)
-    echo "mlx-openai-server 1.7.1"
+    echo "omlx 0.3.8"
     echo "open-webui 0.6.43"
     ;;
 esac
