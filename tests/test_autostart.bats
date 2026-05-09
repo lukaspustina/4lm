@@ -37,8 +37,8 @@ setup() {
 
 # ---- enable -----------------------------------------------------------------
 
-@test "autostart enable omlx: creates LaunchAgents symlink for backend" {
-  run "${BIN}" autostart enable omlx
+@test "autostart enable backend: creates LaunchAgents symlink for backend" {
+  run "${BIN}" autostart enable backend
   [ "$status" -eq 0 ]
   [ -L "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" ]
   [[ "$output" == *"enabled"* ]]
@@ -57,32 +57,33 @@ setup() {
   [ -L "${HOME}/Library/LaunchAgents/com.4lm.webui.plist" ]
 }
 
-@test "autostart enable omlx: calls launchctl bootstrap when not loaded" {
-  run "${BIN}" autostart enable omlx
+@test "autostart enable backend: calls launchctl bootstrap when not loaded" {
+  run "${BIN}" autostart enable backend
   [ "$status" -eq 0 ]
   grep -q "bootstrap" "${LAUNCHCTL_LOG}"
 }
 
-@test "autostart enable omlx: idempotent (enable twice leaves symlink intact)" {
-  run "${BIN}" autostart enable omlx
+@test "autostart enable backend: idempotent (enable twice leaves symlink intact)" {
+  run "${BIN}" autostart enable backend
   [ "$status" -eq 0 ]
-  run "${BIN}" autostart enable omlx
+  run "${BIN}" autostart enable backend
   [ "$status" -eq 0 ]
   [ -L "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" ]
 }
 
-@test "autostart enable: unknown service exits 1" {
+@test "autostart enable: unknown service exits 1 with hint" {
   run "${BIN}" autostart enable bogus
   [ "$status" -ne 0 ]
   [[ "$output" == *"unknown service"* ]]
+  [[ "$output" == *"backend|webui|all"* ]]
 }
 
 # ---- disable ----------------------------------------------------------------
 
-@test "autostart disable omlx: removes LaunchAgents symlink" {
+@test "autostart disable backend: removes LaunchAgents symlink" {
   ln -sfn "${HOME}/.4lm/launchd/com.4lm.backend.plist" \
     "${HOME}/Library/LaunchAgents/com.4lm.backend.plist"
-  run "${BIN}" autostart disable omlx
+  run "${BIN}" autostart disable backend
   [ "$status" -eq 0 ]
   [ ! -L "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" ]
   [[ "$output" == *"disabled"* ]]
@@ -99,8 +100,8 @@ setup() {
   [ ! -L "${HOME}/Library/LaunchAgents/com.4lm.webui.plist" ]
 }
 
-@test "autostart disable omlx: idempotent when not enabled" {
-  run "${BIN}" autostart disable omlx
+@test "autostart disable backend: idempotent when not enabled" {
+  run "${BIN}" autostart disable backend
   [ "$status" -eq 0 ]
   [[ "$output" == *"was not enabled"* ]]
 }

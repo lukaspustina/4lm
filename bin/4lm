@@ -1465,15 +1465,15 @@ cmd_restart() {
 
 _autostart_check_target() {
   case "$1" in
-    omlx | backend | be | webui | ui | all) ;;
-    *) die "autostart: unknown service '$1'. Use omlx|webui|all" ;;
+    backend | be | webui | ui | all) ;;
+    *) die "autostart: unknown service '$1'. Use backend|webui|all" ;;
   esac
 }
 
 _autostart_pairs() {
   local target="$1"
   case "${target}" in
-    omlx | backend | be) echo "${BACKEND_LABEL}|${BACKEND_PLIST}" ;;
+    backend | be) echo "${BACKEND_LABEL}|${BACKEND_PLIST}" ;;
     webui | ui) echo "${WEBUI_LABEL}|${WEBUI_PLIST}" ;;
     all)
       echo "${BACKEND_LABEL}|${BACKEND_PLIST}"
@@ -1830,7 +1830,7 @@ ${C_DIM}Service control:${C_RST}
 
 ${C_DIM}Autostart:${C_RST}
   4lm autostart status               Show whether each service auto-starts at login
-  4lm autostart enable  [svc|all]    Enable login autostart (svc: omlx|webui|all)
+  4lm autostart enable  [svc|all]    Enable login autostart (svc: backend|webui|all)
   4lm autostart disable [svc|all]    Disable login autostart and stop the service
 
 ${C_DIM}Logs:${C_RST}

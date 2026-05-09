@@ -8,9 +8,9 @@ decide to run the stack.
 Autostart is opt-in and reversible:
 
 ```
-4lm autostart enable  [omlx|webui|all]   # enable login autostart
-4lm autostart disable [omlx|webui|all]   # disable and stop the service
-4lm autostart status                     # check current state (read-only)
+4lm autostart enable  [backend|webui|all]   # enable login autostart
+4lm autostart disable [backend|webui|all]   # disable and stop the service
+4lm autostart status                        # check current state (read-only)
 ```
 
 ## How it works
