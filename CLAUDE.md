@@ -47,10 +47,10 @@ specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
 
 ## Activation model
 
-Plists live in `~/.4lm/launchd/` (NOT `~/Library/LaunchAgents/`). launchd
-does not scan `~/.4lm/launchd/`, so services do **not** auto-start at login.
+Plists live in `~/.4lm/launchd/` (NOT `~/Library/LaunchAgents/`). Services do
+**not** auto-start at login by default; opt in via `4lm autostart enable`.
 `4lm start` calls `launchctl bootstrap`, `4lm stop` calls `launchctl bootout`.
-After reboot everything is stopped.
+After reboot, services stopped unless autostart is enabled.
 
 ## Network exposure
 
