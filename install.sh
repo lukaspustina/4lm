@@ -223,7 +223,17 @@ while IFS= read -r line; do
   fi
 done <"${SOURCE_DIR}/requirements.txt"
 
-# ---- 9b. Inject extras into huggingface-hub venv ----------------------------
+# ---- 9b. Install omlx from GitHub (not on PyPI) ----------------------------
+# omlx has no PyPI release; install directly from source.
+# Idempotent: skip if already installed.
+if pipx list --short 2>/dev/null | grep -q "^omlx "; then
+  ok "omlx already installed ($(pipx list --short 2>/dev/null | grep "^omlx " | awk '{print $2}'))"
+else
+  info "pipx install --python ${PIPX_PYTHON} git+https://github.com/jundot/omlx.git"
+  pipx install --python "${PIPX_PYTHON}" "git+https://github.com/jundot/omlx.git"
+fi
+
+# ---- 9c. Inject extras into huggingface-hub venv ----------------------------
 # hf-transfer: Rust-backed parallel downloader; activated via
 #   HF_HUB_ENABLE_HF_TRANSFER=1 at download time.
 # socksio: required by httpx (used by huggingface_hub) when macOS system
@@ -241,7 +251,7 @@ if pipx list --short 2>/dev/null | grep -q "^huggingface-hub "; then
   done
 fi
 
-# ---- 9c. Python helpers venv ------------------------------------------------
+# ---- 9e. Python helpers venv ------------------------------------------------
 info "Setting up Python helpers venv…"
 if [[ ! -x "${LLM_HOME}/venv/bin/python" ]]; then
   "${PIPX_PYTHON}" -m venv "${LLM_HOME}/venv"
