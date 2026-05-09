@@ -63,6 +63,10 @@ via `4lm expose <mode> [--confirm]`. There are no env-var overrides.
 swaps the symlink, kickstarts the backend, and polls `/v1/models` for 30 s.
 On timeout it restores the previous symlink and kickstarts again.
 
+Same-name re-issue (e.g. after editing the active profile YAML) re-renders
+`~/.omlx/model_settings.json` and re-stages `~/.4lm/runtime/<profile>/models/`
+before kickstarting, so YAML edits propagate without a full stop/start.
+
 ## Conventions
 
 - Bash scripts: `set -euo pipefail`, `shellcheck` clean, formatted by `shfmt`.
@@ -74,6 +78,32 @@ On timeout it restores the previous symlink and kickstarts again.
 - No `Co-Authored-By: Claude` lines in commits.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
+
+## OpenWebUI feature toggles
+
+`bin/4lm-webui-start.sh` exports a baseline of feature env vars to give the
+WebUI Claude-Desktop-style behavior on first launch:
+
+- Memory (`ENABLE_MEMORIES`)
+- DuckDuckGo web search (`ENABLE_RAG_WEB_SEARCH`, `RAG_WEB_SEARCH_ENGINE=duckduckgo`)
+- Pyodide code interpreter (`ENABLE_CODE_INTERPRETER`, `CODE_INTERPRETER_ENGINE=pyodide`)
+- Follow-up + autocomplete suggestions
+- RAG embeddings via omlx (`RAG_EMBEDDING_ENGINE=openai`,
+  `RAG_EMBEDDING_MODEL=qwen3-embedding`, pointed at the local `:8000/v1`)
+
+Most `ENABLE_*` / `RAG_*` / `DEFAULT_*` vars in OpenWebUI are PersistentConfig:
+copied into `webui.db` on first init only. After that the admin UI is the
+source of truth — changing the env value won't override the DB. Set
+`ENABLE_PERSISTENT_CONFIG=False` to make env vars authoritative every start
+(at the cost of disabling all admin-UI persistence).
+
+## RAG embedding model
+
+`default.yaml` and `omlx-coding.yaml` load
+`mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ` as a third model with
+`served_model_name: qwen3-embedding`. omlx exposes it on `/v1/embeddings`;
+the WebUI is wired to use it for file-upload RAG. Profiles without an
+embedding model fall back to OpenWebUI's bundled sentence-transformers.
 
 ## omlx path probe
 

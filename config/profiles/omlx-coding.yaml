@@ -10,7 +10,7 @@ models:
     pin: true
     ttl: null
 
-  - model_path: mlx-community/bge-m3
-    served_model_name: bge-m3
+  - model_path: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+    served_model_name: qwen3-embedding
     model_type: lm
     ttl: 600

@@ -22,3 +22,8 @@ models:
     model_type: lm
     pin: false
     ttl: 600
+
+  - model_path: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+    served_model_name: qwen3-embedding
+    model_type: lm
+    ttl: 600
