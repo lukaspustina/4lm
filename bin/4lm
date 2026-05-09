@@ -1357,7 +1357,7 @@ _doctor_check_models_cached() {
         warn "model not cached: ${_path} — run: 4lm model download"
       fi
     else
-      if hf_is_cached "${name}"; then
+      if hf_is_cached "${_path}"; then
         ok "model cached: ${_path}"
       else
         warn "model not cached: ${_path} — run: 4lm model download"
