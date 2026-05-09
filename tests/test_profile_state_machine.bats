@@ -4,8 +4,22 @@ load helpers/setup
 
 setup() {
   mkdir -p "${HOME}/.4lm/launchd" "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs"
-  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml"    "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
-  cp "${REPO_ROOT}/config/profiles/mlx-knowledge.yaml" "${HOME}/.4lm/config/profiles/mlx-knowledge.yaml"
+  # State-machine tests use mlx_lm profiles to avoid omlx staging, which triggers
+  # macOS daemon activity (Library/Trial/) inside snapshot dirs — creating
+  # TCC-protected files that break subsequent rm -rf cleanup. mlx_lm also avoids
+  # ollama pull calls that would break model-download dispatch tests.
+  cat > "${HOME}/.4lm/config/profiles/mlx-coding.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/qwen3-coder-test
+    served_model_name: qwen3-coder-test
+YAML
+  cat > "${HOME}/.4lm/config/profiles/mlx-knowledge.yaml" <<'YAML'
+backend: mlx_lm
+models:
+  - model_path: mlx-community/qwen-knowledge-test
+    served_model_name: qwen-knowledge-test
+YAML
   ln -sfn "${HOME}/.4lm/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/active-profile"
   cp "${REPO_ROOT}/config/network.example.yaml"         "${HOME}/.4lm/config/network.yaml"
 }
@@ -549,14 +563,13 @@ YAML
   [[ "$output" == *"Switched to mlx-knowledge"* ]]
 }
 
-@test "make models: dispatches hf for mlx profiles and ollama pull for ollama profiles" {
+@test "make models: dispatches hf download for all omlx profiles" {
   export HF_LOG="${BATS_TMPDIR}/hf-make-calls"
-  export OLLAMA_LOG="${BATS_TMPDIR}/ollama-make-calls"
-  rm -f "${HF_LOG}" "${OLLAMA_LOG}"
+  rm -f "${HF_LOG}"
   run make -C "${REPO_ROOT}" models
   [ "$status" -eq 0 ]
-  # config/profiles/default.yaml has backend: ollama + qwen3-coder-next + gemma4:31b
-  grep -q "gemma4:31b" "${OLLAMA_LOG}"
-  # config/profiles/mlx-coding.yaml and mlx-knowledge.yaml have mlx models
+  # All profiles now use omlx or mlx_lm (no ollama); make models dispatches hf download.
+  # default.yaml has mlx-community/gemma-4-31b-it-4bit as an omlx model.
+  grep -q "mlx-community/gemma-4-31b-it-4bit" "${HF_LOG}"
   [ -s "${HF_LOG}" ]
 }

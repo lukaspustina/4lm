@@ -13,7 +13,7 @@ export PATH="${BATS_TEST_DIRNAME}/helpers:${PATH}"
 
 # Sandbox HOME per test run — wipe first so state never bleeds across runs.
 export HOME="${BATS_TMPDIR}/home-${BATS_TEST_NAME:-default}"
-rm -rf "${HOME}"
+rm -rf "${HOME}" 2>/dev/null || true
 mkdir -p "${HOME}"
 
 # Default log file for launchctl stub.

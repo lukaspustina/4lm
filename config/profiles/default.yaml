@@ -1,19 +1,24 @@
 # Default profile: Qwen3-Coder-Next (coding) + Gemma 4 31B Dense (chat/reasoning)
-# via Ollama backend.
+# via omlx backend.
 #
 # Both models load on demand and stay resident while memory permits.
-# On 128 GB unified memory both models (~52 GB + ~20 GB) stay loaded
+# On 128 GB unified memory both models (~44 GB + ~18 GB) stay loaded
 # simultaneously with ample headroom for KV cache.
 #
-# Note: Gemma 4 requires ollama — the RotatingKVCache / sliding-window
-# attention architecture is incompatible with mlx-openai-server and mlx_lm
-# (GPU stream thread-local bug, upstream unresolved as of 2026-05).
+# omlx fixes the RotatingKVCache / BatchRotatingKVCache bug that required
+# Gemma 4 to run on ollama with mlx-openai-server.
 
-backend: ollama
+backend: omlx
 
 models:
-  - model_path: qwen3-coder-next:q4_K_M
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
     served_model_name: qwen3-coder-next
+    model_type: lm
+    pin: true
+    ttl: null
 
-  - model_path: gemma4:31b
+  - model_path: mlx-community/gemma-4-31b-it-4bit
     served_model_name: gemma4-31b
+    model_type: lm
+    pin: false
+    ttl: 600

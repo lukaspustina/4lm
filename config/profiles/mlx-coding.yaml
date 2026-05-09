@@ -1,22 +1,13 @@
-# mlx-coding profile: Qwen3-Coder-Next via mlx-openai-server.
+# mlx-coding profile: Qwen3-Coder-Next via omlx backend.
 #
-# Qwen3-Coder-Next: 80B total / 3B active MoE, 256k context, coding-optimised.
-# Single-model mlx profile. For a working two-model setup use default.yaml
-# (ollama) instead — Gemma 4 is broken on mlx backends (RotatingKVCache bug).
-#
-# server.host is overwritten by the wrapper based on ~/.4lm/config/network.yaml.
+# Qwen3-Coder-Next: 80B total / 3B active MoE, coding-optimised.
+# Single-model coding profile. For chat + coding use default.yaml instead.
 
-backend: mlx
-
-server:
-  host: "127.0.0.1"
-  port: 8000
+backend: omlx
 
 models:
   - model_path: mlx-community/Qwen3-Coder-Next-4bit
     served_model_name: qwen3-coder-next
     model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: qwen3_coder
-    context_length: 32768
-    default_max_tokens: 8192
+    pin: true
+    ttl: null
