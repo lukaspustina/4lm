@@ -1383,22 +1383,32 @@ cmd_uninstall() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --confirm) confirm=true ;;
-      --purge)
-        purge=true
-        confirm=true
-        ;;
+      --purge) purge=true ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
   done
   if [[ "${confirm}" != "true" ]]; then
-    printf 'Would remove:\n'
-    printf '  %s\n' \
-      "${HOME}/.local/bin/4lm" \
-      "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" \
-      "${HOME}/Library/LaunchAgents/com.4lm.webui.plist"
-    printf 'Configs and logs in %s are preserved.\n' "${LLM_HOME}"
-    printf 'Pass --confirm to proceed, or --purge to also wipe %s and all model caches.\n' "${LLM_HOME}"
+    if [[ "${purge}" == "true" ]]; then
+      printf 'Would remove (--purge scope):\n'
+      printf '  %s\n' \
+        "${HOME}/.local/bin/4lm" \
+        "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" \
+        "${HOME}/Library/LaunchAgents/com.4lm.webui.plist" \
+        "${LLM_HOME}" \
+        "${HOME}/.omlx" \
+        "all HF-cached model repos" \
+        "all ollama models"
+      printf 'Pass --purge --confirm to proceed. This cannot be undone.\n'
+    else
+      printf 'Would remove:\n'
+      printf '  %s\n' \
+        "${HOME}/.local/bin/4lm" \
+        "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" \
+        "${HOME}/Library/LaunchAgents/com.4lm.webui.plist"
+      printf 'Configs and logs in %s are preserved.\n' "${LLM_HOME}"
+      printf 'Pass --confirm to proceed, or --purge --confirm to also wipe %s and all model caches.\n' "${LLM_HOME}"
+    fi
     return 0
   fi
   echo "${C_DIM}─── Uninstalling 4lm services ───${C_RST}"
@@ -1957,7 +1967,7 @@ ${C_DIM}Updates:${C_RST}
 
 ${C_DIM}Other:${C_RST}
   4lm uninstall [--confirm]          Stop services, remove autostart symlinks and ~/.local/bin/4lm; keeps ~/.4lm
-  4lm uninstall --purge              Same plus wipes ~/.4lm/ and all model caches (nothing left)
+  4lm uninstall --purge [--confirm]  Same plus wipes ~/.4lm/ and all model caches (nothing left)
 EOF
 }
 
