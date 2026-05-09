@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-09
+
+### Added
+- OpenWebUI feature baseline in `bin/4lm-webui-start.sh`: DuckDuckGo web
+  search, Pyodide code interpreter, personal memory, follow-up +
+  autocomplete suggestions; `WEBUI_NAME=4lm` (ee76145)
+- RAG embeddings via omlx: `mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ`
+  (served as `qwen3-embedding`) added to default and omlx-coding profiles;
+  WebUI wired to `RAG_EMBEDDING_ENGINE=openai` against the local backend (ee76145)
+- `4lm profile validate <name>` subcommand for standalone profile validation (dfc5946)
+- `4lm status --json` flag for machine-readable status output (dfc5946)
+
+### Changed
+- omlx-coding profile: replaced gated `mlx-community/bge-m3` with
+  `mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ` (ee76145)
+- SDD work archived: 4lm-rework, ollama-backend (a66ec82, 97e5dc0)
+
+### Fixed
+- `4lm profile set` same-name path now re-renders `model_settings.json`
+  and re-stages model symlinks before kickstart, so YAML edits to the
+  active profile propagate without a full stop/start (ee76145)
+- `4lm status --json` no longer emits invalid literal when backend field
+  is set (c00b0ac)
+- ollama-backend status header (a66ec82)
+
 ## [0.5.0] - 2026-05-09
 
 ### Added
