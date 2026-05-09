@@ -376,8 +376,8 @@ cmd_status() {
     fi
   fi
 
+  echo ""
   if is_loaded "${BACKEND_LABEL}"; then
-    echo ""
     local _url models_raw model_ids
     _url="$(backend_url)/v1/models"
     models_raw="$(curl --max-time 1 --silent --fail "${_url}" 2>/dev/null || true)"
@@ -388,6 +388,13 @@ cmd_status() {
       [[ -n "${model_ids}" ]] && printf "  %-8s %s\n" "models:" "${model_ids}"
     else
       warn "backend: loaded but not responding at ${_url}"
+    fi
+  fi
+  if is_loaded "${WEBUI_LABEL}"; then
+    if curl --max-time 1 --silent --fail "$(webui_url)" >/dev/null 2>&1; then
+      ok "webui:   HTTP OK"
+    else
+      warn "webui: loaded but not responding at $(webui_url)"
     fi
   fi
 }
