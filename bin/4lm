@@ -213,7 +213,7 @@ _ollama_ensure_serve() {
   die "ollama serve did not start within 10 s"
 }
 
-# Return backend value for a profile YAML: omlx | mlx | mlx_lm | ollama.
+# Return backend value for a profile YAML: omlx | mlx_lm | ollama.
 # Exits 1 with stderr on unrecognised backend value.
 # NOTE: this backend-detection logic is duplicated verbatim in
 # bin/4lm-backend-start.sh. Any change to allowed backend values
@@ -226,7 +226,14 @@ profile_backend() {
     omlx) echo "omlx" ;;
     ollama) echo "ollama" ;;
     mlx_lm) echo "mlx_lm" ;;
-    mlx | "") echo "mlx" ;;
+    mlx)
+      warn "backend: mlx (mlx-openai-server) is no longer supported; migrate to backend: omlx"
+      return 1
+      ;;
+    "")
+      warn "missing backend: key in ${yaml}"
+      return 1
+      ;;
     *)
       warn "unknown backend '${val}' in ${yaml}"
       return 1
@@ -435,7 +442,7 @@ run_outdated_check() {
     local repos="" repo_id local_sha remote_sha _p _be _served _od
     for _p in "${repo}"/config/profiles/*.yaml; do
       [[ -f "${_p}" ]] || continue
-      _be="$(profile_backend "${_p}" 2>/dev/null || echo "mlx")"
+      _be="$(profile_backend "${_p}" 2>/dev/null || true)"
       [[ "${_be}" == "ollama" ]] && continue
       while IFS='|' read -r _served repo_id _od; do
         [[ -z "${repo_id}" ]] && continue
@@ -762,31 +769,6 @@ validate_profile() {
       warn "backend: mlx_lm supports exactly one model entry (found ${n_paths})"
       return 1
     fi
-  fi
-
-  # mlx-only checks (context_length, tool_call_parser).
-  if [[ "${backend}" == "mlx" ]]; then
-    # context_length required per entry.
-    local n_ctx
-    n_ctx="$(grep -cE '^[[:space:]]*context_length:[[:space:]]*[0-9]+' "${yaml_path}" || true)"
-    if [[ "${n_ctx}" -ne "${n_paths}" ]]; then
-      warn "every model entry must define context_length as a positive integer"
-      return 1
-    fi
-
-    # tool_call_parser, if present, must be in the allowed enum.
-    # Source: app/parsers/ in mlx-openai-server v1.7.1.
-    # Source of truth: `mlx-openai-server launch --help` (--tool-call-parser).
-    local allowed_parsers="functiongemma gemma4 glm4_moe harmony hermes iquest_coder_v1 kimi_k2 longcat_flash_lite minimax_m2 nemotron3_nano qwen3 qwen3_coder qwen3_moe qwen3_vl solar_open step_35"
-    while IFS= read -r line; do
-      local val
-      val="$(awk -F': ' '{print $2}' <<<"${line}" | tr -d '"' | tr -d "'" | tr -d ' ')"
-      [[ -z "${val}" ]] && continue
-      if ! grep -qw "${val}" <<<"${allowed_parsers}"; then
-        warn "invalid tool_call_parser '${val}'; allowed: ${allowed_parsers}"
-        return 1
-      fi
-    done < <(grep -E '^[[:space:]]*tool_call_parser:[[:space:]]*' "${yaml_path}" || true)
   fi
 
   return 0
@@ -1346,7 +1328,7 @@ cmd_doctor() {
 _doctor_check_models_cached() {
   [[ -L "${ACTIVE_CONFIG}" ]] || return 0
   local backend
-  backend="$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || echo "mlx")"
+  backend="$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || true)"
   local _ollama_list=""
   [[ "${backend}" == "ollama" ]] && _ollama_list="$(ollama list 2>/dev/null)"
   while IFS='|' read -r name _path _od; do
@@ -1505,7 +1487,7 @@ cmd_models_download() {
   trap '[[ -n "${_ollama_tmp_pid:-}" ]] && kill "${_ollama_tmp_pid}" 2>/dev/null || true' EXIT
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
-    backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
+    backend="$(profile_backend "${profile_yaml}" 2>/dev/null || true)"
     while IFS='|' read -r _served model_path _od; do
       [[ -z "${model_path}" ]] && continue
       if [[ "${backend}" == "ollama" ]]; then
@@ -1580,7 +1562,7 @@ cmd_models_cleanup() {
   local backend model_path _served _od
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
-    backend="$(profile_backend "${profile_yaml}" 2>/dev/null || echo "mlx")"
+    backend="$(profile_backend "${profile_yaml}" 2>/dev/null || true)"
     while IFS='|' read -r _served model_path _od; do
       [[ -z "${model_path}" ]] && continue
       if [[ "${backend}" == "ollama" ]]; then

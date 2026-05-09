@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 4lm-backend-start.sh — Starts the backend daemon (mlx-openai-server or Ollama)
+# 4lm-backend-start.sh — Starts the backend daemon (omlx, mlx_lm, or ollama)
 # based on the active profile's backend: key.
 # Called by launchd. Not meant to be run directly (use `4lm start` instead).
 
@@ -45,14 +45,22 @@ esac
 # ---- Detect backend from active profile ------------------------------------
 # Duplicated inline from profile_backend() in bin/4lm — cannot source bin/4lm
 # from a launchd entry point (circular dependency, different env).
-BACKEND_TYPE="mlx"
+BACKEND_TYPE=""
 _be_val="$(grep '^backend:' "${ACTIVE_CONFIG}" 2>/dev/null |
   awk '{print $2}' | tr -d "\"'" || true)"
 case "${_be_val}" in
   omlx) BACKEND_TYPE="omlx" ;;
   ollama) BACKEND_TYPE="ollama" ;;
   mlx_lm) BACKEND_TYPE="mlx_lm" ;;
-  mlx | "") BACKEND_TYPE="mlx" ;;
+  mlx)
+    echo "[$(date -Iseconds)] FATAL: backend: mlx (mlx-openai-server) is no longer supported" >&2
+    echo "  Migrate your profile to backend: omlx" >&2
+    exit 78
+    ;;
+  "")
+    echo "[$(date -Iseconds)] FATAL: missing backend: key in ${ACTIVE_CONFIG}" >&2
+    exit 78
+    ;;
   *)
     echo "[$(date -Iseconds)] FATAL: unknown backend '${_be_val}' in ${ACTIVE_CONFIG}" >&2
     exit 78
@@ -162,8 +170,8 @@ elif [[ "${BACKEND_TYPE}" == "ollama" ]]; then
 
   exec "${OLLAMA_BIN}" serve
 
-else
-  # ---- Wired memory limit (best-effort, applies to mlx and mlx_lm) ----------
+elif [[ "${BACKEND_TYPE}" == "mlx_lm" ]]; then
+  # ---- Wired memory limit (best-effort) --------------------------------------
   # Required for large MoE models on 128 GB Macs. Needs sudoers config (see docs/setup.md §Sudoers).
   # Sudoers literal must match exactly: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
   CURRENT_LIMIT="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
@@ -173,84 +181,38 @@ else
     fi
   fi
 
-  if [[ "${BACKEND_TYPE}" == "mlx_lm" ]]; then
-    # ---- mlx_lm.server -------------------------------------------------------
-    # python3 lives in the same venv as mlx-openai-server (mlx_lm co-installed).
-    MLX_LM_PY=""
-    _mlx_bin="$(command -v mlx-openai-server || true)"
-    if [[ -n "${_mlx_bin}" ]]; then
-      _candidate="$(dirname "${_mlx_bin}")/python3"
-      [[ -x "${_candidate}" ]] && MLX_LM_PY="${_candidate}"
-    fi
-    if [[ -z "${MLX_LM_PY}" ]]; then
-      for candidate in \
-        "${HOME}/.local/pipx/venvs/mlx-openai-server/bin/python3" \
-        "$(command -v python3.12 || true)"; do
-        [[ -n "${candidate}" && -x "${candidate}" ]] && {
-          MLX_LM_PY="${candidate}"
-          break
-        }
-      done
-    fi
-    if [[ -z "${MLX_LM_PY}" ]]; then
-      echo "[$(date -Iseconds)] FATAL: python3 not found for mlx_lm backend" >&2
-      echo "  Install mlx-openai-server via pipx (mlx_lm is co-installed in its venv)" >&2
-      exit 127
-    fi
-
-    MLX_LM_MODEL="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $NF; exit}' "${ACTIVE_CONFIG}")"
-    if [[ -z "${MLX_LM_MODEL}" ]]; then
-      echo "[$(date -Iseconds)] FATAL: no model_path found in ${ACTIVE_CONFIG}" >&2
-      exit 78
-    fi
-
-    echo "[$(date -Iseconds)] Starting mlx_lm.server"
-    echo "  python:  ${MLX_LM_PY}"
-    echo "  model:   ${MLX_LM_MODEL}"
-    echo "  profile: $(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
-    echo "  bind:    ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
-
-    exec "${MLX_LM_PY}" -m mlx_lm server \
-      --model "${MLX_LM_MODEL}" \
-      --host "${BIND_HOST}" \
-      --port "${NET_PORT}"
-
-  else
-    # ---- mlx-openai-server ---------------------------------------------------
-    MLX_BIN="$(command -v mlx-openai-server || true)"
-    if [[ -z "${MLX_BIN}" ]]; then
-      for candidate in \
-        "${HOME}/.local/bin/mlx-openai-server" \
-        "/opt/homebrew/bin/mlx-openai-server" \
-        "${HOME}/.pyenv/shims/mlx-openai-server"; do
-        if [[ -x "${candidate}" ]]; then
-          MLX_BIN="${candidate}"
-          break
-        fi
-      done
-    fi
-    if [[ -z "${MLX_BIN}" ]]; then
-      echo "[$(date -Iseconds)] FATAL: mlx-openai-server not found in PATH or common locations" >&2
-      echo "  Install: pip install -r requirements.txt" >&2
-      exit 127
-    fi
-
-    echo "[$(date -Iseconds)] Starting mlx-openai-server"
-    echo "  binary: ${MLX_BIN}"
-    echo "  config: $(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
-    echo "  bind:   ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
-
-    # --repetition-penalty 1.05: mlx-openai-server defaults to 1.0 (off), and the
-    # OpenAI API spec has no `repetition_penalty` field — clients (OpenCode,
-    # Open WebUI) can't pass it per-request. Qwen3.6 in MLX 8-bit reliably loops
-    # at 1.0 ("For client X: …" cycling verbatim). 1.05 is the Qwen authors'
-    # recommended baseline: enough to break loops, low enough not to harm
-    # normal output. Override per-request with frequency_penalty/presence_penalty
-    # (those ARE in the OpenAI spec).
-    exec "${MLX_BIN}" launch \
-      --config "${ACTIVE_CONFIG}" \
-      --host "${BIND_HOST}" \
-      --port "${NET_PORT}" \
-      --repetition-penalty 1.05
+  # ---- mlx_lm.server ---------------------------------------------------------
+  # python3 lives in the omlx pipx venv (mlx_lm is co-installed there).
+  MLX_LM_PY=""
+  for candidate in \
+    "${HOME}/.local/pipx/venvs/omlx/bin/python3" \
+    "$(command -v python3.12 || true)" \
+    "$(command -v python3 || true)"; do
+    [[ -n "${candidate}" && -x "${candidate}" ]] && {
+      MLX_LM_PY="${candidate}"
+      break
+    }
+  done
+  if [[ -z "${MLX_LM_PY}" ]]; then
+    echo "[$(date -Iseconds)] FATAL: python3 not found for mlx_lm backend" >&2
+    echo "  Install omlx via pipx (mlx_lm is co-installed in its venv)" >&2
+    exit 127
   fi
+
+  MLX_LM_MODEL="$(awk '/^[[:space:]]*-[[:space:]]*model_path:/{print $NF; exit}' "${ACTIVE_CONFIG}")"
+  if [[ -z "${MLX_LM_MODEL}" ]]; then
+    echo "[$(date -Iseconds)] FATAL: no model_path found in ${ACTIVE_CONFIG}" >&2
+    exit 78
+  fi
+
+  echo "[$(date -Iseconds)] Starting mlx_lm.server"
+  echo "  python:  ${MLX_LM_PY}"
+  echo "  model:   ${MLX_LM_MODEL}"
+  echo "  profile: $(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
+  echo "  bind:    ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
+
+  exec "${MLX_LM_PY}" -m mlx_lm server \
+    --model "${MLX_LM_MODEL}" \
+    --host "${BIND_HOST}" \
+    --port "${NET_PORT}"
 fi

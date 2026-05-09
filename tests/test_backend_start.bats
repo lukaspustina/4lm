@@ -17,10 +17,9 @@ backend_port: 8000
 YAML
 
   export OLLAMA_LOG="${BATS_TMPDIR}/ollama-calls"
-  export MLX_LOG="${BATS_TMPDIR}/mlx-calls"
   export MLXLM_LOG="${BATS_TMPDIR}/mlxlm-calls"
   export SYSCTL_LOG="${BATS_TMPDIR}/sysctl-calls"
-  rm -f "${OLLAMA_LOG}" "${MLX_LOG}" "${MLXLM_LOG}" "${SYSCTL_LOG}"
+  rm -f "${OLLAMA_LOG}" "${MLXLM_LOG}" "${SYSCTL_LOG}"
 }
 
 _write_ollama_profile() {
@@ -31,17 +30,6 @@ models:
     served_model_name: gemma4-27b
 YAML
   ln -sfn "${BATS_TMPDIR}/ollama-test.yaml" "${HOME}/.4lm/config/active-profile"
-}
-
-_write_mlx_profile() {
-  cat > "${BATS_TMPDIR}/mlx-test.yaml" <<'YAML'
-backend: mlx
-models:
-  - model_path: mlx-community/test-model
-    served_model_name: test-model
-    context_length: 8192
-YAML
-  ln -sfn "${BATS_TMPDIR}/mlx-test.yaml" "${HOME}/.4lm/config/active-profile"
 }
 
 _write_mlxlm_profile() {
@@ -81,15 +69,17 @@ YAML
   [ ! -s "${SYSCTL_LOG}" ]
 }
 
-@test "mlx profile: mlx-openai-server is called with launch --config" {
-  _write_mlx_profile
+@test "mlx backend: fatal error with message to migrate to omlx" {
+  cat > "${BATS_TMPDIR}/mlx-test.yaml" <<'YAML'
+backend: mlx
+models:
+  - model_path: mlx-community/test-model
+    served_model_name: test-model
+YAML
+  ln -sfn "${BATS_TMPDIR}/mlx-test.yaml" "${HOME}/.4lm/config/active-profile"
   run "${BACKEND_START}"
-  [ "$status" -eq 0 ]
-  grep -q "launch --config" "${MLX_LOG}"
-  # Note: the wired-memory sysctl block is also entered here but uses
-  # /usr/sbin/sysctl with a full path, which bypasses PATH-based stubs.
-  # Its invocation cannot be asserted via SYSCTL_LOG in this harness.
-  # The negative case (ollama skips the block) is verified in the sysctl test.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no longer supported"* ]]
 }
 
 @test "ollama profile: ollama absent from PATH exits 127 with FATAL message" {
@@ -132,11 +122,15 @@ YAML
 
 @test "mlx_lm profile: python3 absent from venv exits 127 with FATAL message" {
   _write_mlxlm_profile
-  # Use a PATH with mlx-openai-server stub but no python3 stub
+  # Exclude /usr/bin to avoid picking up /usr/bin/python3 (macOS Xcode shim).
+  # omlx venv path won't exist in the bats temp HOME (candidate 1 absent).
+  # Symlink /usr/bin utilities needed by the script into a separate bin dir.
   local bin="${BATS_TMPDIR}/no-python3"
   mkdir -p "${bin}"
-  ln -sfn "${REPO_ROOT}/tests/helpers/mlx-openai-server" "${bin}/mlx-openai-server"
-  run -127 env PATH="${bin}:/usr/bin:/bin" "${BACKEND_START}"
+  for cmd in grep awk tr readlink; do
+    ln -sf "$(command -v "${cmd}")" "${bin}/${cmd}" 2>/dev/null || true
+  done
+  run -127 env PATH="${bin}:/bin" "${BACKEND_START}"
   [[ "$output" == *"FATAL: python3 not found"* ]]
 }
 

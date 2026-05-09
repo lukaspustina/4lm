@@ -1,4 +1,4 @@
-backend: mlx
+backend: omlx
 
 models:
   - model_path: mlx-community/Foo-4bit
