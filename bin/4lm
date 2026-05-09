@@ -382,7 +382,8 @@ cmd_status() {
   fi
 
   if [[ "${json}" == "true" ]]; then
-    local lan_ip_val="null"
+    local backend_json lan_ip_val="null"
+    [[ -n "${backend_type}" ]] && backend_json="\"${backend_type}\"" || backend_json="null"
     if [[ "${mode}" == "lan" ]]; then
       local _ip
       _ip="$(lan_ip)"
@@ -390,7 +391,7 @@ cmd_status() {
     fi
     printf '{"profile":%s,"backend":%s,"network":{"mode":%s,"lan_ip":%s,"backend_port":%s,"webui_port":%s},"autostart":{"backend":%s,"webui":%s},"services":{"backend":{"loaded":%s,"running":%s},"webui":{"loaded":%s,"running":%s}},"http":{"backend":%s,"webui":%s},"models":%s}\n' \
       "\"${profile}\"" \
-      "${backend_type:+\"${backend_type}\"}${backend_type:-null}" \
+      "${backend_json}" \
       "\"${mode}\"" \
       "${lan_ip_val}" \
       "${backend_port}" \
