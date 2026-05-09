@@ -213,7 +213,7 @@ _ollama_ensure_serve() {
   die "ollama serve did not start within 10 s"
 }
 
-# Return "mlx" (default) or "ollama" for a profile YAML.
+# Return backend value for a profile YAML: omlx | mlx | mlx_lm | ollama.
 # Exits 1 with stderr on unrecognised backend value.
 # NOTE: this backend-detection logic is duplicated verbatim in
 # bin/4lm-backend-start.sh. Any change to allowed backend values
@@ -223,6 +223,7 @@ profile_backend() {
   local val
   val="$(grep '^backend:' "${yaml}" 2>/dev/null | awk '{print $2}' | tr -d "\"'")"
   case "${val}" in
+    omlx) echo "omlx" ;;
     ollama) echo "ollama" ;;
     mlx_lm) echo "mlx_lm" ;;
     mlx | "") echo "mlx" ;;
@@ -691,7 +692,52 @@ validate_profile() {
   local backend
   backend="$(profile_backend "${yaml_path}")" || return 1
 
-  # Both backends: models: key and at least one model_path: entry required.
+  # omlx: dedicated validation branch.
+  if [[ "${backend}" == "omlx" ]]; then
+    if ! grep -q '^models:' "${yaml_path}"; then
+      warn "backend omlx requires 'models:' key"
+      return 1
+    fi
+    if ! grep -qE '^[[:space:]]*-[[:space:]]*model_path:' "${yaml_path}"; then
+      warn "backend omlx requires at least one '- model_path:' entry"
+      return 1
+    fi
+    # Per-model validation via awk block-scanning anchored on "- model_path:".
+    local omlx_err=0
+    while IFS= read -r omlx_err_line; do
+      warn "${omlx_err_line}"
+      omlx_err=1
+    done < <(awk '
+      /^[[:space:]]*-[[:space:]]*model_path:/ {
+        if (in_entry) _flush()
+        in_entry = 1
+        path = $NF; served = ""; ttl = ""; model_type = ""
+        has_ttl = 0; has_model_type = 0
+      }
+      in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
+      in_entry && /^[[:space:]]+ttl:/ { ttl = $NF; has_ttl = 1 }
+      in_entry && /^[[:space:]]+model_type:/ { model_type = $NF; has_model_type = 1 }
+      function _flush() {
+        name = (served != "") ? served : path
+        if (path == "") { print "model entry missing required field '"'"'model_path'"'"'"; return }
+        if (served == "") { print "model entry missing required field '"'"'served_model_name'"'"'"; return }
+        if (path !~ /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/) {
+          print "model '"'"'" name "'"'"' field '"'"'model_path'"'"' is invalid"
+        }
+        if (has_ttl && ttl != "null" && ttl !~ /^[0-9]+$/) {
+          print "model '"'"'" name "'"'"' field '"'"'ttl'"'"' must be integer or null"
+        }
+        if (has_model_type && model_type != "lm" && model_type != "vlm") {
+          print "model '"'"'" name "'"'"' field '"'"'model_type'"'"' must be '"'"'lm'"'"' or '"'"'vlm'"'"'"
+        }
+      }
+      END { if (in_entry) _flush() }
+    ' "${yaml_path}")
+    [[ "${omlx_err}" -eq 0 ]] || return 1
+    return 0
+  fi
+
+  # Both backends (mlx / mlx_lm / ollama): models: key and at least one model_path: entry required.
   if ! grep -q '^models:' "${yaml_path}"; then
     warn "missing top-level 'models:' key"
     return 1
@@ -744,6 +790,158 @@ validate_profile() {
   fi
 
   return 0
+}
+
+# Append one rollback event line to ~/.4lm/logs/profile-rollback.log.
+# Creates log dir and file with correct permissions on first write.
+log_rollback_event() {
+  local prior="$1" attempted="$2" reason="$3"
+  local log_dir="${LLM_HOME}/logs"
+  local log="${log_dir}/profile-rollback.log"
+  [[ -d "${log_dir}" ]] || mkdir -p "${log_dir}"
+  [[ -f "${log}" ]] || {
+    touch "${log}"
+    chmod 0644 "${log}"
+  }
+  printf '%s\t%s\t%s\t%s\n' "$(date -Iseconds)" "${prior}" "${attempted}" "${reason}" \
+    >>"${log}"
+}
+
+# Render ~/.omlx/settings.json from a profile YAML.
+# Per-model fields extracted with awk block-scanning anchored on "- model_path:".
+render_omlx_settings() {
+  local yaml_path="$1" output_path="$2"
+  # Allow JQ_BIN override for test environments where the jq stub is not functional.
+  local _jq="${JQ_BIN:-jq}"
+  mkdir -p "${HOME}/.omlx/"
+
+  local awk_output
+  awk_output="$(awk '
+    /^[[:space:]]*-[[:space:]]*model_path:/ {
+      if (in_entry) _emit()
+      in_entry = 1
+      path = $NF; served = ""; pin = ""; ttl_val = ""
+      model_type = ""; has_pin = 0; has_ttl = 0; has_model_type = 0
+    }
+    in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
+    in_entry && /^[[:space:]]+pin:/ { pin = $NF; has_pin = 1 }
+    in_entry && /^[[:space:]]+ttl:/ { ttl_val = $NF; has_ttl = 1 }
+    in_entry && /^[[:space:]]+model_type:/ { model_type = $NF; has_model_type = 1 }
+    function _emit() {
+      if (served == "") return
+      print served "|" (has_pin ? pin : "") "|" (has_pin ? "1" : "0") "|" \
+            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0") "|" \
+            (has_model_type ? model_type : "")
+    }
+    END { if (in_entry) _emit() }
+  ' "${yaml_path}")"
+
+  if [[ -z "${awk_output}" ]]; then
+    warn "error: no models defined in profile"
+    return 1
+  fi
+
+  local entries=""
+  local first=1
+  while IFS='|' read -r served pin has_pin ttl_val has_ttl model_type; do
+    [[ -z "${served}" ]] && continue
+    local obj
+    # shellcheck disable=SC2016  # jq filter: $vars are jq args, not shell vars
+    obj="$("${_jq}" -n \
+      --arg served_model_name "${served}" \
+      --arg pin_val "${pin}" \
+      --arg has_pin "${has_pin}" \
+      --arg ttl_val "${ttl_val}" \
+      --arg has_ttl "${has_ttl}" \
+      --arg model_type "${model_type}" \
+      '{served_model_name: $served_model_name} +
+       (if $has_pin == "1" then {pin: ($pin_val == "true")} else {} end) +
+       (if $has_ttl == "1" then
+          (if $ttl_val == "null" then {ttl: null} else {ttl: ($ttl_val | tonumber)} end)
+        else {} end) +
+       (if $model_type != "" then {model_type: $model_type} else {} end)')"
+    if [[ "${first}" -eq 1 ]]; then
+      entries="${obj}"
+      first=0
+    else
+      entries+=$'\n'"${obj}"
+    fi
+  done <<<"${awk_output}"
+
+  # Wrap entries array and write output.
+  local final_json
+  final_json="$(printf '%s\n' "${entries}" | "${_jq}" -s '{models: .}')" || {
+    warn "error: cannot write settings: ${output_path}: jq failed"
+    return 1
+  }
+
+  if ! printf '%s\n' "${final_json}" >"${output_path}" 2>/dev/null; then
+    warn "error: cannot write settings: ${output_path}: write failed"
+    return 1
+  fi
+}
+
+# Populate ~/.4lm/runtime/<profile_name>/models/ with HF snapshot symlinks.
+# TODO(phase2-probe): remove if omlx accepts absolute HF snapshot paths
+stage_omlx_model_dir() {
+  local profile_name="$1" yaml_path="$2"
+  local models_dir="${LLM_HOME}/runtime/${profile_name}/models"
+  mkdir -p "${models_dir}"
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+
+  local staged=0
+  while IFS='|' read -r served model_path _rest; do
+    [[ -z "${served}" || -z "${model_path}" ]] && continue
+
+    # Validate model_path format (defense-in-depth).
+    if [[ ! "${model_path}" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+      warn "error: invalid model_path '${model_path}'"
+      rm -rf "${tmpdir}"
+      return 1
+    fi
+
+    local slug="${model_path//\//--}"
+    local sha
+    sha="$(hf_local_sha "${model_path}")"
+    if [[ -z "${sha}" ]]; then
+      warn "error: HF model not found: ${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${slug}/refs/main"
+      rm -rf "${tmpdir}"
+      return 1
+    fi
+
+    local snapshot_dir="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${slug}/snapshots/${sha}"
+    if [[ ! -d "${snapshot_dir}" ]]; then
+      warn "error: HF model not found: ${snapshot_dir}"
+      rm -rf "${tmpdir}"
+      return 1
+    fi
+
+    ln -sfn "${snapshot_dir}" "${tmpdir}/${served}"
+    staged=$((staged + 1))
+  done < <(awk '
+    /^[[:space:]]*-[[:space:]]*model_path:/ {
+      if (in_entry) print served "|" path "|"
+      in_entry = 1; path = $NF; served = ""
+    }
+    in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
+    END { if (in_entry) print served "|" path "|" }
+  ' "${yaml_path}")
+
+  if [[ "${staged}" -eq 0 ]]; then
+    rm -rf "${tmpdir}"
+    warn "error: no models to stage in profile"
+    return 1
+  fi
+
+  # Atomic swap: remove old symlinks, move new ones in.
+  find "${models_dir}" -maxdepth 1 -type l -delete
+  for link in "${tmpdir}"/*; do
+    [[ -e "${link}" || -L "${link}" ]] || continue
+    mv "${link}" "${models_dir}/"
+  done
+  rm -rf "${tmpdir}"
 }
 
 cmd_profile() {
@@ -810,6 +1008,21 @@ cmd_profile_set() {
   local target="${PROFILES_DIR}/${name}.yaml"
   [[ -f "${target}" ]] || die "profile not found: ${target}"
 
+  # Acquire lockfile before validation so concurrent calls are detected early.
+  mkdir -p "${LLM_HOME}/runtime"
+  if ! mkdir "${LLM_HOME}/runtime/profile.lock" 2>/dev/null; then
+    local _lock_pid
+    _lock_pid="$(cat "${LLM_HOME}/runtime/profile.lock/pid" 2>/dev/null || true)"
+    if [[ -n "${_lock_pid}" ]] && ! kill -0 "${_lock_pid}" 2>/dev/null; then
+      rm -rf "${LLM_HOME}/runtime/profile.lock" 2>/dev/null || true
+      mkdir "${LLM_HOME}/runtime/profile.lock" || die "profile set already in progress"
+    else
+      die "profile set already in progress"
+    fi
+  fi
+  echo "$$" >"${LLM_HOME}/runtime/profile.lock/pid"
+  trap 'rm -rf "${LLM_HOME}/runtime/profile.lock" 2>/dev/null || true' EXIT
+
   # (a continued) Validate YAML schema.
   if ! validate_profile "${target}"; then
     die "profile validation failed; active profile unchanged"
@@ -853,6 +1066,22 @@ cmd_profile_set() {
     echo "${previous}" >"${PREVIOUS_PROFILE_FILE}"
   fi
 
+  # Determine new profile's backend.
+  local new_backend
+  new_backend="$(profile_backend "${target}")"
+
+  # (omlx only) render settings.json and stage model dir before symlink swap.
+  if [[ "${new_backend}" == "omlx" ]]; then
+    if ! render_omlx_settings "${target}" "${HOME}/.omlx/settings.json"; then
+      log_rollback_event "${previous}" "${name}" "render_settings"
+      die "render_omlx_settings failed; active profile unchanged"
+    fi
+    if ! stage_omlx_model_dir "${name}" "${target}"; then
+      log_rollback_event "${previous}" "${name}" "stage_models"
+      die "stage_omlx_model_dir failed; active profile unchanged"
+    fi
+  fi
+
   # (c) Rewrite active symlink atomically.
   ln -sfn "${target}" "${ACTIVE_CONFIG}"
 
@@ -878,6 +1107,7 @@ cmd_profile_set() {
 
     if [[ "${_timed_out}" -eq 1 ]]; then
       # (g) Roll back.
+      log_rollback_event "${previous}" "${name}" "poll_timeout"
       if [[ -n "${previous}" && -f "${PROFILES_DIR}/${previous}.yaml" ]]; then
         ln -sfn "${PROFILES_DIR}/${previous}.yaml" "${ACTIVE_CONFIG}"
         if ! launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1; then
@@ -980,7 +1210,53 @@ EOF
 }
 
 # ---- Doctor ----------------------------------------------------------------
+cmd_doctor_phase3_ready() {
+  local log="${LLM_HOME}/logs/profile-rollback.log"
+  local active="${ACTIVE_CONFIG}"
+
+  # Check (b): active backend must be omlx.
+  if [[ ! -L "${active}" ]]; then
+    echo "red: no active profile set"
+    return 1
+  fi
+  local active_backend
+  active_backend="$(profile_backend "$(readlink "${active}")" 2>/dev/null || echo "unknown")"
+  if [[ "${active_backend}" != "omlx" ]]; then
+    echo "red: active backend is '${active_backend}', expected 'omlx'"
+    return 1
+  fi
+
+  # Check (a): no rollback log, or log is empty, or latest entry is older than symlink mtime.
+  if [[ ! -f "${log}" ]] || [[ ! -s "${log}" ]]; then
+    echo "green: no rollback events since $(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "${active}" 2>/dev/null || echo "(unknown)")"
+    return 0
+  fi
+
+  local symlink_mtime
+  symlink_mtime="$(stat -f %m "${active}" 2>/dev/null || echo 0)"
+
+  local last_line last_ts last_epoch
+  last_line="$(tail -1 "${log}")"
+  last_ts="$(printf '%s' "${last_line}" | awk -F'\t' '{print $1}')"
+
+  # Convert ISO8601 timestamp to epoch for comparison.
+  last_epoch="$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "${last_ts}" +%s 2>/dev/null || echo 0)"
+
+  if [[ "${last_epoch}" -gt "${symlink_mtime}" ]]; then
+    echo "red: rollback event newer than active-profile symlink: ${last_line}"
+    return 1
+  fi
+
+  echo "green: no rollback events since $(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "${active}" 2>/dev/null || echo "(unknown)")"
+  return 0
+}
+
 cmd_doctor() {
+  if [[ "${1:-}" == "phase3-ready" ]]; then
+    cmd_doctor_phase3_ready
+    return
+  fi
+
   echo "${C_DIM}─── 4lm Doctor ───${C_RST}"
   local fail=0
 
@@ -1480,7 +1756,7 @@ ${C_DIM}Service control:${C_RST}
   4lm stop  [backend|webui|all]      Stop service(s)
   4lm restart [backend|webui|all]    Restart service(s)
   4lm status                         Show service state, URLs, and backend HTTP ping
-  4lm doctor                         Check prerequisites; smoke-tests inference if backend is running
+  4lm doctor [phase3-ready]          Check prerequisites; smoke-tests inference if backend is running
   4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
 
 ${C_DIM}Logs:${C_RST}
@@ -1530,7 +1806,7 @@ main() {
     logs | log) cmd_logs "$@" ;;
     profile | prof | p) cmd_profile "$@" ;;
     expose) cmd_expose "$@" ;;
-    doctor) cmd_doctor ;;
+    doctor) cmd_doctor "$@" ;;
     diag | diagnose) cmd_diag ;;
     model | m) cmd_models "$@" ;;
     outdated | out) cmd_outdated ;;
