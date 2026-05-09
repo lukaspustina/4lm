@@ -152,6 +152,8 @@ models:
     served_model_name: qwen3-coder-next
 YAML
   ln -sfn "${BATS_TMPDIR}/omlx-test.yaml" "${HOME}/.4lm/config/active-profile"
+  # backend-start derives model-dir from symlink basename; create the staging dir.
+  mkdir -p "${HOME}/.4lm/runtime/omlx-test/models"
 }
 
 _write_omlx_profile_with_block() {
@@ -168,6 +170,7 @@ models:
     served_model_name: qwen3-coder-next
 YAML
   ln -sfn "${BATS_TMPDIR}/omlx-block-test.yaml" "${HOME}/.4lm/config/active-profile"
+  mkdir -p "${HOME}/.4lm/runtime/omlx-block-test/models"
 }
 
 @test "omlx profile: omlx serve called with --host 127.0.0.1 and --port 8000" {

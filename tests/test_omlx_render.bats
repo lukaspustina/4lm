@@ -33,7 +33,10 @@ _render() {
   "
 }
 
-@test "render: pin: true emits JSON boolean true (not quoted string)" {
+# Output format is model_settings.json: {"version":1,"models":{"<id>":{...}}}
+# Keys use omlx's ModelSettings field names: is_pinned (bool), ttl_seconds (int).
+
+@test "render: pin: true emits JSON boolean is_pinned: true" {
   local yaml="${BATS_TMPDIR}/render-bool.yaml"
   local out="${BATS_TMPDIR}/settings-bool.json"
   cat > "${yaml}" <<'YAML'
@@ -45,12 +48,11 @@ models:
 YAML
   _render "${yaml}" "${out}"
   [ -f "${out}" ]
-  # pin must be boolean true, not "true"
-  pin_val="$("${REAL_JQ}" '.models[0].pin' "${out}")"
+  pin_val="$("${REAL_JQ}" '.models."qwen3-coder-next".is_pinned' "${out}")"
   [ "${pin_val}" = "true" ]
 }
 
-@test "render: pin: false emits JSON boolean false" {
+@test "render: pin: false omits is_pinned from JSON (omlx default is false)" {
   local yaml="${BATS_TMPDIR}/render-false.yaml"
   local out="${BATS_TMPDIR}/settings-false.json"
   cat > "${yaml}" <<'YAML'
@@ -62,11 +64,12 @@ models:
     ttl: 600
 YAML
   _render "${yaml}" "${out}"
-  pin_val="$("${REAL_JQ}" '.models[0].pin' "${out}")"
-  [ "${pin_val}" = "false" ]
+  # pin: false means is_pinned is absent (omlx default is false)
+  has_pin="$("${REAL_JQ}" '.models."bge-m3" | has("is_pinned")' "${out}")"
+  [ "${has_pin}" = "false" ]
 }
 
-@test "render: ttl: null in YAML emits JSON null" {
+@test "render: ttl: null in YAML omits ttl_seconds from JSON" {
   local yaml="${BATS_TMPDIR}/render-null-ttl.yaml"
   local out="${BATS_TMPDIR}/settings-null-ttl.json"
   cat > "${yaml}" <<'YAML'
@@ -77,11 +80,12 @@ models:
     ttl: null
 YAML
   _render "${yaml}" "${out}"
-  ttl_val="$("${REAL_JQ}" '.models[0].ttl' "${out}")"
-  [ "${ttl_val}" = "null" ]
+  # ttl: null means never-unload; ttl_seconds is absent (omlx built-in default)
+  has_ttl="$("${REAL_JQ}" '.models."qwen3-coder-next" | has("ttl_seconds")' "${out}")"
+  [ "${has_ttl}" = "false" ]
 }
 
-@test "render: absent ttl: key emits no ttl field in JSON" {
+@test "render: absent ttl: key omits ttl_seconds from JSON" {
   local yaml="${BATS_TMPDIR}/render-no-ttl.yaml"
   local out="${BATS_TMPDIR}/settings-no-ttl.json"
   cat > "${yaml}" <<'YAML'
@@ -91,12 +95,11 @@ models:
     served_model_name: qwen3-coder-next
 YAML
   _render "${yaml}" "${out}"
-  # ttl key must be absent (jq returns null for missing keys but has() returns false)
-  has_ttl="$("${REAL_JQ}" '.models[0] | has("ttl")' "${out}")"
+  has_ttl="$("${REAL_JQ}" '.models."qwen3-coder-next" | has("ttl_seconds")' "${out}")"
   [ "${has_ttl}" = "false" ]
 }
 
-@test "render: integer ttl emits JSON number" {
+@test "render: integer ttl emits ttl_seconds JSON number" {
   local yaml="${BATS_TMPDIR}/render-int-ttl.yaml"
   local out="${BATS_TMPDIR}/settings-int-ttl.json"
   cat > "${yaml}" <<'YAML'
@@ -107,11 +110,11 @@ models:
     ttl: 600
 YAML
   _render "${yaml}" "${out}"
-  ttl_val="$("${REAL_JQ}" '.models[0].ttl' "${out}")"
+  ttl_val="$("${REAL_JQ}" '.models."bge-m3".ttl_seconds' "${out}")"
   [ "${ttl_val}" = "600" ]
 }
 
-@test "render: empty chat_template_kwargs dict is omitted from JSON" {
+@test "render: chat_template_kwargs and sampling fields in YAML are ignored in model_settings.json" {
   local yaml="${BATS_TMPDIR}/render-empty-dict.yaml"
   local out="${BATS_TMPDIR}/settings-empty-dict.json"
   cat > "${yaml}" <<'YAML'
@@ -123,13 +126,13 @@ models:
     sampling: {}
 YAML
   _render "${yaml}" "${out}"
-  has_ctk="$("${REAL_JQ}" '.models[0] | has("chat_template_kwargs")' "${out}")"
-  has_samp="$("${REAL_JQ}" '.models[0] | has("sampling")' "${out}")"
+  # model_settings.json only carries is_pinned / ttl_seconds; other fields
+  # (chat_template_kwargs, sampling) are omlx admin-UI concerns, not 4lm's.
+  has_ctk="$("${REAL_JQ}" '.models."qwen3-coder-next" | has("chat_template_kwargs")' "${out}")"
   [ "${has_ctk}" = "false" ]
-  [ "${has_samp}" = "false" ]
 }
 
-@test "render: multi-model profile produces array with correct served_model_name entries" {
+@test "render: multi-model profile produces dict with correct model_id keys" {
   local yaml="${BATS_TMPDIR}/render-multi.yaml"
   local out="${BATS_TMPDIR}/settings-multi.json"
   cat > "${yaml}" <<'YAML'
@@ -149,17 +152,13 @@ YAML
   _render "${yaml}" "${out}"
   count="$("${REAL_JQ}" '.models | length' "${out}")"
   [ "${count}" = "2" ]
-  name0="$("${REAL_JQ}" -r '.models[0].served_model_name' "${out}")"
-  name1="$("${REAL_JQ}" -r '.models[1].served_model_name' "${out}")"
-  [ "${name0}" = "qwen3-coder-next" ]
-  [ "${name1}" = "bge-m3" ]
+  "${REAL_JQ}" -e '.models."qwen3-coder-next"' "${out}" >/dev/null
+  "${REAL_JQ}" -e '.models."bge-m3"' "${out}" >/dev/null
 }
 
 @test "render: output directory ~/.omlx/ is created if absent" {
   local yaml="${BATS_TMPDIR}/render-mkdir.yaml"
-  # Use a unique output path inside ~/.omlx/
-  local out="${HOME}/.omlx/settings.json"
-  # Ensure ~/.omlx does not exist
+  local out="${HOME}/.omlx/model_settings.json"
   rm -rf "${HOME}/.omlx"
   cat > "${yaml}" <<'YAML'
 backend: omlx
