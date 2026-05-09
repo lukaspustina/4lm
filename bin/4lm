@@ -1847,8 +1847,8 @@ ${C_DIM}Clients:${C_RST}
 ${C_DIM}Models:${C_RST}
   4lm model [list]                   List models from all profiles with cache status
   4lm model download [repo...]       Download missing models (all profiles), or specific repo(s)
-  4lm model clean                    Prune orphaned HuggingFace cache revisions
-  4lm model cleanup [--confirm]      Remove cached models not referenced in any profile
+  4lm model clean                    Prune stale HuggingFace snapshot revisions (keeps current)
+  4lm model cleanup [--confirm]      Remove entire cached repos (HF + ollama) not in any profile
   4lm model rm <repo> [--confirm]    Remove a cached model repo
   4lm model recommend [<use-case>]   Top model picks for this hardware (llmfit + localmaxxing benchmarks)
                [-n N] [--runtime R]  use-case: coding|reasoning|chat|general. R: mlx|llamacpp
