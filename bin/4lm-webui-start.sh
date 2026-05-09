@@ -76,6 +76,42 @@ export DO_NOT_TRACK="true"
 export SCARF_NO_ANALYTICS="true"
 export WEBUI_REGISTRATION_ENABLED="false"
 
+# ---- Branding & UX ---------------------------------------------------------
+export WEBUI_NAME="4lm"
+export ENABLE_COMMUNITY_SHARING="False"
+export ENABLE_MESSAGE_RATING="False"
+export ENABLE_FOLLOW_UP_GENERATION="True"
+export ENABLE_AUTOCOMPLETE_GENERATION="True"
+
+# ---- Personal memory (Claude Desktop "remember about me") -----------------
+export ENABLE_MEMORIES="True"
+
+# ---- Web search (DuckDuckGo — no API key, no telemetry) -------------------
+export ENABLE_RAG_WEB_SEARCH="True"
+export RAG_WEB_SEARCH_ENGINE="duckduckgo"
+export RAG_WEB_SEARCH_RESULT_COUNT="3"
+
+# ---- Code interpreter (Pyodide runs in-browser, no extra service) ---------
+export ENABLE_CODE_INTERPRETER="True"
+export CODE_INTERPRETER_ENGINE="pyodide"
+
+# ---- RAG embeddings via omlx /v1/embeddings -------------------------------
+# Requires the active profile to expose an embedding model under the
+# served_model_name below (default profile loads
+# mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ — top llmfit score, 32k ctx).
+# If you switch to a profile without an embedding model, file uploads /
+# RAG will fall back to OpenWebUI's bundled sentence-transformers.
+export RAG_EMBEDDING_ENGINE="openai"
+export RAG_OPENAI_API_BASE_URL="${BACKEND_URL}"
+export RAG_OPENAI_API_KEY="${OPENAI_API_KEY}"
+export RAG_EMBEDDING_MODEL="qwen3-embedding"
+
+# NOTE on PersistentConfig: most ENABLE_* / RAG_* / DEFAULT_* vars above are
+# stored in webui.db on first launch. After that the admin UI is the source
+# of truth — re-running with a new env value won't override the DB. To force
+# env vars to win on every start, set ENABLE_PERSISTENT_CONFIG=False (this
+# also disables all admin UI persistence across restarts).
+
 # ---- Secret key (all modes) -----------------------------------------------
 if [[ ! -f "${SECRET_KEY_FILE}" ]]; then
   umask 077

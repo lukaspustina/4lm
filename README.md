@@ -27,6 +27,11 @@ for Apple Silicon acceleration when Ollama's overhead matters.
   hardening applies in all modes: persistent `WEBUI_SECRET_KEY` (mode 0600),
   `WEBUI_REGISTRATION_ENABLED=false`, `DEFAULT_USER_ROLE=pending`.
   Tailscale is still the better answer.
+- **WebUI is preconfigured for daily use.** DuckDuckGo web search, Pyodide
+  code interpreter, personal memory, follow-up + autocomplete suggestions,
+  and file-upload RAG — all on by default. RAG embeddings are served by the
+  same omlx backend (`mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ`, exposed
+  as `qwen3-embedding`), so file upload works fully offline.
 - **Honest health check.** `4lm health` exits 1 if
   `iogpu.wired_limit_mb` is below the threshold the 80B-class models
   actually need.
