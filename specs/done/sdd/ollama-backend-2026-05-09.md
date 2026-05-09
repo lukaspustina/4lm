@@ -1,6 +1,7 @@
 # SDD: Ollama Backend Support
 
-Status: Ready for Implementation
+Status: Done
+Finished: 2026-05-09
 Original: specs/sdd/ollama-backend.md
 Refined: 2026-05-04
 
