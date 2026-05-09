@@ -188,9 +188,8 @@ fi
 
 # ---- 9. pipx install pinned deps ------------------------------------------
 # Homebrew's Python is PEP 668 "externally-managed", so plain `pip install`
-# fails. Both deps ship CLI entrypoints, so pipx (per-app venv) is the right
-# tool. mlx-openai-server 1.7.1 requires Python >=3.11,<3.13, so we pin pipx
-# to python3.12 (or 3.11) regardless of the system default.
+# fails. Packages ship CLI entrypoints, so pipx (per-app venv) is the right
+# tool. Pin to python3.12 (or 3.11) for compatibility.
 info "Installing Python deps with pipx…"
 if ! command -v pipx >/dev/null; then
   die "pipx not found — run: make bootstrap"
@@ -207,6 +206,13 @@ if [[ -z "${PIPX_PYTHON}" ]]; then
   die "no compatible Python found (need 3.11 or 3.12) — run: make bootstrap"
 fi
 info "using ${PIPX_PYTHON} for pipx venvs"
+
+# Remove legacy mlx-openai-server pipx env if present (replaced by omlx).
+if pipx list --short 2>/dev/null | grep -q "^mlx-openai-server "; then
+  info "Removing legacy mlx-openai-server pipx env…"
+  pipx uninstall mlx-openai-server >/dev/null
+  ok "mlx-openai-server removed"
+fi
 
 while IFS= read -r line; do
   [[ -z "${line}" || "${line}" =~ ^# ]] && continue

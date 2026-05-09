@@ -1,6 +1,6 @@
 # SDD: omlx as the primary MLX backend (and opt-in autostart)
 
-Status: Phase 2 Complete
+Status: Phase 3 Complete
 Original: specs/sdd/omlx.md
 Refined: 2026-05-09
 

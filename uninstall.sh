@@ -81,18 +81,28 @@ if [[ -d "${LLM_HOME}" ]]; then
 fi
 
 # ---- 4. pipx uninstall packages -------------------------------------------
-if command -v pipx >/dev/null && [[ -f "${SOURCE_DIR}/requirements.txt" ]]; then
-  while IFS= read -r line; do
-    [[ -z "${line}" || "${line}" =~ ^# ]] && continue
-    pkg="${line%%==*}"
-    # `pipx list --short` normalises names: drops [extras], turns _ into -.
-    pkg_listed="${pkg%%[*}"
-    pkg_listed="${pkg_listed//_/-}"
-    if pipx list --short 2>/dev/null | grep -qE "^${pkg_listed} "; then
-      pipx uninstall "${pkg_listed}" >/dev/null
-      ok "pipx uninstall ${pkg_listed}"
+if command -v pipx >/dev/null; then
+  # Uninstall packages from requirements.txt.
+  if [[ -f "${SOURCE_DIR}/requirements.txt" ]]; then
+    while IFS= read -r line; do
+      [[ -z "${line}" || "${line}" =~ ^# ]] && continue
+      pkg="${line%%==*}"
+      # `pipx list --short` normalises names: drops [extras], turns _ into -.
+      pkg_listed="${pkg%%[*}"
+      pkg_listed="${pkg_listed//_/-}"
+      if pipx list --short 2>/dev/null | grep -qE "^${pkg_listed} "; then
+        pipx uninstall "${pkg_listed}" >/dev/null
+        ok "pipx uninstall ${pkg_listed}"
+      fi
+    done <"${SOURCE_DIR}/requirements.txt"
+  fi
+  # Uninstall packages installed from git (not in requirements.txt).
+  for _pkg in omlx mlx-openai-server; do
+    if pipx list --short 2>/dev/null | grep -qE "^${_pkg} "; then
+      pipx uninstall "${_pkg}" >/dev/null
+      ok "pipx uninstall ${_pkg}"
     fi
-  done <"${SOURCE_DIR}/requirements.txt"
+  done
 fi
 
 # ---- 5. Remove newsyslog config -------------------------------------------

@@ -216,7 +216,7 @@ def cmd_models_list(args: argparse.Namespace) -> int:
             return 1
         if not isinstance(data, dict):
             continue
-        backend = data.get("backend", "mlx")
+        backend = data.get("backend", "omlx")
         profile = yaml_path.stem
         for model in data.get("models", []):
             mp = model.get("model_path", "")
@@ -250,8 +250,7 @@ def cmd_models_list(args: argparse.Namespace) -> int:
 
     for mp, info in seen.items():
         be = info["backend"]
-        # Annotate profile names with backend when not mlx (backward compat)
-        if be == "mlx":
+        if be == "omlx":
             profs = ", ".join(info["profiles"])
         else:
             profs = ", ".join(f"{p} ({be})" for p in info["profiles"])

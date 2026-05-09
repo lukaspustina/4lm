@@ -1,5 +1,4 @@
-mlx-openai-server==1.8.1
-# omlx is not on PyPI; installed from git — see install.sh step 9c
+# omlx is not on PyPI; installed from git — see install.sh step 9b
 # omlx @ git+https://github.com/jundot/omlx.git
 open-webui==0.9.2
 huggingface_hub[cli]==1.14.0

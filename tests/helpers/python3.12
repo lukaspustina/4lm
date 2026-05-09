@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Simulate `python3.12 -m venv <path>` for install.sh tests.
+LOG="${MLXLM_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/mlxlm-calls}"
+echo "$*" >>"${LOG}"
+
+# Simulate `python3.12 -m venv <path>`: create minimal venv structure so that
+# subsequent `venv/bin/pip install` calls resolve to the pip stub.
 if [[ "$1" == "-m" && "$2" == "venv" && -n "$3" ]]; then
   mkdir -p "$3/bin"
   ln -sf "$(command -v python3)" "$3/bin/python" 2>/dev/null || true
@@ -9,4 +13,5 @@ exit 0
 EOF
   chmod +x "$3/bin/pip"
 fi
-exit 0
+
+exit "${MLXLM_STUB_EXIT:-0}"

@@ -1,6 +1,6 @@
 # 4lm — Local LLM Control Plane
 
-Personal local-LLM stack for Apple Silicon: `mlx-openai-server` (backend) +
+Personal local-LLM stack for Apple Silicon: `omlx` (MLX backend) +
 `open-webui` (frontend) + `opencode` (TUI client), managed by launchd and
 controlled by a single `4lm` command.
 
@@ -21,7 +21,7 @@ tests/                     # bats suite (helpers/ has launchctl + curl stubs)
 .github/workflows/         # macOS CI: shellcheck, shfmt, plutil, xmllint, bats
 install.sh                 # idempotent installer (no bootstrap, no migration)
 uninstall.sh               # full removal (services, ~/.4lm, newsyslog)
-requirements.txt           # pinned mlx-openai-server, open-webui, huggingface_hub[cli]
+requirements.txt           # pinned open-webui, huggingface_hub[cli]; omlx from git
 Brewfile                   # shellcheck, shfmt, bats-core, python@3.12, pipx, opencode
 Makefile                   # bootstrap / install / uninstall / models* / check / lint / fmt / test
 specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
@@ -69,9 +69,9 @@ On timeout it restores the previous symlink and kickstarts again.
 - Bash scripts: `set -euo pipefail`, `shellcheck` clean, formatted by `shfmt`.
 - Plists: `__HOME__` placeholder, substituted by `install.sh`.
 - Profile YAMLs validated by `validate_profile` in `bin/4lm`. Schema reference
-  in `docs/profile-schema.md`. Three backends: `mlx` (mlx-openai-server,
-  multi-model), `mlx_lm` (python -m mlx_lm server, single-model, no wrapper
-  bugs), `ollama` (llama.cpp/Metal).
+  in `docs/profile-schema.md`. Three backends: `omlx` (vLLM-style MLX,
+  multi-model, paged KV cache), `mlx_lm` (python -m mlx_lm server,
+  single-model upstream), `ollama` (llama.cpp/Metal).
 - No `Co-Authored-By: Claude` lines in commits.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
