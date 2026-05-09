@@ -114,15 +114,27 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
     _OMLX_SSD_CACHE_DIR="${_expanded}"
   fi
 
+  # Derive model-dir from the active profile name (symlink basename without .yaml).
+  _active_link="$(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
+  _profile_name="$(basename "${_active_link}" .yaml)"
+  _MODEL_DIR="${LLM_HOME}/runtime/${_profile_name}/models"
+  if [[ ! -d "${_MODEL_DIR}" ]]; then
+    echo "[$(date -Iseconds)] FATAL: model-dir not found: ${_MODEL_DIR}" >&2
+    echo "  Run: 4lm profile set ${_profile_name}" >&2
+    exit 78
+  fi
+
   echo "[$(date -Iseconds)] Starting omlx"
-  echo "  binary:  ${OMLX_BIN}"
-  echo "  profile: $(readlink "${ACTIVE_CONFIG}" 2>/dev/null || echo "${ACTIVE_CONFIG}")"
-  echo "  bind:    ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
+  echo "  binary:    ${OMLX_BIN}"
+  echo "  profile:   ${_active_link}"
+  echo "  model-dir: ${_MODEL_DIR}"
+  echo "  bind:      ${BIND_HOST}:${NET_PORT} (mode=${NET_MODE})"
 
   # Build omlx serve arguments.
   OMLX_ARGS=(serve
     --host "${BIND_HOST}"
     --port "${NET_PORT}"
+    --model-dir "${_MODEL_DIR}"
   )
   [[ -n "${_OMLX_MAX_PROC_MEM}" ]] && OMLX_ARGS+=(--max-process-memory "${_OMLX_MAX_PROC_MEM}")
   [[ -n "${_OMLX_MAX_MODEL_MEM}" ]] && OMLX_ARGS+=(--max-model-memory "${_OMLX_MAX_MODEL_MEM}")

@@ -807,7 +807,10 @@ log_rollback_event() {
     >>"${log}"
 }
 
-# Render ~/.omlx/settings.json from a profile YAML.
+# Render ~/.omlx/model_settings.json from a profile YAML.
+# omlx uses model_settings.json (keyed by model_id = served_model_name) for
+# per-model pin/TTL settings. Format matches ModelSettingsManager._save():
+#   {"version": 1, "models": {"<model_id>": {"is_pinned": true, ...}}}
 # Per-model fields extracted with awk block-scanning anchored on "- model_path:".
 render_omlx_settings() {
   local yaml_path="$1" output_path="$2"
@@ -820,18 +823,15 @@ render_omlx_settings() {
     /^[[:space:]]*-[[:space:]]*model_path:/ {
       if (in_entry) _emit()
       in_entry = 1
-      path = $NF; served = ""; pin = ""; ttl_val = ""
-      model_type = ""; has_pin = 0; has_ttl = 0; has_model_type = 0
+      served = ""; pin = ""; ttl_val = ""; has_pin = 0; has_ttl = 0
     }
     in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
     in_entry && /^[[:space:]]+pin:/ { pin = $NF; has_pin = 1 }
     in_entry && /^[[:space:]]+ttl:/ { ttl_val = $NF; has_ttl = 1 }
-    in_entry && /^[[:space:]]+model_type:/ { model_type = $NF; has_model_type = 1 }
     function _emit() {
       if (served == "") return
       print served "|" (has_pin ? pin : "") "|" (has_pin ? "1" : "0") "|" \
-            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0") "|" \
-            (has_model_type ? model_type : "")
+            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0")
     }
     END { if (in_entry) _emit() }
   ' "${yaml_path}")"
@@ -841,36 +841,30 @@ render_omlx_settings() {
     return 1
   fi
 
-  local entries=""
-  local first=1
-  while IFS='|' read -r served pin has_pin ttl_val has_ttl model_type; do
+  # Build a jq object: {"model_id": {per-model settings}, ...}
+  local models_obj="{}"
+  while IFS='|' read -r served pin has_pin ttl_val has_ttl; do
     [[ -z "${served}" ]] && continue
-    local obj
+    local entry
     # shellcheck disable=SC2016  # jq filter: $vars are jq args, not shell vars
-    obj="$("${_jq}" -n \
-      --arg served_model_name "${served}" \
+    entry="$("${_jq}" -n \
       --arg pin_val "${pin}" \
       --arg has_pin "${has_pin}" \
       --arg ttl_val "${ttl_val}" \
       --arg has_ttl "${has_ttl}" \
-      --arg model_type "${model_type}" \
-      '{served_model_name: $served_model_name} +
-       (if $has_pin == "1" then {pin: ($pin_val == "true")} else {} end) +
-       (if $has_ttl == "1" then
-          (if $ttl_val == "null" then {ttl: null} else {ttl: ($ttl_val | tonumber)} end)
-        else {} end) +
-       (if $model_type != "" then {model_type: $model_type} else {} end)')"
-    if [[ "${first}" -eq 1 ]]; then
-      entries="${obj}"
-      first=0
-    else
-      entries+=$'\n'"${obj}"
-    fi
+      '(if $has_pin == "1" and $pin_val == "true" then {is_pinned: true} else {} end) +
+       (if $has_ttl == "1" and $ttl_val != "null" then {ttl_seconds: ($ttl_val | tonumber)} else {} end)')"
+    # shellcheck disable=SC2016
+    models_obj="$("${_jq}" -n \
+      --arg model_id "${served}" \
+      --argjson entry "${entry}" \
+      --argjson acc "${models_obj}" \
+      '$acc + {($model_id): $entry}')"
   done <<<"${awk_output}"
 
-  # Wrap entries array and write output.
   local final_json
-  final_json="$(printf '%s\n' "${entries}" | "${_jq}" -s '{models: .}')" || {
+  # shellcheck disable=SC2016  # jq filter: $models is a jq arg, not a shell var
+  final_json="$("${_jq}" -n --argjson models "${models_obj}" '{version: 1, models: $models}')" || {
     warn "error: cannot write settings: ${output_path}: jq failed"
     return 1
   }
@@ -1070,9 +1064,9 @@ cmd_profile_set() {
   local new_backend
   new_backend="$(profile_backend "${target}")"
 
-  # (omlx only) render settings.json and stage model dir before symlink swap.
+  # (omlx only) render model_settings.json and stage model dir before symlink swap.
   if [[ "${new_backend}" == "omlx" ]]; then
-    if ! render_omlx_settings "${target}" "${HOME}/.omlx/settings.json"; then
+    if ! render_omlx_settings "${target}" "${HOME}/.omlx/model_settings.json"; then
       log_rollback_event "${previous}" "${name}" "render_settings"
       die "render_omlx_settings failed; active profile unchanged"
     fi
