@@ -26,6 +26,7 @@ readonly BACKEND_LABEL="com.4lm.backend"
 readonly WEBUI_LABEL="com.4lm.webui"
 readonly BACKEND_PLIST="${LAUNCHD_DIR}/${BACKEND_LABEL}.plist"
 readonly WEBUI_PLIST="${LAUNCHD_DIR}/${WEBUI_LABEL}.plist"
+readonly LA_DIR="${HOME}/Library/LaunchAgents"
 
 readonly REQUIRED_WIRED_LIMIT_MB=98304
 
@@ -1396,6 +1397,13 @@ cmd_uninstall() {
     return 0
   fi
   echo "${C_DIM}─── Uninstalling 4lm services ───${C_RST}"
+  for label in "${BACKEND_LABEL}" "${WEBUI_LABEL}"; do
+    local la_plist="${LA_DIR}/${label}.plist"
+    if [[ -L "${la_plist}" ]]; then
+      rm "${la_plist}"
+      ok "removed autostart symlink: ${la_plist}"
+    fi
+  done
   service_stop "${WEBUI_LABEL}"
   service_stop "${BACKEND_LABEL}"
   if [[ -L "${HOME}/.local/bin/4lm" ]]; then
@@ -1449,6 +1457,84 @@ cmd_restart() {
       service_restart "${WEBUI_LABEL}" "${WEBUI_PLIST}"
       ;;
     *) die "Unknown target: ${target}" ;;
+  esac
+}
+
+# ---- Autostart -------------------------------------------------------------
+# Tokens: omlx|backend|be → backend service; webui|ui → webui service; all → both.
+
+_autostart_check_target() {
+  case "$1" in
+    omlx | backend | be | webui | ui | all) ;;
+    *) die "autostart: unknown service '$1'. Use omlx|webui|all" ;;
+  esac
+}
+
+_autostart_pairs() {
+  local target="$1"
+  case "${target}" in
+    omlx | backend | be) echo "${BACKEND_LABEL}|${BACKEND_PLIST}" ;;
+    webui | ui) echo "${WEBUI_LABEL}|${WEBUI_PLIST}" ;;
+    all)
+      echo "${BACKEND_LABEL}|${BACKEND_PLIST}"
+      echo "${WEBUI_LABEL}|${WEBUI_PLIST}"
+      ;;
+  esac
+}
+
+_autostart_enable() {
+  local target="${1:-all}"
+  _autostart_check_target "${target}"
+  mkdir -p "${LA_DIR}"
+  while IFS='|' read -r label plist; do
+    [[ -f "${plist}" ]] || die "plist not found: ${plist} — run install.sh first"
+    local la_plist="${LA_DIR}/${label}.plist"
+    ln -sfn "${plist}" "${la_plist}"
+    ok "autostart ${label}: enabled"
+    if ! is_loaded "${label}"; then
+      launchctl bootstrap "gui/${UID_NUM}" "${la_plist}" >/dev/null 2>&1 || true
+      ok "${label}: started"
+    fi
+  done < <(_autostart_pairs "${target}")
+}
+
+_autostart_disable() {
+  local target="${1:-all}"
+  _autostart_check_target "${target}"
+  while IFS='|' read -r label _plist; do
+    local la_plist="${LA_DIR}/${label}.plist"
+    if [[ -L "${la_plist}" ]]; then
+      rm "${la_plist}"
+      ok "autostart ${label}: disabled"
+    else
+      info "autostart ${label}: was not enabled"
+    fi
+    if is_loaded "${label}"; then
+      launchctl bootout "gui/${UID_NUM}/${label}" >/dev/null 2>&1 || true
+      ok "${label}: stopped"
+    fi
+  done < <(_autostart_pairs "${target}")
+}
+
+_autostart_status() {
+  for pair in "${BACKEND_LABEL}:Backend" "${WEBUI_LABEL}:WebUI"; do
+    local label="${pair%%:*}" name="${pair##*:}"
+    if [[ -L "${LA_DIR}/${label}.plist" ]]; then
+      ok "autostart ${name}: enabled"
+    else
+      info "autostart ${name}: disabled"
+    fi
+  done
+}
+
+cmd_autostart() {
+  local subcmd="${1:-status}"
+  shift || true
+  case "${subcmd}" in
+    enable) _autostart_enable "${1:-all}" ;;
+    disable) _autostart_disable "${1:-all}" ;;
+    status) _autostart_status ;;
+    *) die "autostart: unknown subcommand '${subcmd}'. Use enable|disable|status" ;;
   esac
 }
 
@@ -1732,7 +1818,7 @@ cmd_recommend() {
 # ---- Help ------------------------------------------------------------------
 cmd_help() {
   cat <<EOF
-${C_BLU}4lm${C_RST} — control the local LLM stack (mlx-openai-server + Open WebUI)
+${C_BLU}4lm${C_RST} — control the local LLM stack (omlx + Open WebUI)
 
 ${C_DIM}Service control:${C_RST}
   4lm start [backend|webui|all]      Start service(s) (default: all)
@@ -1741,6 +1827,11 @@ ${C_DIM}Service control:${C_RST}
   4lm status                         Show service state, URLs, and backend HTTP ping
   4lm doctor [phase3-ready]          Check prerequisites; smoke-tests inference if backend is running
   4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
+
+${C_DIM}Autostart:${C_RST}
+  4lm autostart status               Show whether each service auto-starts at login
+  4lm autostart enable  [svc|all]    Enable login autostart (svc: omlx|webui|all)
+  4lm autostart disable [svc|all]    Disable login autostart and stop the service
 
 ${C_DIM}Logs:${C_RST}
   4lm logs [backend|webui]           tail -F log file (default: backend)
@@ -1788,6 +1879,7 @@ main() {
     status | st | "") cmd_status ;;
     logs | log) cmd_logs "$@" ;;
     profile | prof | p) cmd_profile "$@" ;;
+    autostart) cmd_autostart "$@" ;;
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor "$@" ;;
     diag | diagnose) cmd_diag ;;

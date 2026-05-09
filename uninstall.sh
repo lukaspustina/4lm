@@ -19,6 +19,7 @@ readonly BIN_DIR="${HOME}/.local/bin"
 readonly NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
 readonly BACKEND_LABEL="com.4lm.backend"
 readonly WEBUI_LABEL="com.4lm.webui"
+readonly LA_DIR="${HOME}/Library/LaunchAgents"
 
 UID_NUM="$(id -u)"
 readonly UID_NUM
@@ -55,7 +56,16 @@ echo
 echo "Press Ctrl-C within 3 s to abort."
 sleep 3
 
-# ---- 1. Bootout running agents --------------------------------------------
+# ---- 1. Remove autostart LaunchAgent symlinks (if enabled) ----------------
+for label in "${BACKEND_LABEL}" "${WEBUI_LABEL}"; do
+  la_plist="${LA_DIR}/${label}.plist"
+  if [[ -L "${la_plist}" ]]; then
+    rm "${la_plist}"
+    ok "removed autostart symlink: ${la_plist}"
+  fi
+done
+
+# ---- 2. Bootout running agents --------------------------------------------
 info "Booting out agents…"
 for label in "${BACKEND_LABEL}" "${WEBUI_LABEL}"; do
   if launchctl print "gui/${UID_NUM}/${label}" >/dev/null 2>&1; then
@@ -64,13 +74,13 @@ for label in "${BACKEND_LABEL}" "${WEBUI_LABEL}"; do
   fi
 done
 
-# ---- 2. Remove CLI symlink ------------------------------------------------
+# ---- 3. Remove CLI symlink ------------------------------------------------
 if [[ -L "${BIN_DIR}/4lm" ]]; then
   rm "${BIN_DIR}/4lm"
   ok "removed ${BIN_DIR}/4lm"
 fi
 
-# ---- 3. Remove ~/.4lm/ ----------------------------------------------------
+# ---- 4. Remove ~/.4lm/ ----------------------------------------------------
 if [[ -d "${LLM_HOME}/venv" ]]; then
   rm -rf "${LLM_HOME}/venv"
   ok "removed ${LLM_HOME}/venv"
@@ -80,7 +90,7 @@ if [[ -d "${LLM_HOME}" ]]; then
   ok "removed ${LLM_HOME}"
 fi
 
-# ---- 4. pipx uninstall packages -------------------------------------------
+# ---- 5. pipx uninstall packages -------------------------------------------
 if command -v pipx >/dev/null; then
   # Uninstall packages from requirements.txt.
   if [[ -f "${SOURCE_DIR}/requirements.txt" ]]; then
@@ -105,7 +115,7 @@ if command -v pipx >/dev/null; then
   done
 fi
 
-# ---- 5. Remove newsyslog config -------------------------------------------
+# ---- 6. Remove newsyslog config -------------------------------------------
 if [[ -f "${NEWSYSLOG_CONF}" ]]; then
   echo "Requires sudo: removing ${NEWSYSLOG_CONF}"
   sudo rm "${NEWSYSLOG_CONF}"
