@@ -10,6 +10,13 @@ setup() {
   cp "${REPO_ROOT}/config/network.example.yaml"         "${HOME}/.4lm/config/network.yaml"
 }
 
+teardown() {
+  # macOS daemons may create ~/Library/Trial/ or APFS-backed dirs inside the
+  # test HOME with TCC-protected files that normal rm -rf cannot delete.
+  # chmod -R u+rwx on the runtime dir lets setup()'s rm -rf succeed next run.
+  chmod -R u+rwx "${HOME}/.4lm/runtime" 2>/dev/null || true
+}
+
 @test "valid profile switch succeeds (backend not loaded → no poll, just symlink swap)" {
   # launchctl print returns non-zero by default → is_loaded false → no poll path.
   run "${REPO_ROOT}/bin/4lm" profile set mlx-knowledge
@@ -335,6 +342,211 @@ pid = 12345"
   # stderr must contain warn: (rollback also timed out) OR reverted (rollback OK)
   # The test captures combined output; check for the rollback timeout path
   [[ "$output" == *"warn:"* ]] || [[ "$output" == *"reverted"* ]]
+}
+
+# ---- Phase 1 (omlx): omlx profile validation --------------------------------
+# These tests invoke validate_profile directly (not profile set) so staging
+# (stage_omlx_model_dir) is not triggered. Staging requires real HF cache.
+
+_omlx_validate() {
+  local yaml="$1"
+  bash -c "export HOME='${HOME}'; source '${REPO_ROOT}/bin/4lm'; validate_profile '${yaml}'"
+}
+
+# Create a minimal HF cache skeleton so stage_omlx_model_dir succeeds.
+_make_mock_hf_cache() {
+  local repo="$1"
+  local slug="${repo//\//--}"
+  local sha="abc123def456abc1"
+  local cache_dir="${HOME}/.cache/huggingface/hub/models--${slug}"
+  mkdir -p "${cache_dir}/refs" "${cache_dir}/snapshots/${sha}"
+  printf '%s' "${sha}" > "${cache_dir}/refs/main"
+}
+
+# Find real jq (not the tests/helpers stub) for tests that call render_omlx_settings.
+_find_real_jq() {
+  for _cand in /opt/homebrew/bin/jq /usr/local/bin/jq; do
+    [[ -x "${_cand}" ]] && { echo "${_cand}"; return 0; }
+  done
+  return 1
+}
+
+@test "omlx profile with valid models: and full omlx: block validates" {
+  cat > "${BATS_TMPDIR}/omlx-valid.yaml" <<'YAML'
+backend: omlx
+omlx:
+  max_process_memory: "80%"
+  max_concurrent_requests: 8
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    pin: true
+    ttl: null
+    model_type: lm
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-valid.yaml"
+  [ "$status" -eq 0 ]
+}
+
+@test "omlx profile with no omlx: block validates (absent block is valid)" {
+  cat > "${BATS_TMPDIR}/omlx-no-block.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-no-block.yaml"
+  [ "$status" -eq 0 ]
+}
+
+@test "omlx profile missing models: is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-no-models.yaml" <<'YAML'
+backend: omlx
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-no-models.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"models"* ]]
+}
+
+@test "omlx profile with bad ttl: string is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-bad-ttl.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    ttl: "ten"
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-bad-ttl.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ttl"* ]]
+}
+
+@test "omlx profile with missing model_path is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-no-path.yaml" <<'YAML'
+backend: omlx
+models:
+  - served_model_name: qwen3-coder-next
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-no-path.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"model_path"* ]]
+}
+
+@test "omlx profile with invalid model_path format is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-bad-path.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: ../bad/path
+    served_model_name: bad-model
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-bad-path.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"model_path"* ]]
+}
+
+@test "omlx profile with invalid model_type is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-bad-type.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3
+    model_type: embedding
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-bad-type.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"model_type"* ]]
+}
+
+@test "omlx profile: ttl: null (explicit null) is valid" {
+  cat > "${BATS_TMPDIR}/omlx-null-ttl.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    ttl: null
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-null-ttl.yaml"
+  [ "$status" -eq 0 ]
+}
+
+@test "omlx profile: integer ttl is valid" {
+  cat > "${BATS_TMPDIR}/omlx-int-ttl.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/bge-m3
+    served_model_name: bge-m3
+    ttl: 600
+YAML
+  run _omlx_validate "${BATS_TMPDIR}/omlx-int-ttl.yaml"
+  [ "$status" -eq 0 ]
+}
+
+# ---- Phase 1 (omlx): rollback logging ---------------------------------------
+
+@test "omlx: rollback log receives poll_timeout on backend startup failure" {
+  # Call cmd_profile_set directly (like _omlx_validate) and mock stage_omlx_model_dir
+  # to avoid creating real model dirs that macOS daemons then populate with
+  # protected files, breaking subsequent cleanup.
+  REAL_JQ="$(_find_real_jq)" || skip "real jq not found; install via: brew install jq"
+  echo "mlx-coding" > "${HOME}/.4lm/config/previous-profile"
+  cat > "${HOME}/.4lm/config/profiles/omlx-rollback.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  # Backend appears loaded but /v1/models never responds → poll timeout → rollback.
+  # BACKEND_POLL_SECS must be exported BEFORE sourcing bin/4lm because bin/4lm
+  # declares it readonly using ${BACKEND_POLL_SECS:-30}.
+  run bash -c "
+    export HOME='${HOME}'
+    export JQ_BIN='${REAL_JQ}'
+    export BACKEND_POLL_SECS=1
+    export LAUNCHCTL_PRINT_OUTPUT='state = running
+pid = 12345'
+    source '${REPO_ROOT}/bin/4lm'
+    stage_omlx_model_dir() { return 0; }
+    cmd_profile_set omlx-rollback
+  "
+  [ "$status" -ne 0 ]
+  [ -f "${HOME}/.4lm/logs/profile-rollback.log" ]
+  grep -q "poll_timeout" "${HOME}/.4lm/logs/profile-rollback.log"
+}
+
+# ---- Phase 1 (omlx): concurrent profile set lockfile ------------------------
+
+@test "concurrent profile set: second invocation exits non-zero with already in progress" {
+  # Acquire the lock manually before running profile set
+  mkdir -p "${HOME}/.4lm/runtime/profile.lock"
+  echo "99999" > "${HOME}/.4lm/runtime/profile.lock/pid"
+  # PID 99999 is assumed not to be running; test stale-lock removal path
+  # Use a valid profile to make it past validation
+  cat > "${HOME}/.4lm/config/profiles/omlx-lock-test.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  # If PID 99999 is not live, stale lock is cleaned up and profile set proceeds normally.
+  # To test the "already in progress" case, use a live PID.
+  # We simulate by using $$ (current test's PID is alive), expect die.
+  echo "$$" > "${HOME}/.4lm/runtime/profile.lock/pid"
+  run "${REPO_ROOT}/bin/4lm" profile set omlx-lock-test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"already in progress"* ]]
+}
+
+@test "profile set: stale lock with dead PID is cleaned and switch proceeds" {
+  # Stale lock behaviour is backend-agnostic; use mlx-knowledge (already in
+  # setup) to avoid model staging, which can trigger macOS daemon activity
+  # that creates protected files and breaks subsequent cleanup.
+  mkdir -p "${HOME}/.4lm/runtime/profile.lock"
+  echo "99999" > "${HOME}/.4lm/runtime/profile.lock/pid"
+  # Skip if PID 99999 happens to exist (extremely unlikely)
+  kill -0 99999 2>/dev/null && skip "PID 99999 is live; cannot test stale lock"
+  run "${REPO_ROOT}/bin/4lm" profile set mlx-knowledge
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Switched to mlx-knowledge"* ]]
 }
 
 @test "make models: dispatches hf for mlx profiles and ollama pull for ollama profiles" {

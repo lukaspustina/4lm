@@ -8,6 +8,8 @@ BACKEND_START="${REPO_ROOT}/bin/4lm-backend-start.sh"
 
 setup() {
   mkdir -p "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs"
+  export OMLX_LOG="${BATS_TMPDIR}/omlx-calls"
+  rm -f "${OMLX_LOG}"
 
   cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
 mode: local
@@ -139,6 +141,113 @@ YAML
 }
 
 # ---- Phase 1: inline profile validation -------------------------------------
+
+# ---- omlx backend tests (Phase 1) ------------------------------------------
+
+_write_omlx_profile() {
+  cat > "${BATS_TMPDIR}/omlx-test.yaml" <<'YAML'
+backend: omlx
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  ln -sfn "${BATS_TMPDIR}/omlx-test.yaml" "${HOME}/.4lm/config/active-profile"
+}
+
+_write_omlx_profile_with_block() {
+  cat > "${BATS_TMPDIR}/omlx-block-test.yaml" <<'YAML'
+backend: omlx
+omlx:
+  max_process_memory: "80%"
+  max_model_memory: "100GB"
+  hot_cache_max_size: "20%"
+  paged_ssd_cache_dir: "~/.4lm/cache/omlx"
+  max_concurrent_requests: 8
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  ln -sfn "${BATS_TMPDIR}/omlx-block-test.yaml" "${HOME}/.4lm/config/active-profile"
+}
+
+@test "omlx profile: omlx serve called with --host 127.0.0.1 and --port 8000" {
+  _write_omlx_profile
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  grep -q -- "--host 127.0.0.1" "${OMLX_LOG}"
+  grep -q -- "--port 8000" "${OMLX_LOG}"
+}
+
+@test "omlx profile: LAN mode sets --host 0.0.0.0" {
+  _write_omlx_profile
+  cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
+mode: lan
+backend_port: 8000
+YAML
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  grep -q -- "--host 0.0.0.0" "${OMLX_LOG}"
+}
+
+@test "omlx profile: present omlx: block flags are passed to omlx serve" {
+  _write_omlx_profile_with_block
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  grep -q -- "--max-process-memory" "${OMLX_LOG}"
+  grep -q -- "--max-model-memory" "${OMLX_LOG}"
+  grep -q -- "--hot-cache-max-size" "${OMLX_LOG}"
+  grep -q -- "--max-concurrent-requests" "${OMLX_LOG}"
+}
+
+@test "omlx profile: absent omlx: block means no optional flags in invocation" {
+  _write_omlx_profile
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  ! grep -q -- "--max-process-memory" "${OMLX_LOG}"
+  ! grep -q -- "--max-model-memory" "${OMLX_LOG}"
+  ! grep -q -- "--hot-cache-max-size" "${OMLX_LOG}"
+  ! grep -q -- "--paged-ssd-cache-dir" "${OMLX_LOG}"
+  ! grep -q -- "--max-concurrent-requests" "${OMLX_LOG}"
+}
+
+@test "omlx profile: paged_ssd_cache_dir tilde is expanded to absolute path" {
+  _write_omlx_profile_with_block
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  grep -q -- "--paged-ssd-cache-dir ${HOME}/.4lm/cache/omlx" "${OMLX_LOG}"
+  # Must not contain literal ~
+  ! grep -q -- "--paged-ssd-cache-dir ~" "${OMLX_LOG}"
+}
+
+@test "omlx profile: paged_ssd_cache_dir with special chars is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-badcache.yaml" <<'YAML'
+backend: omlx
+omlx:
+  paged_ssd_cache_dir: "/tmp/x;rm -rf ~"
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  ln -sfn "${BATS_TMPDIR}/omlx-badcache.yaml" "${HOME}/.4lm/config/active-profile"
+  run "${BACKEND_START}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid paged_ssd_cache_dir"* ]]
+}
+
+@test "omlx profile: paged_ssd_cache_dir with .. component is rejected" {
+  cat > "${BATS_TMPDIR}/omlx-traversal.yaml" <<'YAML'
+backend: omlx
+omlx:
+  paged_ssd_cache_dir: "/valid/../../etc"
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+YAML
+  ln -sfn "${BATS_TMPDIR}/omlx-traversal.yaml" "${HOME}/.4lm/config/active-profile"
+  run "${BACKEND_START}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid paged_ssd_cache_dir"* ]]
+}
 
 @test "backend-start: profile missing models: key exits non-zero with profile+invalid on stderr" {
   cat > "${BATS_TMPDIR}/no-models.yaml" <<'YAML'

@@ -72,7 +72,19 @@ mkdir -p "${LLM_HOME}/bin" \
   "${PROFILES_DIR}" \
   "${LAUNCHD_DIR}" \
   "${LOG_DIR}" \
-  "${BIN_DIR}"
+  "${BIN_DIR}" \
+  "${LLM_HOME}/runtime" \
+  "${LLM_HOME}/cache/omlx"
+
+# Create omlx config directory with restricted permissions.
+if [[ ! -d "${HOME}/.omlx" ]]; then
+  mkdir -m 0700 "${HOME}/.omlx"
+  # shellcheck disable=SC2088  # tilde in display string is intentional
+  ok "~/.omlx/ created"
+else
+  # shellcheck disable=SC2088
+  ok "~/.omlx/ already exists"
+fi
 
 # ---- 3. Install scripts ---------------------------------------------------
 info "Installing scripts…"

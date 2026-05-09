@@ -7,8 +7,55 @@ selected via the `~/.4lm/config/active-profile` symlink.
 
 | Key | Type | Required | Notes |
 |-----|------|----------|-------|
-| `backend` | `mlx` \| `mlx_lm` \| `ollama` | no, default `mlx` | Selects the inference daemon for this profile |
+| `backend` | `omlx` \| `mlx` \| `mlx_lm` \| `ollama` | no, default `mlx` | Selects the inference daemon for this profile |
 | `models` | list | yes | One or more model entries (see below) |
+
+### `backend: omlx`
+
+Uses `omlx serve` (vLLM-style MLX inference with block-based paged KV cache,
+continuous batching, and multi-model EnginePool). Installed via pipx.
+
+Host and port come exclusively from `~/.4lm/config/network.yaml`; there is no
+fallback in the profile YAML.
+
+**Optional `omlx:` block** (all fields optional; absent = omlx built-in defaults):
+
+| Key | Type | Notes |
+|---|---|---|
+| `max_process_memory` | string | Passed as `--max-process-memory` (e.g. `"80%"`, `"100GB"`) |
+| `max_model_memory` | string | Passed as `--max-model-memory` |
+| `hot_cache_max_size` | string | Passed as `--hot-cache-max-size` |
+| `paged_ssd_cache_dir` | string | Passed as `--paged-ssd-cache-dir`; tilde-expanded; validated |
+| `max_concurrent_requests` | int | Passed as `--max-concurrent-requests` |
+
+**Per-model fields** (in `models:` list):
+
+| Key | Type | Required | Notes |
+|---|---|---|---|
+| `model_path` | string | yes | HuggingFace `org/repo` format; validated against `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` |
+| `served_model_name` | string | yes | Alias exposed in `/v1/models` |
+| `model_type` | `lm` \| `vlm` | no | Default: `lm`. Use `lm` for all non-visual models including embeddings and rerankers. |
+| `pin` | bool | no | Keep model in memory (default: `false`) |
+| `ttl` | int \| null | no | Unload after N seconds idle; `null` = never unload |
+| `chat_template_kwargs` | dict | no | Passed to `~/.omlx/settings.json`; empty `{}` is omitted |
+| `sampling` | dict | no | Per-model sampling defaults; empty `{}` is omitted |
+
+`~/.omlx/settings.json` is a **derived runtime artifact** rendered from the
+active profile YAML by `render_omlx_settings()`. Never edit it by hand.
+
+Minimal omlx profile skeleton:
+
+```yaml
+backend: omlx
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    pin: true
+    ttl: null
+```
+
+See `config/profiles/omlx-coding.yaml` for a complete example.
 
 ### `backend: mlx` (default)
 
