@@ -1013,6 +1013,13 @@ cmd_profile_set() {
   # Same-name switch: avoid writing previous-profile to itself; only kickstart if loaded.
   if [[ "${name}" == "${current_name}" ]]; then
     if ! is_loaded "${BACKEND_LABEL}"; then
+      # Stage model-dir if not yet present (e.g. fresh install sets active-profile
+      # to default before stage_omlx_model_dir has ever run).
+      local _be_same
+      _be_same="$(profile_backend "${target}" 2>/dev/null || true)"
+      if [[ "${_be_same}" == "omlx" ]]; then
+        stage_omlx_model_dir "${name}" "${target}" || die "stage_omlx_model_dir failed"
+      fi
       return 0
     fi
     launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
