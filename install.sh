@@ -1,24 +1,57 @@
 #!/usr/bin/env bash
 # install.sh — One-shot installer for 4lm.
 #
+# Usage:
+#   ./install.sh                 # full install (workstation: backend + WebUI + OpenCode)
+#   ./install.sh --backend-only  # headless LAN inference server (backend only)
+#
 # What it does:
 #   1. Verifies prerequisites (macOS arm64, Python 3.11+)
 #   2. Creates ~/.4lm/{bin,config/profiles,launchd,logs}
 #   3. Installs scripts, profile YAMLs, plists (plists live in ~/.4lm/launchd/,
 #      NOT ~/Library/LaunchAgents/, so launchd never auto-loads them)
+#      With --backend-only: 4lm-webui-start.sh and the webui plist are skipped.
 #   4. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent
 #   5. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
 #   6. pipx install each pinned package from requirements.txt (python3.12)
+#      With --backend-only: the open-webui line is filtered out in-memory.
 #   7. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
+#      Two grep-guarded `sudo tee -a` appends: backend.log always; webui.log
+#      only when not --backend-only.
 #   8. Installs /etc/sudoers.d/4lm-stack and sets iogpu.wired_limit_mb=98304
 #   9. Seeds ~/.config/opencode/opencode.jsonc from the template if absent
+#      With --backend-only: skipped.
 #
 # Idempotent. Re-run after updates is safe. Does NOT bootstrap services.
+# Re-running with --backend-only over an existing full install is
+# non-destructive: prints a notice and leaves webui artifacts in place.
 # Stop running agents with `4lm stop` before re-running this script if the
 # plist contents have changed.
 # After install, run: 4lm start
 
 set -euo pipefail
+
+# ---- 0. Argument parsing ---------------------------------------------------
+BACKEND_ONLY=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --backend-only)
+      BACKEND_ONLY=1
+      shift
+      ;;
+    -h | --help)
+      sed -n '2,32p' "$0" | sed 's/^# \?//'
+      exit 0
+      ;;
+    *)
+      echo "✗ unknown option: $1 (try --help)" >&2
+      exit 1
+      ;;
+  esac
+done
+readonly BACKEND_ONLY
+
+readonly WEBUI_ARTIFACTS_NOTICE="WebUI artifacts found; not managed in backend-only mode."
 
 readonly LLM_HOME="${HOME}/.4lm"
 readonly LAUNCHD_DIR="${LLM_HOME}/launchd"
@@ -54,8 +87,27 @@ die() {
 }
 
 echo "${C_DIM}════════════════════════════════════${C_RST}"
-echo " 4lm — Installer"
+if [[ "${BACKEND_ONLY}" -eq 1 ]]; then
+  echo " 4lm — Installer (backend-only)"
+else
+  echo " 4lm — Installer"
+fi
 echo "${C_DIM}════════════════════════════════════${C_RST}"
+
+# ---- 0b. Detect existing webui artifacts ----------------------------------
+# Used to emit the non-destructive notice (R8) when --backend-only runs over
+# an install that already has webui artifacts. We do not modify them.
+webui_artifacts_present=0
+if [[ -f "${LAUNCHD_DIR}/com.4lm.webui.plist" ]] ||
+  [[ -f "${LLM_HOME}/bin/4lm-webui-start.sh" ]] ||
+  (command -v pipx >/dev/null 2>&1 && pipx list --short 2>/dev/null | grep -q '^open-webui '); then
+  webui_artifacts_present=1
+fi
+readonly webui_artifacts_present
+
+if [[ "${BACKEND_ONLY}" -eq 1 && "${webui_artifacts_present}" -eq 1 ]]; then
+  echo "${WEBUI_ARTIFACTS_NOTICE}"
+fi
 
 # ---- 1. Prereqs ------------------------------------------------------------
 info "Checking prerequisites…"
@@ -88,7 +140,11 @@ fi
 
 # ---- 3. Install scripts ---------------------------------------------------
 info "Installing scripts…"
-for script in 4lm 4lm-backend-start.sh 4lm-webui-start.sh 4lm_helpers.py; do
+scripts_to_install=(4lm 4lm-backend-start.sh 4lm_helpers.py)
+if [[ "${BACKEND_ONLY}" -eq 0 ]]; then
+  scripts_to_install+=(4lm-webui-start.sh)
+fi
+for script in "${scripts_to_install[@]}"; do
   cp "${SOURCE_DIR}/bin/${script}" "${LLM_HOME}/bin/${script}"
   chmod 755 "${LLM_HOME}/bin/${script}"
 done
@@ -161,9 +217,14 @@ fi
 info "Installing launchd plists into ${LAUNCHD_DIR}/ (not ~/Library/LaunchAgents/)…"
 for plist_src in "${SOURCE_DIR}"/launchd/*.plist; do
   [[ -f "${plist_src}" ]] || continue
-  target="${LAUNCHD_DIR}/$(basename "${plist_src}")"
+  base="$(basename "${plist_src}")"
+  # Skip the webui plist in backend-only mode (R4).
+  if [[ "${BACKEND_ONLY}" -eq 1 && "${base}" == "com.4lm.webui.plist" ]]; then
+    continue
+  fi
+  target="${LAUNCHD_DIR}/${base}"
   sed "s|__HOME__|${HOME}|g" "${plist_src}" >"${target}"
-  ok "Plist → $(basename "${plist_src}")"
+  ok "Plist → ${base}"
 done
 
 # ---- 8. Symlink CLI ------------------------------------------------------
@@ -221,6 +282,12 @@ while IFS= read -r line; do
   # `pipx list --short` normalises names: drops [extras], turns _ into -.
   pkg_listed="${pkg%%[*}"
   pkg_listed="${pkg_listed//_/-}"
+  # Skip open-webui in backend-only mode (R2). The on-disk requirements.txt
+  # is not modified — only the in-memory iteration filters it.
+  if [[ "${BACKEND_ONLY}" -eq 1 && "${pkg_listed}" == "open-webui" ]]; then
+    info "skipping ${pkg} (backend-only)"
+    continue
+  fi
   if pipx list --short 2>/dev/null | grep -qE "^${pkg_listed} ${ver}( |$)"; then
     info "${pkg}==${ver} already installed"
   else
@@ -269,16 +336,34 @@ fi
 ok "helpers deps installed from requirements-helpers.txt"
 
 # ---- 10. newsyslog log rotation ------------------------------------------
-NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
-NEWSYSLOG_BODY="${HOME}/.4lm/logs/backend.log               600  7     10240 *     J
-${HOME}/.4lm/logs/webui.log                 600  7     10240 *     J"
-if [[ -f "${NEWSYSLOG_CONF}" ]] && grep -qF "${HOME}/.4lm/logs/backend.log" "${NEWSYSLOG_CONF}"; then
-  ok "newsyslog rotation already installed at ${NEWSYSLOG_CONF}"
+# Two grep-guarded `sudo tee -a` appends — one for backend.log (always), one
+# for webui.log (only when not --backend-only). The header line is written
+# only when the file does not exist; re-runs do not produce duplicate lines.
+# NEWSYSLOG_CONF is overrideable via env var for the bats test harness.
+NEWSYSLOG_CONF="${NEWSYSLOG_CONF:-/etc/newsyslog.d/4lm.conf}"
+NEWSYSLOG_HEADER="# logfilename                                 [owner:group]  mode count size  when  flags"
+NEWSYSLOG_BACKEND_LINE="${HOME}/.4lm/logs/backend.log               600  7     10240 *     J"
+NEWSYSLOG_WEBUI_LINE="${HOME}/.4lm/logs/webui.log                 600  7     10240 *     J"
+
+if [[ ! -f "${NEWSYSLOG_CONF}" ]]; then
+  echo "Requires sudo: creating ${NEWSYSLOG_CONF}"
+  printf '%s\n' "${NEWSYSLOG_HEADER}" | sudo tee "${NEWSYSLOG_CONF}" >/dev/null
+fi
+
+if grep -qE '^[^#]*\.4lm/logs/backend\.log[[:space:]]' "${NEWSYSLOG_CONF}"; then
+  ok "newsyslog backend.log entry already present"
 else
-  echo "Requires sudo: installing /etc/newsyslog.d/4lm.conf"
-  printf "# logfilename                                 [owner:group]  mode count size  when  flags\n%s\n" "${NEWSYSLOG_BODY}" |
-    sudo tee "${NEWSYSLOG_CONF}" >/dev/null
-  ok "newsyslog rotation → ${NEWSYSLOG_CONF}"
+  printf '%s\n' "${NEWSYSLOG_BACKEND_LINE}" | sudo tee -a "${NEWSYSLOG_CONF}" >/dev/null
+  ok "newsyslog backend.log rotation → ${NEWSYSLOG_CONF}"
+fi
+
+if [[ "${BACKEND_ONLY}" -eq 0 ]]; then
+  if grep -qE '^[^#]*\.4lm/logs/webui\.log[[:space:]]' "${NEWSYSLOG_CONF}"; then
+    ok "newsyslog webui.log entry already present"
+  else
+    printf '%s\n' "${NEWSYSLOG_WEBUI_LINE}" | sudo tee -a "${NEWSYSLOG_CONF}" >/dev/null
+    ok "newsyslog webui.log rotation → ${NEWSYSLOG_CONF}"
+  fi
 fi
 
 # ---- 11. Sudoers + wired memory limit -------------------------------------
@@ -315,15 +400,18 @@ else
 fi
 
 # ---- 12. OpenCode config --------------------------------------------------
-OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
-OPENCODE_CONFIG="${OPENCODE_CONFIG_DIR}/opencode.jsonc"
-OPENCODE_TEMPLATE="${SOURCE_DIR}/config/opencode.example.jsonc"
-mkdir -p "${OPENCODE_CONFIG_DIR}"
-if [[ ! -f "${OPENCODE_CONFIG}" ]]; then
-  cp "${OPENCODE_TEMPLATE}" "${OPENCODE_CONFIG}"
-  ok "opencode config seeded → ${OPENCODE_CONFIG}"
-else
-  info "opencode config exists, not overwriting: ${OPENCODE_CONFIG}"
+# Skipped entirely in --backend-only (R6).
+if [[ "${BACKEND_ONLY}" -eq 0 ]]; then
+  OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
+  OPENCODE_CONFIG="${OPENCODE_CONFIG_DIR}/opencode.jsonc"
+  OPENCODE_TEMPLATE="${SOURCE_DIR}/config/opencode.example.jsonc"
+  mkdir -p "${OPENCODE_CONFIG_DIR}"
+  if [[ ! -f "${OPENCODE_CONFIG}" ]]; then
+    cp "${OPENCODE_TEMPLATE}" "${OPENCODE_CONFIG}"
+    ok "opencode config seeded → ${OPENCODE_CONFIG}"
+  else
+    info "opencode config exists, not overwriting: ${OPENCODE_CONFIG}"
+  fi
 fi
 
 # ---- 13. Ollama -------------------------------------------------------------
