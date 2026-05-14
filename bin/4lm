@@ -28,6 +28,11 @@ readonly BACKEND_PLIST="${LAUNCHD_DIR}/${BACKEND_LABEL}.plist"
 readonly WEBUI_PLIST="${LAUNCHD_DIR}/${WEBUI_LABEL}.plist"
 readonly LA_DIR="${HOME}/Library/LaunchAgents"
 
+# Component-missing error messages — emitted verbatim to stderr by
+# require_component (bypassing die() so no 'error:' prefix is added).
+readonly WEBUI_MISSING_MSG="WebUI not installed (re-run ./install.sh to enable)"
+readonly OPENCODE_MISSING_MSG="OpenCode not installed (re-run ./install.sh to enable)"
+
 readonly REQUIRED_WIRED_LIMIT_MB=98304
 
 # Python helpers — venv interpreter (overridable for bats tests).
@@ -74,6 +79,43 @@ require_helpers_python() {
   if [[ ! -x "${HELPERS_PYTHON}" ]]; then
     die "helpers venv missing — run: make install"
   fi
+}
+
+# webui_installed: true (0) iff the WebUI plist exists on disk.
+# Plist presence is the source of truth for "WebUI is part of this install."
+webui_installed() {
+  [[ -f "${WEBUI_PLIST}" ]]
+}
+
+# opencode_installed: true (0) iff both the opencode binary is in PATH AND
+# the seeded config file exists. Either missing → return 1.
+opencode_installed() {
+  command -v opencode >/dev/null 2>&1 || return 1
+  [[ -f "${HOME}/.config/opencode/opencode.jsonc" ]]
+}
+
+# require_component <name>: writes the component-missing constant verbatim to
+# stderr (no die() prefix) and exits 1 when the component is absent. Valid
+# names are 'webui' and 'opencode'; any other name dies with a clear message.
+require_component() {
+  local name="${1:-}"
+  case "${name}" in
+    webui)
+      webui_installed || {
+        printf '%s\n' "${WEBUI_MISSING_MSG}" >&2
+        exit 1
+      }
+      ;;
+    opencode)
+      opencode_installed || {
+        printf '%s\n' "${OPENCODE_MISSING_MSG}" >&2
+        exit 1
+      }
+      ;;
+    *)
+      die "require_component: unknown component: ${name}"
+      ;;
+  esac
 }
 
 is_loaded() { launchctl print "gui/${UID_NUM}/$1" >/dev/null 2>&1; }
