@@ -22,3 +22,12 @@ export LAUNCHCTL_LOG="${BATS_TMPDIR}/launchctl.log"
 
 # Point 4lm at the real venv so bats tests avoid the python3 PATH stub.
 export LLM_HELPERS_PYTHON="${_REAL_4LM_VENV}"
+
+# skip_if_no_webui: skips the current bats test when the webui plist is not
+# staged under ${HOME}/.4lm/launchd/. Tests that exercise webui-specific
+# behaviour must either (a) stage the plist in their setup, or (b) call this
+# helper so they are skipped on a backend-only fixture.
+skip_if_no_webui() {
+  local plist="${HOME}/.4lm/launchd/com.4lm.webui.plist"
+  [[ -f "${plist}" ]] || skip "webui not installed in test fixture"
+}

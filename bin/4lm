@@ -378,6 +378,9 @@ cmd_status() {
   local json=false
   [[ "${1:-}" == "--json" ]] && json=true
 
+  local has_webui=false
+  webui_installed && has_webui=true
+
   local profile="(none)" backend_type=""
   if [[ -L "${ACTIVE_CONFIG}" ]]; then
     profile="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
@@ -387,15 +390,19 @@ cmd_status() {
   local mode
   mode="$(net_mode)"
 
-  local be_auto webui_auto
+  local be_auto webui_auto=""
   [[ -L "${LA_DIR}/${BACKEND_LABEL}.plist" ]] && be_auto="enabled" || be_auto="disabled"
-  [[ -L "${LA_DIR}/${WEBUI_LABEL}.plist" ]] && webui_auto="enabled" || webui_auto="disabled"
+  if [[ "${has_webui}" == "true" ]]; then
+    [[ -L "${LA_DIR}/${WEBUI_LABEL}.plist" ]] && webui_auto="enabled" || webui_auto="disabled"
+  fi
 
   local be_loaded=false be_running=false webui_loaded=false webui_running=false
   is_loaded "${BACKEND_LABEL}" && be_loaded=true
   is_running "${BACKEND_LABEL}" && be_running=true
-  is_loaded "${WEBUI_LABEL}" && webui_loaded=true
-  is_running "${WEBUI_LABEL}" && webui_running=true
+  if [[ "${has_webui}" == "true" ]]; then
+    is_loaded "${WEBUI_LABEL}" && webui_loaded=true
+    is_running "${WEBUI_LABEL}" && webui_running=true
+  fi
 
   local backend_port webui_port
   backend_port="$(net_backend_port)"
@@ -415,7 +422,7 @@ cmd_status() {
       be_http='"fail"'
     fi
   fi
-  if [[ "${webui_loaded}" == "true" ]]; then
+  if [[ "${has_webui}" == "true" && "${webui_loaded}" == "true" ]]; then
     if curl --max-time 1 --silent --fail "$(webui_url)" >/dev/null 2>&1; then
       webui_http='"ok"'
     else
@@ -431,21 +438,28 @@ cmd_status() {
       _ip="$(lan_ip)"
       [[ -n "${_ip}" ]] && lan_ip_val="\"${_ip}\""
     fi
-    printf '{"profile":%s,"backend":%s,"network":{"mode":%s,"lan_ip":%s,"backend_port":%s,"webui_port":%s},"autostart":{"backend":%s,"webui":%s},"services":{"backend":{"loaded":%s,"running":%s},"webui":{"loaded":%s,"running":%s}},"http":{"backend":%s,"webui":%s},"models":%s}\n' \
+    # Build autostart, services, http blocks — webui sub-keys omitted when absent.
+    local autostart_block services_block http_block
+    if [[ "${has_webui}" == "true" ]]; then
+      autostart_block="$(printf '{"backend":"%s","webui":"%s"}' "${be_auto}" "${webui_auto}")"
+      services_block="$(printf '{"backend":{"loaded":%s,"running":%s},"webui":{"loaded":%s,"running":%s}}' \
+        "${be_loaded}" "${be_running}" "${webui_loaded}" "${webui_running}")"
+      http_block="$(printf '{"backend":%s,"webui":%s}' "${be_http}" "${webui_http}")"
+    else
+      autostart_block="$(printf '{"backend":"%s"}' "${be_auto}")"
+      services_block="$(printf '{"backend":{"loaded":%s,"running":%s}}' "${be_loaded}" "${be_running}")"
+      http_block="$(printf '{"backend":%s}' "${be_http}")"
+    fi
+    printf '{"profile":%s,"backend":%s,"network":{"mode":%s,"lan_ip":%s,"backend_port":%s,"webui_port":%s},"autostart":%s,"services":%s,"http":%s,"models":%s}\n' \
       "\"${profile}\"" \
       "${backend_json}" \
       "\"${mode}\"" \
       "${lan_ip_val}" \
       "${backend_port}" \
       "${webui_port}" \
-      "\"${be_auto}\"" \
-      "\"${webui_auto}\"" \
-      "${be_loaded}" \
-      "${be_running}" \
-      "${webui_loaded}" \
-      "${webui_running}" \
-      "${be_http}" \
-      "${webui_http}" \
+      "${autostart_block}" \
+      "${services_block}" \
+      "${http_block}" \
       "${model_ids_json}"
     return
   fi
@@ -457,14 +471,18 @@ cmd_status() {
   else
     printf "%-10s %s\n" "Network:" "${mode}"
   fi
-  printf "%-10s backend %s  ·  webui %s\n" "Autostart:" "${be_auto}" "${webui_auto}"
+  if [[ "${has_webui}" == "true" ]]; then
+    printf "%-10s backend %s  ·  webui %s\n" "Autostart:" "${be_auto}" "${webui_auto}"
+  else
+    printf "%-10s backend %s\n" "Autostart:" "${be_auto}"
+  fi
 
   print_service_status "${BACKEND_LABEL}" "Backend"
-  print_service_status "${WEBUI_LABEL}" "WebUI"
+  [[ "${has_webui}" == "true" ]] && print_service_status "${WEBUI_LABEL}" "WebUI"
 
   echo ""
   echo "${C_DIM}  localhost${C_RST}"
-  printf "  %-10s http://127.0.0.1:%s\n" "WebUI" "${webui_port}"
+  [[ "${has_webui}" == "true" ]] && printf "  %-10s http://127.0.0.1:%s\n" "WebUI" "${webui_port}"
   printf "  %-10s http://127.0.0.1:%s\n" "Backend" "${backend_port}"
   if [[ "${mode}" == "lan" ]]; then
     local ip
@@ -472,7 +490,7 @@ cmd_status() {
     if [[ -n "${ip}" ]]; then
       echo ""
       echo "${C_DIM}  LAN${C_RST}"
-      printf "  %-10s http://%s:%s\n" "WebUI" "${ip}" "${webui_port}"
+      [[ "${has_webui}" == "true" ]] && printf "  %-10s http://%s:%s\n" "WebUI" "${ip}" "${webui_port}"
       printf "  %-10s http://%s:%s\n" "Backend" "${ip}" "${backend_port}"
     fi
   fi
@@ -488,7 +506,7 @@ cmd_status() {
       warn "backend: loaded but not responding at $(backend_url)/v1/models"
     fi
   fi
-  if [[ "${webui_http}" != "null" ]]; then
+  if [[ "${has_webui}" == "true" && "${webui_http}" != "null" ]]; then
     if [[ "${webui_http}" == '"ok"' ]]; then
       ok "webui:   HTTP OK"
     else
@@ -502,7 +520,10 @@ cmd_logs() {
   local target="${1:-backend}"
   case "${target}" in
     backend | be) tail -F "${LOG_DIR}/backend.log" ;;
-    webui | ui) tail -F "${LOG_DIR}/webui.log" ;;
+    webui | ui)
+      require_component webui
+      tail -F "${LOG_DIR}/webui.log"
+      ;;
     *) die "Unknown log target: ${target}. Use: backend or webui" ;;
   esac
 }
@@ -1402,15 +1423,17 @@ cmd_doctor() {
     fail=1
   fi
 
-  # Plists installed
-  for plist in "${BACKEND_PLIST}" "${WEBUI_PLIST}"; do
-    if [[ -f "${plist}" ]]; then
-      ok "$(basename "${plist}") present"
-    else
-      warn "missing ${plist}"
-      fail=1
-    fi
-  done
+  # Plists installed. Backend is unconditional; webui is checked only when
+  # webui_installed returns true (backend-only installs skip the check).
+  if [[ -f "${BACKEND_PLIST}" ]]; then
+    ok "$(basename "${BACKEND_PLIST}") present"
+  else
+    warn "missing ${BACKEND_PLIST}"
+    fail=1
+  fi
+  if webui_installed; then
+    ok "$(basename "${WEBUI_PLIST}") present"
+  fi
 
   # network.yaml
   if [[ -f "${NETWORK_YAML}" ]]; then
@@ -1435,17 +1458,24 @@ cmd_doctor() {
     warn "omlx not in PATH (run: make install)"
     fail=1
   fi
-  if command -v open-webui >/dev/null; then
-    ok "open-webui: $(command -v open-webui)"
-  else
-    warn "open-webui not in PATH (run: make install)"
-    fail=1
+  # open-webui binary check: only when the webui plist is installed.
+  if webui_installed; then
+    if command -v open-webui >/dev/null; then
+      ok "open-webui: $(command -v open-webui)"
+    else
+      warn "open-webui not in PATH (run: make install)"
+      fail=1
+    fi
   fi
-  if command -v opencode >/dev/null; then
-    ok "opencode: $(command -v opencode)"
-  else
-    warn "opencode not in PATH (run: make bootstrap)"
-    fail=1
+  # opencode probe: only when an opencode install was intended (config seeded
+  # by install.sh). Backend-only installs skip the check entirely.
+  if [[ -f "${HOME}/.config/opencode/opencode.jsonc" ]]; then
+    if command -v opencode >/dev/null; then
+      ok "opencode: $(command -v opencode)"
+    else
+      warn "opencode not in PATH (run: make bootstrap)"
+      fail=1
+    fi
   fi
   if command -v ollama >/dev/null; then
     ok "ollama: $(command -v ollama)"
@@ -1492,7 +1522,10 @@ _doctor_check_models_cached() {
 cmd_open() {
   local target="${1:-webui}"
   case "${target}" in
-    webui | ui) open "$(webui_url)" ;;
+    webui | ui)
+      require_component webui
+      open "$(webui_url)"
+      ;;
     backend | be) open "$(backend_url)/v1/models" ;;
     *) die "Unknown target: ${target}" ;;
   esac
@@ -1500,7 +1533,7 @@ cmd_open() {
 
 # ---- OpenCode --------------------------------------------------------------
 cmd_opencode() {
-  command -v opencode >/dev/null || die "opencode not found — run: make bootstrap"
+  require_component opencode
   if ! curl --max-time 1 --silent --fail "$(backend_url)/v1/models" >/dev/null 2>&1; then
     warn "backend not responding at $(backend_url) — run: 4lm start backend"
   fi
@@ -1571,21 +1604,44 @@ cmd_uninstall() {
 }
 
 # ---- Service-level command dispatch ---------------------------------------
+# backend_installed: backend plist is always required and is the only
+# unconditionally-present component. Checked before iterating `all`-targets so
+# a fully-corrupted install fails fast with `no components installed`.
+backend_installed() { [[ -f "${BACKEND_PLIST}" ]]; }
+
+# Emit the no-components error and exit before any `all`-target loop entry.
+_require_any_component() {
+  if ! backend_installed && ! webui_installed; then
+    printf 'no components installed\n' >&2
+    exit 1
+  fi
+}
+
 cmd_start() {
   local target="${1:-all}"
   case "${target}" in
     backend | be) service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}" ;;
-    webui | ui) service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}" ;;
-    all)
-      local first_run=false
-      [[ ! -d "${LLM_HOME}/openwebui-data" ]] && first_run=true
-      service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}"
+    webui | ui)
+      require_component webui
       service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}"
-      info "WebUI: http://127.0.0.1:$(net_webui_port)"
-      if [[ "${first_run}" == "true" ]]; then
-        info "Open it in a private window, create an account, then visit Admin → Settings → Users to promote yourself to admin."
+      ;;
+    all)
+      _require_any_component
+      local rc=0
+      if backend_installed; then
+        service_start "${BACKEND_LABEL}" "${BACKEND_PLIST}" || rc=1
       fi
-      info "Run \`4lm open\` to open in browser."
+      if webui_installed; then
+        local first_run=false
+        [[ ! -d "${LLM_HOME}/openwebui-data" ]] && first_run=true
+        service_start "${WEBUI_LABEL}" "${WEBUI_PLIST}" || rc=1
+        info "WebUI: http://127.0.0.1:$(net_webui_port)"
+        if [[ "${first_run}" == "true" ]]; then
+          info "Open it in a private window, create an account, then visit Admin → Settings → Users to promote yourself to admin."
+        fi
+        info "Run \`4lm open\` to open in browser."
+      fi
+      return "${rc}"
       ;;
     *) die "Unknown target: ${target}" ;;
   esac
@@ -1595,10 +1651,20 @@ cmd_stop() {
   local target="${1:-all}"
   case "${target}" in
     backend | be) service_stop "${BACKEND_LABEL}" ;;
-    webui | ui) service_stop "${WEBUI_LABEL}" ;;
-    all)
+    webui | ui)
+      require_component webui
       service_stop "${WEBUI_LABEL}"
-      service_stop "${BACKEND_LABEL}"
+      ;;
+    all)
+      _require_any_component
+      local rc=0
+      if webui_installed; then
+        service_stop "${WEBUI_LABEL}" || rc=1
+      fi
+      if backend_installed; then
+        service_stop "${BACKEND_LABEL}" || rc=1
+      fi
+      return "${rc}"
       ;;
     *) die "Unknown target: ${target}" ;;
   esac
@@ -1608,10 +1674,20 @@ cmd_restart() {
   local target="${1:-all}"
   case "${target}" in
     backend | be) service_restart "${BACKEND_LABEL}" "${BACKEND_PLIST}" ;;
-    webui | ui) service_restart "${WEBUI_LABEL}" "${WEBUI_PLIST}" ;;
-    all)
-      service_restart "${BACKEND_LABEL}" "${BACKEND_PLIST}"
+    webui | ui)
+      require_component webui
       service_restart "${WEBUI_LABEL}" "${WEBUI_PLIST}"
+      ;;
+    all)
+      _require_any_component
+      local rc=0
+      if backend_installed; then
+        service_restart "${BACKEND_LABEL}" "${BACKEND_PLIST}" || rc=1
+      fi
+      if webui_installed; then
+        service_restart "${WEBUI_LABEL}" "${WEBUI_PLIST}" || rc=1
+      fi
+      return "${rc}"
       ;;
     *) die "Unknown target: ${target}" ;;
   esac
@@ -1633,8 +1709,11 @@ _autostart_pairs() {
     backend | be) echo "${BACKEND_LABEL}|${BACKEND_PLIST}" ;;
     webui | ui) echo "${WEBUI_LABEL}|${WEBUI_PLIST}" ;;
     all)
-      echo "${BACKEND_LABEL}|${BACKEND_PLIST}"
-      echo "${WEBUI_LABEL}|${WEBUI_PLIST}"
+      # Filter by plist existence so absent components are skipped; the
+      # existing `die "source plist not found"` in _autostart_enable is then
+      # only reachable for the backend pair (always required).
+      backend_installed && echo "${BACKEND_LABEL}|${BACKEND_PLIST}"
+      webui_installed && echo "${WEBUI_LABEL}|${WEBUI_PLIST}"
       ;;
   esac
 }
@@ -1695,9 +1774,20 @@ _autostart_status() {
 cmd_autostart() {
   local subcmd="${1:-}"
   shift || true
+  local target="${1:-backend}"
   case "${subcmd}" in
-    enable) _autostart_enable "${1:-backend}" ;;
-    disable) _autostart_disable "${1:-backend}" ;;
+    enable | disable)
+      _autostart_check_target "${target}"
+      case "${target}" in
+        webui | ui) require_component webui ;;
+        all) _require_any_component ;;
+      esac
+      if [[ "${subcmd}" == "enable" ]]; then
+        _autostart_enable "${target}"
+      else
+        _autostart_disable "${target}"
+      fi
+      ;;
     status) _autostart_status ;;
     "") die "error: usage: 4lm autostart {enable|disable|status} [backend|webui]" ;;
     *) die "autostart: unknown subcommand '${subcmd}'. Use enable|disable|status" ;;
