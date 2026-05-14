@@ -17,6 +17,10 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        install_mode: [default, backend-only]
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -24,7 +28,11 @@ jobs:
           persist-credentials: false
 
       - name: Install tooling
-        run: brew bundle --file=Brewfile
+        run: |
+          brew bundle --file=Brewfile
+          if [ "${{ matrix.install_mode }}" = "default" ]; then
+            brew bundle --file=Brewfile-tui
+          fi
 
       - name: Cache pip dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -41,3 +49,4 @@ jobs:
         run: make check
         env:
           HELPERS_PYTHON: ${{ github.workspace }}/.venv/bin/python
+          BACKEND_ONLY: ${{ matrix.install_mode == 'backend-only' && '1' || '' }}

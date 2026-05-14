@@ -62,6 +62,21 @@ make models       # ~140 GB of weights from HuggingFace (idempotent; the same ta
 
 After a reboot: `4lm start`. There's no autostart and that's a feature.
 
+### Backend-only install (headless LAN server)
+
+Use `--backend-only` to provision this Mac as a pure `/v1/*` inference
+server for other hosts on the LAN — no WebUI, no `opencode`:
+
+```sh
+./install.sh --backend-only && 4lm start && 4lm expose lan --confirm
+```
+
+Skips `open-webui` (pipx), the webui plist, the webui wrapper, the
+`opencode` brew formula, and the seeded opencode config.
+`make bootstrap BACKEND_ONLY=1` and `make install BACKEND_ONLY=1` are
+the env-var equivalents. See [`docs/setup.md`](docs/setup.md) for the
+consumer-host wiring (`OPENAI_API_BASE_URL`).
+
 ## Architecture
 
 ```
@@ -84,6 +99,11 @@ After a reboot: `4lm start`. There's no autostart and that's a feature.
 The backend is the source of truth. WebUI is a stateless frontend
 proxying to it. OpenCode talks directly to `:8000/v1`. None of them
 know or care about each other; the OpenAI-compatible API is the seam.
+
+In `--backend-only` mode (see TL;DR), the WebUI block above is absent on
+disk — `bin/4lm` probes for the plist and treats the layer as not
+installed. Consumer hosts on the LAN run their own OpenWebUI / opencode
+against the backend's `:8000/v1`.
 
 ## Components
 
