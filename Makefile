@@ -12,12 +12,19 @@ HELPERS_PYTHON ?= $(HOME)/.4lm/venv/bin/python
 
 check: lint syntax plist-lint yaml-lint test ## Run all gates (default)
 
-bootstrap: ## Install required tools from Brewfile + pipx ensurepath
+bootstrap: ## Install required tools from Brewfile (+ Brewfile-tui unless BACKEND_ONLY=1) + pipx ensurepath
 	brew bundle --file=Brewfile
+ifeq ($(strip $(BACKEND_ONLY)),)
+	brew bundle --file=Brewfile-tui
+endif
 	pipx ensurepath
 
-install: ## Run ./install.sh
+install: ## Run ./install.sh (forwards --backend-only when BACKEND_ONLY=1)
+ifeq ($(strip $(BACKEND_ONLY)),)
 	./install.sh
+else
+	./install.sh --backend-only
+endif
 
 uninstall: ## Run ./uninstall.sh — DESTRUCTIVE, removes ~/.4lm and chat history
 	./uninstall.sh

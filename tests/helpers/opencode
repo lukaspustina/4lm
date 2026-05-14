@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Test stub: makes `command -v opencode` succeed in the bats harness so
+# `opencode_installed` exercises only the config-file branch. Real opencode
+# is never invoked from tests.
+exit 0

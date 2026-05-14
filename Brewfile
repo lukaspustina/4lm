@@ -12,11 +12,6 @@ brew "jq"
 brew "python@3.12"
 brew "pipx"
 
-# OpenCode TUI — talks to the local backend over OpenAI-compatible /v1.
-# homebrew/core's opencode formula pulls anomalyco's opencode-ai npm package;
-# the older 'sst/opencode' fork no longer exists upstream.
-brew "opencode"
-
 # Hardware-fit scoring and model recommendations (used by `4lm recommend`).
 brew "llmfit"
 

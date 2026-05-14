@@ -1,0 +1,8 @@
+# Optional TUI tools — installed by 'make bootstrap' (skipped when BACKEND_ONLY=1).
+# These are only needed for the workstation install; backend-only / headless LAN
+# servers do not need a TUI client.
+
+# OpenCode TUI — talks to the local backend over OpenAI-compatible /v1.
+# homebrew/core's opencode formula pulls anomalyco's opencode-ai npm package;
+# the older 'sst/opencode' fork no longer exists upstream.
+brew "opencode"
