@@ -36,6 +36,43 @@ It will **not** start any services and will **not** copy plists to
 `~/Library/LaunchAgents/`. Plists are stored in `~/.4lm/launchd/` so launchd
 does not auto-start them at login.
 
+### Backend-only install (headless LAN inference server)
+
+If this Mac will only serve `/v1/*` to other hosts on the LAN — no local
+WebUI browsing, no `opencode` TUI — install the backend layer only:
+
+```sh
+./install.sh --backend-only
+# or
+make install BACKEND_ONLY=1
+```
+
+The flag skips: `open-webui` pipx package, `4lm-webui-start.sh` wrapper,
+the webui launchd plist, the `webui.log` newsyslog rotation entry,
+`~/.config/opencode/opencode.jsonc`, and the `Brewfile-tui` (which only
+contains `opencode`). `make bootstrap BACKEND_ONLY=1` skips `Brewfile-tui`
+during dev-tool bootstrap as well.
+
+After install, expose the backend on the LAN:
+
+```sh
+4lm start
+4lm expose lan --confirm
+```
+
+On the **consumer host** (different machine), point a self-installed
+OpenWebUI or `opencode` at the headless server's `/v1` endpoint:
+
+```sh
+OPENAI_API_BASE_URL=http://<headless-host>:8000/v1
+```
+
+Re-running `./install.sh --backend-only` over an existing full install
+is non-destructive — it leaves existing WebUI artifacts in place and
+prints `WebUI artifacts found; not managed in backend-only mode.`
+Conversely, re-running `./install.sh` (no flag) over a backend-only
+install upgrades to full.
+
 > §Sudoers: the literal in `/etc/sudoers.d/4lm-stack` must match the
 > wrapper's invocation exactly:
 > `lukas ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304`.
