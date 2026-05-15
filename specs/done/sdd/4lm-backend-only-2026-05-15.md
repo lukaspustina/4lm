@@ -1,6 +1,7 @@
 # SDD: 4lm — Backend-Only Install Mode
 
-**Status**: Ready for Implementation
+**Status**: Done
+**Finished**: 2026-05-15
 **Created**: 2026-05-14
 **Refined**: 2026-05-14
 **Original**: specs/sdd/4lm-backend-only.md
