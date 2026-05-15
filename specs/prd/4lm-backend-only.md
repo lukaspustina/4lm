@@ -2,7 +2,7 @@
 
 **Status**: Ready for Design
 **Created**: 2026-05-14
-**Refined**: 2026-05-14
+**Refined**: 2026-05-15
 **Original**: specs/prd/4lm-backend-only.md
 **Parent PRD**: [`specs/prd/4lm.md`](./4lm.md) — this PRD extends the shipped product at v0.6.0 with an install variant.
 
@@ -48,7 +48,12 @@ AC4: `make bootstrap` (no flag) runs `brew bundle` against both `Brewfile` and `
 
 AC5: `bin/4lm` probes `~/.4lm/launchd/com.4lm.webui.plist` existence before dispatching any webui-targeted command. No marker file is written by `install.sh`; no config field in `network.yaml` gates the behavior.
 
-AC6: On a backend-only install, `4lm start webui`, `4lm stop webui`, `4lm restart webui`, `4lm logs webui`, `4lm open webui`, `4lm opencode`, and `4lm code` each exit 1 and print `WebUI not installed (re-run ./install.sh to enable)` to stderr. Help text in `bin/4lm` remains static and always lists `[backend|webui|all]`; the dispatch-time error is the only disambiguation.
+AC6: On a backend-only install, error messages are per-component (the dispatch-time error is the only disambiguation):
+
+- `4lm start webui`, `4lm stop webui`, `4lm restart webui`, `4lm logs webui`, and `4lm open webui` each exit 1 and print `WebUI not installed (re-run ./install.sh to enable)` to stderr.
+- `4lm opencode` and `4lm code` each exit 1 and print `OpenCode not installed (re-run ./install.sh to enable)` to stderr.
+
+Help text in `bin/4lm` remains static and always lists `[backend|webui|all]` plus `opencode`/`code`.
 
 AC7: On a backend-only install, `4lm autostart enable webui` and `4lm autostart disable webui` follow AC6.
 

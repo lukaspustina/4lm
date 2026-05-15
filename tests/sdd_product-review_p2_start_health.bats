@@ -30,6 +30,7 @@ YAML
 # ---- cmd_start first-run / subsequent-run hints ----------------------------
 
 @test "cmd_start: absent openwebui-data prints URL + account hint + 4lm open" {
+  skip_if_no_webui
   # openwebui-data/ absent → first run
   run "${REPO_ROOT}/bin/4lm" start
   [ "$status" -eq 0 ]
@@ -39,6 +40,7 @@ YAML
 }
 
 @test "cmd_start: present openwebui-data prints URL + 4lm open but no account hint" {
+  skip_if_no_webui
   mkdir -p "${HOME}/.4lm/openwebui-data"
   run "${REPO_ROOT}/bin/4lm" start
   [ "$status" -eq 0 ]

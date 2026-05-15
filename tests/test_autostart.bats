@@ -45,12 +45,14 @@ setup() {
 }
 
 @test "autostart enable webui: creates LaunchAgents symlink for webui" {
+  skip_if_no_webui
   run "${BIN}" autostart enable webui
   [ "$status" -eq 0 ]
   [ -L "${HOME}/Library/LaunchAgents/com.4lm.webui.plist" ]
 }
 
 @test "autostart enable all: creates both LaunchAgents symlinks" {
+  skip_if_no_webui
   run "${BIN}" autostart enable all
   [ "$status" -eq 0 ]
   [ -L "${HOME}/Library/LaunchAgents/com.4lm.backend.plist" ]
@@ -90,6 +92,7 @@ setup() {
 }
 
 @test "autostart disable all: removes both LaunchAgents symlinks" {
+  skip_if_no_webui
   ln -sfn "${HOME}/.4lm/launchd/com.4lm.backend.plist" \
     "${HOME}/Library/LaunchAgents/com.4lm.backend.plist"
   ln -sfn "${HOME}/.4lm/launchd/com.4lm.webui.plist" \

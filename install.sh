@@ -345,15 +345,20 @@ NEWSYSLOG_HEADER="# logfilename                                 [owner:group]  m
 NEWSYSLOG_BACKEND_LINE="${HOME}/.4lm/logs/backend.log               600  7     10240 *     J"
 NEWSYSLOG_WEBUI_LINE="${HOME}/.4lm/logs/webui.log                 600  7     10240 *     J"
 
-if [[ ! -f "${NEWSYSLOG_CONF}" ]]; then
-  echo "Requires sudo: creating ${NEWSYSLOG_CONF}"
-  printf '%s\n' "${NEWSYSLOG_HEADER}" | sudo tee "${NEWSYSLOG_CONF}" >/dev/null
-fi
-
-if grep -qE '^[^#]*\.4lm/logs/backend\.log[[:space:]]' "${NEWSYSLOG_CONF}"; then
+if grep -qE '^[^#]*\.4lm/logs/backend\.log[[:space:]]' "${NEWSYSLOG_CONF}" 2>/dev/null; then
   ok "newsyslog backend.log entry already present"
 else
-  printf '%s\n' "${NEWSYSLOG_BACKEND_LINE}" | sudo tee -a "${NEWSYSLOG_CONF}" >/dev/null
+  # Per SDD R5: the header comment is written only by the unconditional
+  # backend `sudo tee -a` block, gated by [[ ! -f NEWSYSLOG_CONF ]] so a
+  # re-run does not produce a duplicate header. Same `-a` operation as the
+  # entry — single sudo invocation, single file write.
+  if [[ ! -f "${NEWSYSLOG_CONF}" ]]; then
+    echo "Requires sudo: creating ${NEWSYSLOG_CONF}"
+    printf '%s\n%s\n' "${NEWSYSLOG_HEADER}" "${NEWSYSLOG_BACKEND_LINE}" |
+      sudo tee -a "${NEWSYSLOG_CONF}" >/dev/null
+  else
+    printf '%s\n' "${NEWSYSLOG_BACKEND_LINE}" | sudo tee -a "${NEWSYSLOG_CONF}" >/dev/null
+  fi
   ok "newsyslog backend.log rotation → ${NEWSYSLOG_CONF}"
 fi
 
