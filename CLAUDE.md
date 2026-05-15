@@ -13,7 +13,7 @@ changing the model set, the backend choice, or the activation model.
 ```
 bin/                       # 4lm and the two launchd wrapper scripts
 launchd/                   # plist templates with __HOME__ placeholder
-config/profiles/           # default (ollama) / mlx-coding / mlx-knowledge / exp-* YAMLs
+config/profiles/           # lean / default / max-100gb (omlx, Qwen3 stack) + mlx-coding / mlx-knowledge / exp-* YAMLs
 config/network.example.yaml
 config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
 docs/                      # setup runbook + profile schema reference
@@ -79,6 +79,21 @@ before kickstarting, so YAML edits propagate without a full stop/start.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
 
+## Three-tier profile stack
+
+The Qwen3-family stack ships as three profiles with a shared embedder so
+knowledge bases stay valid across switches:
+
+| Tier | Coder | Chat | Embed | Rerank | Vision | Steady |
+|---|---|---|---|---|---|---|
+| `lean` | Qwen3-Coder-30B-A3B | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | — | ~41 GB |
+| `default` | Qwen3-Coder-Next (80B) | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | Qwen3-VL-8B | ~65 GB |
+| `max-100gb` | Qwen3-Coder-Next (80B) | Qwen3-Next-80B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-4B | Qwen3-VL-8B | ~92 GB |
+
+All embedders are the same model under `served_model_name: qwen3-embedding`,
+all rerankers are `qwen3-reranker`, vision is `qwen3-vl-8b`. Switching
+profiles never requires reindexing knowledge bases.
+
 ## OpenWebUI feature toggles
 
 `bin/4lm-webui-start.sh` exports a baseline of feature env vars to give the
@@ -90,20 +105,19 @@ WebUI Claude-Desktop-style behavior on first launch:
 - Follow-up + autocomplete suggestions
 - RAG embeddings via omlx (`RAG_EMBEDDING_ENGINE=openai`,
   `RAG_EMBEDDING_MODEL=qwen3-embedding`, pointed at the local `:8000/v1`)
+- RAG hybrid search + reranker via omlx (`ENABLE_RAG_HYBRID_SEARCH=True`,
+  `RAG_RERANKING_ENGINE=external`, `RAG_EXTERNAL_RERANKER_URL` points at
+  the local `/v1/rerank`, `RAG_RERANKING_MODEL=qwen3-reranker`). omlx
+  serves `POST /v1/rerank` in Cohere/Jina-compatible shape;
+  OpenWebUI's `external` engine (verified in `open_webui/retrieval/
+  models/external.py`) speaks that contract directly. **The URL is the
+  full endpoint**, not a base — OpenWebUI does not append `/rerank`.
 
 Most `ENABLE_*` / `RAG_*` / `DEFAULT_*` vars in OpenWebUI are PersistentConfig:
 copied into `webui.db` on first init only. After that the admin UI is the
 source of truth — changing the env value won't override the DB. Set
 `ENABLE_PERSISTENT_CONFIG=False` to make env vars authoritative every start
 (at the cost of disabling all admin-UI persistence).
-
-## RAG embedding model
-
-`default.yaml` and `omlx-coding.yaml` load
-`mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ` as a third model with
-`served_model_name: qwen3-embedding`. omlx exposes it on `/v1/embeddings`;
-the WebUI is wired to use it for file-upload RAG. Profiles without an
-embedding model fall back to OpenWebUI's bundled sentence-transformers.
 
 ## omlx path probe
 

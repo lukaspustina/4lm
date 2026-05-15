@@ -1,0 +1,43 @@
+# max-100gb profile: power Qwen3 stack via omlx — Qwen3-Coder-Next (80B)
+# + Qwen3-Next-80B chat + RAG (embed + larger rerank) + on-demand vision.
+#
+# Pushes resident weights toward the 100 GB envelope on a 128 GB machine
+# (110 GB usable VRAM). Accepts a smaller KV-cache headroom (~18 GB at
+# steady state) in exchange for top-tier chat quality alongside the
+# 80B coder.
+#
+# Resident-if-all-loaded: ~105 GB. Steady state (coder + chat + embed):
+# ~92 GB. Vision + reranker evict under pressure via omlx LRU.
+
+backend: omlx
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    model_type: lm
+    pin: true
+    ttl: null
+
+  - model_path: lmstudio-community/Qwen3-Next-80B-A3B-Instruct-MLX-4bit
+    served_model_name: qwen3-next-80b
+    model_type: lm
+    pin: false
+    ttl: 600
+
+  - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
+    served_model_name: qwen3-embedding
+    model_type: lm
+    pin: false
+    ttl: 600
+
+  - model_path: mlx-community/Qwen3-Reranker-4B-mxfp8
+    served_model_name: qwen3-reranker
+    model_type: lm
+    pin: false
+    ttl: 600
+
+  - model_path: lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit
+    served_model_name: qwen3-vl-8b
+    model_type: vlm
+    pin: false
+    ttl: 600

@@ -97,14 +97,27 @@ export CODE_INTERPRETER_ENGINE="pyodide"
 
 # ---- RAG embeddings via omlx /v1/embeddings -------------------------------
 # Requires the active profile to expose an embedding model under the
-# served_model_name below (default profile loads
-# mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ — top llmfit score, 32k ctx).
-# If you switch to a profile without an embedding model, file uploads /
-# RAG will fall back to OpenWebUI's bundled sentence-transformers.
+# served_model_name below (the lean / default / max-100gb profiles all
+# load mlx-community/Qwen3-Embedding-8B-4bit-DWQ — MTEB-multilingual
+# leader, 32k ctx). If you switch to a profile without an embedding
+# model, file uploads / RAG fall back to OpenWebUI's bundled
+# sentence-transformers.
 export RAG_EMBEDDING_ENGINE="openai"
 export RAG_OPENAI_API_BASE_URL="${BACKEND_URL}"
 export RAG_OPENAI_API_KEY="${OPENAI_API_KEY}"
 export RAG_EMBEDDING_MODEL="qwen3-embedding"
+
+# ---- RAG reranking via omlx /v1/rerank ------------------------------------
+# Hybrid search posts retrieved documents to the active profile's
+# reranker (served_model_name=qwen3-reranker; lean/default load the
+# 0.6B variant, max-100gb the 4B). omlx exposes POST /v1/rerank in
+# Cohere/Jina-compatible shape; OpenWebUI's "external" reranker engine
+# speaks that contract directly. URL is the FULL endpoint, not a base.
+export ENABLE_RAG_HYBRID_SEARCH="True"
+export RAG_RERANKING_ENGINE="external"
+export RAG_EXTERNAL_RERANKER_URL="http://127.0.0.1:${BACKEND_PORT}/v1/rerank"
+export RAG_EXTERNAL_RERANKER_API_KEY="${OPENAI_API_KEY}"
+export RAG_RERANKING_MODEL="qwen3-reranker"
 
 # NOTE on PersistentConfig: most ENABLE_* / RAG_* / DEFAULT_* vars above are
 # stored in webui.db on first launch. After that the admin UI is the source

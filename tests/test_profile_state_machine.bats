@@ -569,7 +569,7 @@ YAML
   run make -C "${REPO_ROOT}" models
   [ "$status" -eq 0 ]
   # All profiles now use omlx or mlx_lm (no ollama); make models dispatches hf download.
-  # default.yaml has mlx-community/gemma-4-31b-it-4bit as an omlx model.
-  grep -q "mlx-community/gemma-4-31b-it-4bit" "${HF_LOG}"
+  # default.yaml carries Qwen3.6-35B-A3B as the chat model.
+  grep -q "mlx-community/Qwen3.6-35B-A3B-4bit" "${HF_LOG}"
   [ -s "${HF_LOG}" ]
 }
