@@ -314,10 +314,53 @@ def is_orphaned(worker_pid: str, log_entries: list[str], window_admissions: int)
     return any(worker_pid in line for line in log_entries) and window_admissions == 0
 
 
+def _is_embedding_model(model_id: str) -> bool:
+    """Heuristic: model id contains 'embed' (case-insensitive)."""
+    return "embed" in model_id.lower()
+
+
+def _smoke_embedding(base_url: str, model_id: str, console: "Console") -> bool:
+    import time
+    import urllib.error
+    import urllib.request
+
+    payload = json.dumps({"model": model_id, "input": "hi"}).encode()
+    req = urllib.request.Request(
+        f"{base_url}/v1/embeddings",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        ms = int((time.time() - t0) * 1000)
+        vectors = result.get("data", [])
+        if vectors and isinstance(vectors[0].get("embedding"), list) and vectors[0]["embedding"]:
+            dim = len(vectors[0]["embedding"])
+            console.print(f"  [green]✓[/] smoke test: {model_id} responded in {ms}ms (dim={dim})")
+            return True
+        console.print(f"  [yellow]warn:[/] smoke test: empty embedding from {model_id}")
+        return False
+    except urllib.error.HTTPError as e:
+        console.print(f"  [yellow]warn:[/] smoke test: HTTP {e.code} from {model_id} (/v1/embeddings)")
+        return False
+    except (urllib.error.URLError, OSError) as e:
+        ms = int((time.time() - t0) * 1000)
+        console.print(f"  [yellow]warn:[/] smoke test: {model_id} failed after {ms}ms ({type(e).__name__})")
+        return False
+
+
 def _smoke_one(base_url: str, model_id: str, console: "Console") -> bool:
     import time
     import urllib.error
     import urllib.request
+
+    # Embedding models don't speak /v1/chat/completions; route them to
+    # /v1/embeddings instead. Detected by id substring.
+    if _is_embedding_model(model_id):
+        return _smoke_embedding(base_url, model_id, console)
 
     payload = json.dumps({
         "model": model_id,
@@ -346,6 +389,11 @@ def _smoke_one(base_url: str, model_id: str, console: "Console") -> bool:
         console.print(f"  [yellow]warn:[/] smoke test: empty response from {model_id}")
         return False
     except urllib.error.HTTPError as e:
+        # HTTP 400 on /v1/chat/completions usually means the model is an
+        # embedding model that wasn't caught by the name heuristic. Try the
+        # /v1/embeddings endpoint as a fallback before declaring failure.
+        if e.code == 400:
+            return _smoke_embedding(base_url, model_id, console)
         console.print(f"  [yellow]warn:[/] smoke test: HTTP {e.code} from {model_id}")
         return False
     except (urllib.error.URLError, OSError) as e:
