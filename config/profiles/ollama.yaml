@@ -1,0 +1,71 @@
+# ollama: GGUF backend smoke-test profile (llama.cpp/Metal)
+# =================================================================
+# Purpose
+# -------
+# Periodic regression check that the ollama backend still works after
+# the project's move to omlx as the primary inference runtime. Activate
+# this profile occasionally, confirm the model loads and `/v1/models`
+# responds, then switch back to default / lean / max-100gb.
+#
+# NOT a daily-use profile. NOT a benchmark suite.
+#
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Resident: ~22 GB (single Q4_K_M GGUF). KV-cache headroom is
+# generous since nothing else is loaded.
+#
+# Why each slot
+# -------------
+# coder — qwen3-coder-next:q4_K_M (ollama tag)
+#         Why: same upstream weights family as the omlx profiles
+#         (mlx-community/Qwen3-Coder-Next-4bit) so the smoke test
+#         exercises a realistic workload, not a toy. served_model_name
+#         matches the omlx profiles (qwen3-coder-next) so opencode
+#         and OpenWebUI work without client-side reconfiguration.
+#
+# When to use
+# -----------
+# - Quarterly / semi-annually: confirm ollama backend still loads,
+#   serves /v1/models, and answers a generate request
+# - When chasing a bug that might be omlx-specific and you want to
+#   rule out 4lm's plumbing
+# - Trying GGUF-only model variants by editing model_path
+#
+# When NOT to use
+# ---------------
+# - Daily coding / chat / RAG → use lean / default / max-100gb
+# - No embedder, no reranker, no vision. OpenWebUI RAG falls back to
+#   its bundled sentence-transformers if you upload files while this
+#   profile is active.
+# - omlx + ollama cannot coexist in one 4lm profile by design (single
+#   backend per profile, single launchd service per backend). To run
+#   both simultaneously needs architectural changes to install.sh /
+#   launchd / validate_profile — separate work, not done here.
+#
+# Prerequisites
+# -------------
+# - ollama installed and on PATH (`brew install ollama` or the
+#   official installer — not in this project's Brewfile)
+# - `make models` after switching to this profile to pull the GGUF,
+#   or `ollama pull qwen3-coder-next:q4_K_M` manually
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - The qwen3-coder-next:q4_K_M tag still exists in ollama's library.
+#   If renamed/removed, update model_path. `ollama search` or the web
+#   library is the source of truth.
+# - q4_K_M is the right quality/speed point for a smoke test. Smaller
+#   quants would pull faster; if you'd rather optimise for "quick
+#   regression test in <2 min" over "realistic workload", swap to a
+#   small model like qwen3:8b (~5 GB) or similar.
+# - The ollama backend in this project still supports the v1
+#   OpenAI-compatible API surface that 4lm expects. ollama upstream
+#   has been stable on this but worth re-checking.
+#
+# Last reviewed: 2026-05-15
+
+backend: ollama
+
+models:
+  - model_path: qwen3-coder-next:q4_K_M
+    served_model_name: qwen3-coder-next

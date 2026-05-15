@@ -1,13 +1,86 @@
-# max-100gb profile: power Qwen3 stack via omlx — Qwen3-Coder-Next (80B)
-# + Qwen3-Next-80B chat + RAG (embed + larger rerank) + on-demand vision.
+# max-100gb: power Qwen3 stack via omlx — pushes resident weights
+#            toward the 100 GB envelope on a 128 GB machine
+# =================================================================
+# Purpose
+# -------
+# When you want top-tier chat quality alongside the 80B coder and
+# have no other heavy workloads running. Pairs the agentic-recovery
+# coder with Apple's reference MLX chat model (Qwen3-Next-80B was
+# benchmarked by Apple ML Research in their M5 MLX demo). Adds the
+# meaningfully better 4B reranker. Vision stays on-demand.
 #
-# Pushes resident weights toward the 100 GB envelope on a 128 GB machine
-# (110 GB usable VRAM). Accepts a smaller KV-cache headroom (~18 GB at
-# steady state) in exchange for top-tier chat quality alongside the
-# 80B coder.
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Resident if all loaded:                  ~105 GB
+# Steady state (coder + chat + embed):     ~92 GB
+# KV-cache headroom in steady state:       ~18 GB — tight. KV at long
+#                                          contexts on both 80B models
+#                                          will pressure this. omlx
+#                                          LRU will evict vision /
+#                                          reranker first.
 #
-# Resident-if-all-loaded: ~105 GB. Steady state (coder + chat + embed):
-# ~92 GB. Vision + reranker evict under pressure via omlx LRU.
+# This is the budget edge. If you regularly run other heavy apps
+# alongside, this profile will swap or OOM. Use default or lean.
+#
+# Why each slot
+# -------------
+# coder  — mlx-community/Qwen3-Coder-Next-4bit (80B / A3B MoE, ~42 GB)
+#          Why: same as default. The 80B agentic-recovery coder.
+#
+# chat   — lmstudio-community/Qwen3-Next-80B-A3B-Instruct-MLX-4bit
+#          (~45 GB, MoE 3B-active)
+#          Why: hybrid Gated-DeltaNet+Attention architecture (75%
+#          recurrent, 25% full attention) that Apple ML Research
+#          themselves used in the M5 MLX reference demo — explicitly
+#          hardware-tuned for M5 Tensor Operations. Reasoning + chat
+#          quality near Qwen3-235B-A22B at a fraction of the memory.
+#          Native 262K context, 100+ languages.
+#
+# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
+#          Why: same as default / lean. Shared embedder for
+#          cross-profile knowledge base validity.
+#
+# rerank — mlx-community/Qwen3-Reranker-4B-mxfp8 (~4 GB)
+#          Why: the 4B is the Pareto frontier for open-weight
+#          rerankers — MTEB-R 69.76, MMTEB-R 72.74. Lean / default
+#          use the 0.6B because it's "sufficient for 90%"; max-100gb
+#          spends the memory on the upgrade because everything else
+#          is also max-tier.
+#
+# vision — lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit (~9 GB)
+#          Why: same as default. The 32B vision variant (~22 GB) was
+#          considered but would push past the 110 GB envelope.
+#
+# When to use
+# -----------
+# - Top-tier chat is the bottleneck and 4lm has the machine to itself
+# - You're switching between Qwen3-Coder agentic sessions and
+#   Qwen3-Next reasoning queries in the same workflow
+# - Trying to reproduce the strongest possible local-model output
+#   for a comparison vs Claude / GPT
+#
+# When NOT to use
+# ---------------
+# - Other apps need RAM → lean
+# - Default's chat is enough → default (saves 25+ GB)
+# - You'll be running with long contexts on multiple models — KV
+#   pressure is real here; mlx-coding gives the coder its own budget
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - Qwen3-Next-80B-A3B remains Apple's MLX reference model. If
+#   Apple's M-series demos shift to a different reference (Qwen3.7,
+#   Qwen4), re-benchmark — the "hardware-tuned" claim is the load-
+#   bearing reason this model is here vs Qwen3.6-35B.
+# - 4B reranker quality bump over 0.6B is worth ~3 GB. If RAG quality
+#   on default is already good enough for you, this profile becomes
+#   harder to justify — it'd collapse into default + a bigger chat.
+# - 18 GB KV headroom is enough for typical sessions. If you OOM
+#   in normal use, drop vision or downgrade reranker to 0.6B.
+# - Apple ML Research M5 demo still using Qwen3-Next-80B (check
+#   their Machine Learning Research blog for the latest MLX post).
+#
+# Last reviewed: 2026-05-15
 
 backend: omlx
 

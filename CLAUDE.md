@@ -13,7 +13,7 @@ changing the model set, the backend choice, or the activation model.
 ```
 bin/                       # 4lm and the two launchd wrapper scripts
 launchd/                   # plist templates with __HOME__ placeholder
-config/profiles/           # lean / default / max-100gb (omlx, Qwen3 stack) + mlx-coding / mlx-knowledge / exp-* YAMLs
+config/profiles/           # lean / default / max-100gb (Qwen3 stack via omlx) + mlx-coding / mlx-knowledge / ollama YAMLs
 config/network.example.yaml
 config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
 docs/                      # setup runbook + profile schema reference
@@ -79,20 +79,34 @@ before kickstarting, so YAML edits propagate without a full stop/start.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
 
-## Three-tier profile stack
+## Profile lineup
 
-The Qwen3-family stack ships as three profiles with a shared embedder so
-knowledge bases stay valid across switches:
+Six profiles. The three Qwen3-stack tiers share an 8B embedder so
+knowledge bases stay valid across switches. Each YAML carries an
+extensive header comment with rationale per slot, memory math, when-
+to-use, and assumptions-to-validate — review periodically and update
+the `Last reviewed:` line.
 
-| Tier | Coder | Chat | Embed | Rerank | Vision | Steady |
-|---|---|---|---|---|---|---|
-| `lean` | Qwen3-Coder-30B-A3B | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | — | ~41 GB |
-| `default` | Qwen3-Coder-Next (80B) | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | Qwen3-VL-8B | ~65 GB |
-| `max-100gb` | Qwen3-Coder-Next (80B) | Qwen3-Next-80B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-4B | Qwen3-VL-8B | ~92 GB |
+| Profile | Backend | Coder | Chat | Embed | Rerank | Vision | Steady |
+|---|---|---|---|---|---|---|---|
+| `lean` | omlx | Qwen3-Coder-30B-A3B | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | — | ~40 GB |
+| `default` | omlx | Qwen3-Coder-Next (80B) | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | Qwen3-VL-8B | ~65 GB |
+| `max-100gb` | omlx | Qwen3-Coder-Next (80B) | Qwen3-Next-80B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-4B | Qwen3-VL-8B | ~92 GB |
+| `mlx-coding` | omlx | Qwen3-Coder-Next (80B) | — | — | — | — | ~42 GB |
+| `mlx-knowledge` | omlx | — | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | — | ~23 GB |
+| `ollama` | ollama | qwen3-coder-next:q4_K_M (GGUF) | — | — | — | — | ~22 GB |
 
-All embedders are the same model under `served_model_name: qwen3-embedding`,
-all rerankers are `qwen3-reranker`, vision is `qwen3-vl-8b`. Switching
-profiles never requires reindexing knowledge bases.
+`lean` / `default` / `max-100gb` are everyday tiers (memory-budget
+ladder). `mlx-coding` strips everything except the 80B coder for
+max KV-cache headroom on long agentic sessions. `mlx-knowledge` is
+text-only vault synthesis. `ollama` is the smoke test for the GGUF
+backend — switch to it occasionally to confirm ollama still works,
+then switch back.
+
+All omlx embedders share `served_model_name: qwen3-embedding`, all
+omlx rerankers share `qwen3-reranker`, vision is `qwen3-vl-8b`.
+Switching between omlx profiles never requires reindexing knowledge
+bases.
 
 ## OpenWebUI feature toggles
 
