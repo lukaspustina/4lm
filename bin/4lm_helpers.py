@@ -183,16 +183,31 @@ def cmd_recommend(args: argparse.Namespace) -> int:
 
 
 def _hf_is_cached(hf_cache_dir: str, repo: str) -> bool:
-    """Two-condition cache check matching hf_is_cached() in bin/4lm."""
+    """Cache-complete check matching hf_is_cached() in bin/4lm.
+
+    Requirements:
+      1. refs/main exists with a SHA.
+      2. snapshots/<sha>/ exists and is non-empty.
+      3. blobs/ has no *.incomplete files.
+    Size-agnostic: small models (e.g. embeddings <1GB) pass.
+    """
     slug = "models--" + repo.replace("/", "--")
     base = Path(hf_cache_dir) / "hub" / slug
-    if not (base / "refs" / "main").is_file():
+    ref_file = base / "refs" / "main"
+    if not ref_file.is_file():
+        return False
+    sha = ref_file.read_text().strip()
+    if not sha:
+        return False
+    snap_dir = base / "snapshots" / sha
+    if not snap_dir.is_dir():
+        return False
+    if not any(snap_dir.iterdir()):
         return False
     blobs = base / "blobs"
     if not blobs.is_dir():
         return False
-    total = sum(f.stat().st_size for f in blobs.iterdir() if f.is_file())
-    return total >= 1_073_741_824
+    return not any(f.name.endswith(".incomplete") for f in blobs.iterdir())
 
 
 def cmd_models_list(args: argparse.Namespace) -> int:
