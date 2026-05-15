@@ -394,7 +394,7 @@ Add `strategy.matrix.install_mode: [default, backend-only]` to the `check` job i
 | Dynamic help text adapting to installed components | Static help text | Single source of truth; runtime dispatch error is enough disambiguation. |
 | Destructive `./install.sh --backend-only` (strip WebUI) | Non-destructive | Don't surprise the operator; `uninstall.sh` is the destructive path. |
 | Single `Brewfile`, filter `opencode` at install time | Split into `Brewfile` + `Brewfile-tui` | `brew bundle` honours the file it's pointed at; clean separation, no runtime filtering, no awk parsing of Brewfile. |
-| Same error string `WebUI not installed...` for opencode commands (literal PRD AC6) | Per-component error: `OpenCode not installed...` for `opencode`/`code` | Accuracy outweighs literal fidelity. PRD AC6's intent (dispatch-time error is the only disambiguation) supports specialised messages. This is the deliberate divergence from PRD AC6; the PRD should be updated before `/sdd-verify` runs. |
+| Same error string `WebUI not installed...` for opencode commands (literal PRD AC6) | Per-component error: `OpenCode not installed...` for `opencode`/`code` | Accuracy outweighs literal fidelity. PRD AC6's intent (dispatch-time error is the only disambiguation) supports specialised messages. PRD AC6 was reconciled on 2026-05-15 to match this decision. |
 | Auto-detect installed open-webui via PATH (`command -v open-webui`) | Probe the plist file instead | Avoids accidental detection of user-installed-elsewhere `open-webui`; ties detection to 4lm-managed artifacts only (matches PRD AC5). |
 | Move `llmfit` and `ollama` to a separate optional file | Keep both in core `Brewfile` | `ollama` is a supported backend (default profile uses it); `llmfit` is used by `4lm recommend`. Both are part of the backend layer, not the optional client layer. |
 | CI matrix runs `make install` end-to-end | CI matrix only runs `make check` with `BACKEND_ONLY` env var; install paths are exercised inside bats sandboxed prefixes | Avoids touching the CI runner's real `~/.4lm/`; bats tests already simulate install in tmpdirs via stub harness. |
@@ -422,7 +422,7 @@ None.
 - **Hybrid "installed but disabled" state for WebUI** — absence = not installed.
 - **Multi-host clustering, load-balancing, shared model cache** — parent PRD's non-goal.
 - **Changes to `uninstall.sh`** — existing iteration already tolerates missing artifacts (R24).
-- **PRD AC6 literal string for opencode commands** — the SDD uses `OpenCode not installed...`; the PRD should be amended separately before `/sdd-verify` runs.
+- **PRD AC6 string reconciliation** — done on 2026-05-15: PRD AC6 now specifies per-component messages matching the SDD/implementation.
 - **`cmd_diag` webui gating** — `cmd_diag` calls `print_clients "$(net_webui_port)" "WebUI"` unconditionally; on backend-only installs this is harmless (no connections listed) and requires no change.
 
 ## References

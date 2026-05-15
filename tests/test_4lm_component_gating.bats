@@ -131,6 +131,29 @@ _stage_webui_plist() {
   [[ "${output}" != *"${EXPECTED_WEBUI_MISSING}"* ]]
 }
 
+@test "4lm start all: backend launchctl fails -> exit 1 (R18 partial-failure path)" {
+  _stage_backend_plist
+  # Per-test launchctl override: bootstrap returns 1 with stderr message.
+  STUB_BIN="${BATS_TMPDIR}/stubs-${BATS_TEST_NAME}"
+  mkdir -p "${STUB_BIN}"
+  cat >"${STUB_BIN}/launchctl" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  print) exit 1 ;;
+  bootstrap)
+    echo "launchctl: bootstrap failed (test stub)" >&2
+    exit 1
+    ;;
+esac
+exit 0
+SH
+  chmod +x "${STUB_BIN}/launchctl"
+  export PATH="${STUB_BIN}:${PATH}"
+
+  run "${FLM}" start all
+  [ "$status" -eq 1 ]
+}
+
 # ---------- Status output -------------------------------------------------
 
 @test "4lm status (no webui plist): text output contains no 'webui' or 'WebUI'" {
