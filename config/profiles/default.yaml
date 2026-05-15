@@ -1,12 +1,12 @@
-# Default profile: Qwen3-Coder-Next (coding) + Gemma 4 31B Dense (chat/reasoning)
-# via omlx backend.
+# Default profile: full Qwen3 stack via omlx — coder + chat + RAG
+# (embed + rerank) + on-demand vision.
 #
-# Both models load on demand and stay resident while memory permits.
-# On 128 GB unified memory both models (~44 GB + ~18 GB) stay loaded
-# simultaneously with ample headroom for KV cache.
+# Coder pinned; chat / embed / rerank / vision load on demand and stay
+# resident while memory permits. omlx evicts least-recently-used models
+# under pressure.
 #
-# omlx fixes the RotatingKVCache / BatchRotatingKVCache bug that required
-# Gemma 4 to run on ollama with mlx-openai-server.
+# Resident-if-all-loaded: ~75 GB. Steady state (coder + chat + embed):
+# ~65 GB on 110 GB usable VRAM — ample KV-cache headroom.
 
 backend: omlx
 
@@ -17,13 +17,26 @@ models:
     pin: true
     ttl: null
 
-  - model_path: mlx-community/gemma-4-31b-it-4bit
-    served_model_name: gemma4-31b
+  - model_path: mlx-community/Qwen3.6-35B-A3B-4bit
+    served_model_name: qwen3.6-35b
     model_type: lm
     pin: false
     ttl: 600
 
-  - model_path: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+  - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
     served_model_name: qwen3-embedding
     model_type: lm
+    pin: false
+    ttl: 600
+
+  - model_path: mlx-community/Qwen3-Reranker-0.6B-mxfp8
+    served_model_name: qwen3-reranker
+    model_type: lm
+    pin: false
+    ttl: 600
+
+  - model_path: lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit
+    served_model_name: qwen3-vl-8b
+    model_type: vlm
+    pin: false
     ttl: 600
