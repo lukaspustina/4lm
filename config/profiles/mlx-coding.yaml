@@ -1,7 +1,68 @@
-# mlx-coding profile: Qwen3-Coder-Next via omlx backend.
+# mlx-coding: single-model agentic-coding profile via omlx
+# =================================================================
+# Purpose
+# -------
+# Maximum KV-cache headroom for long, multi-step agentic coding
+# sessions (Claude-Code-style workflows that span dozens of tool
+# calls and tens of thousands of tokens). Loads only the 80B coder
+# — no chat, no embedder, no reranker, no vision — so every spare
+# GB belongs to the coder's KV cache.
 #
-# Qwen3-Coder-Next: 80B total / 3B active MoE, coding-optimised.
-# Single-model coding profile. For chat + coding use default.yaml instead.
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Resident:           ~42 GB (just the pinned coder)
+# KV-cache headroom:  ~68 GB — the most of any profile. Enough for
+#                     very long contexts on the 80B coder without
+#                     swap pressure.
+#
+# Why each slot
+# -------------
+# coder — mlx-community/Qwen3-Coder-Next-4bit (80B / A3B MoE)
+#         Why: agentic-recovery champion. Trained specifically for
+#         long-horizon reasoning, complex tool usage, and recovery
+#         from execution failures (LM Studio model card). 4-bit MLX
+#         quant lands at ~85 tps real-world on M5 Max (localmaxxing).
+#         262K native context.
+#
+# When to use
+# -----------
+# - Marathon Claude-Code / opencode sessions: refactors, migrations,
+#   debugging chains that run for an hour or more
+# - When you've hit KV-cache pressure on the default profile and need
+#   the chat/embed/rerank/vision memory back
+# - When you want predictable single-model latency (no LRU eviction
+#   thrashing because nothing else is loaded)
+#
+# When NOT to use
+# ---------------
+# - General Q&A, writing, German correspondence → use default chat slot
+# - RAG / vault synthesis → use default / mlx-knowledge
+# - Quick one-shot coding tasks → lean profile is plenty
+#
+# Trade-offs vs other profiles
+# ----------------------------
+# vs lean:       lean has Qwen3-Coder-30B-A3B (~17 GB) + chat + embed
+#                + rerank. mlx-coding gives the entire memory budget
+#                to the 80B Coder-Next instead. Pick based on whether
+#                you need the agentic-recovery strength of the 80B.
+# vs default:    default is the same 80B coder + chat + RAG + vision.
+#                mlx-coding strips out everything but the coder.
+# vs max-100gb:  max-100gb has Coder-Next AND Qwen3-Next-80B chat —
+#                great for switching between coding and reasoning in
+#                one session. mlx-coding sacrifices chat to free RAM.
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - Qwen3-Coder-Next remains the strongest open-weight agentic coder.
+#   Re-evaluate when Qwen3.7-Coder or similar lands.
+# - 4-bit quant quality is acceptable; 6-bit / 8-bit variants exist
+#   (~55 GB / ~80 GB) if you want to trade some KV headroom for
+#   quality. localmaxxing.com has real-world tps comparisons.
+# - The "max KV headroom" use case is still valuable. If you find
+#   yourself rarely needing it, consider deprecating in favour of
+#   running default with vision unloaded.
+#
+# Last reviewed: 2026-05-15
 
 backend: omlx
 

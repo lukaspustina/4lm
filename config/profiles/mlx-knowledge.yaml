@@ -1,10 +1,82 @@
-# mlx-knowledge profile: Qwen3.6-27B with extended context for vault synthesis.
+# mlx-knowledge: vault synthesis profile via omlx
+# =================================================================
+# Purpose
+# -------
+# Long-form synthesis over Obsidian vault content — summarise notes,
+# answer questions across many files, draft from research material.
+# Optimised for reading + writing + RAG quality, NOT for coding or
+# agentic tool use.
+#
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Resident if all loaded:        ~24 GB
+# Steady state (chat + embed):   ~23 GB
+# KV-cache headroom:             ~85 GB — generous, supports the full
+#                                native 262K-token context window.
+#
+# Why each slot
+# -------------
+# chat   — mlx-community/Qwen3.6-35B-A3B-4bit (~18 GB, MoE 3B-active)
+#          Why: same model as default/lean/max chat. MoE so throughput
+#          is ~105 tps real-world on M5 Max (faster than 27B dense
+#          options). 262K native context covers whole-doc synthesis.
+#          2026-04-15 polish release with stable tool calling.
+#
+# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
+#          Why: MTEB-multilingual leader (70.58), strong German +
+#          English, 32K context for long vault chunks. CRITICALLY,
+#          matches default/lean/max-100gb so knowledge bases stay
+#          valid across profile switches.
+#
+# rerank — mlx-community/Qwen3-Reranker-0.6B-mxfp8 (~0.7 GB)
+#          Why: hybrid-search reranking at minimal memory cost. Same
+#          model as default/lean so OpenWebUI's reranker config never
+#          changes between profiles.
+#
+# When to use
+# -----------
+# - Querying or synthesising across many vault notes
+# - Drafting long-form German or English text from research notes
+# - When you want maximum KV-cache headroom (no 42 GB coder pinned)
+#
+# When NOT to use
+# ---------------
+# - Active coding → use default or lean; Qwen3-Coder is the right tool
+# - Image-heavy vault (PDF figures, screenshots) → use default for
+#   on-demand Qwen3-VL-8B
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - Vault content is primarily text. Visual content needs default profile.
+# - 262K context is enough for typical synthesis (rarely hit cap).
+# - Qwen3.6-35B-A3B remains the right pick — re-evaluate if a stronger
+#   Qwen3.7 / Qwen4 MoE chat model lands with comparable footprint.
+# - 8B embedder still leads MTEB-multilingual on review date.
+#
+# Changed 2026-05-15: was Qwen3.6-27B Dense single-model. Upgraded to
+# the MoE variant for speed parity with the rest of the fleet, and
+# added the shared embedder + reranker so vault RAG is a first-class
+# capability of this profile.
+#
+# Last reviewed: 2026-05-15
 
 backend: omlx
 
 models:
-  - model_path: mlx-community/Qwen3.6-27B-4bit
-    served_model_name: qwen3.6-27b
+  - model_path: mlx-community/Qwen3.6-35B-A3B-4bit
+    served_model_name: qwen3.6-35b
     model_type: lm
     pin: true
     ttl: null
+
+  - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
+    served_model_name: qwen3-embedding
+    model_type: lm
+    pin: false
+    ttl: 600
+
+  - model_path: mlx-community/Qwen3-Reranker-0.6B-mxfp8
+    served_model_name: qwen3-reranker
+    model_type: lm
+    pin: false
+    ttl: 600

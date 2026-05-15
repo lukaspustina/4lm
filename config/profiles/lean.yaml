@@ -1,13 +1,81 @@
-# Lean profile: lighter Qwen3 stack via omlx — 30B coder + chat + RAG
-# (embed + rerank). No vision slot.
+# lean: lighter Qwen3 stack via omlx — frees ~70 GB for other apps
+# =================================================================
+# Purpose
+# -------
+# Reduced-footprint daily profile for when 4lm shouldn't dominate
+# memory — Xcode builds, Docker, big browser session, video calls,
+# anything that wants its own large RAM slice. Keeps the full chat
+# + RAG experience; trades the 80B agentic-recovery coder for the
+# 30B-A3B and drops vision.
 #
-# For use when you want ~70 GB free RAM for other workloads (Xcode,
-# Docker, browser, etc.) without losing core chat / coding / RAG.
-# Switch to `default` when vision is needed.
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Resident if all loaded:                  ~41 GB
+# Steady state (coder + chat + embed):     ~40 GB
+# KV-cache headroom:                       ~69 GB — extreme slack,
+#                                          plus ~70 GB outside the
+#                                          omlx process for other
+#                                          workloads.
 #
-# Resident-if-all-loaded: ~41 GB. Embedder matches default and
-# max-100gb (Qwen3-Embedding-8B) so OpenWebUI knowledge bases stay
-# valid across profile switches.
+# Why each slot
+# -------------
+# coder  — mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit (~17 GB)
+#          Why: same Qwen3-Coder family as Coder-Next, 30B / A3B MoE,
+#          ~25 GB lighter. Aider-Polyglot ~60.9% (4-bit) vs ~61.8%
+#          for the bf16 reference — small quality gap. Strong daily
+#          coder; less specialised for agentic recovery than the 80B
+#          (that's Coder-Next's specific strength).
+#
+# chat   — mlx-community/Qwen3.6-35B-A3B-4bit (~18 GB)
+#          Why: same as default chat. Consistency across tiers keeps
+#          chat behavior identical when you switch profiles.
+#
+# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
+#          Why: same as default. The shared 8B embedder is the reason
+#          lean / default / max-100gb / mlx-knowledge can be switched
+#          without reindexing knowledge bases.
+#
+# rerank — mlx-community/Qwen3-Reranker-0.6B-mxfp8 (~0.7 GB)
+#          Why: same as default. Trivial memory cost; matches the
+#          OpenWebUI external-reranker config across profiles.
+#
+# (No vision slot.) Drop saves 9 GB. Switch to default if you need
+# vision; OpenWebUI will fail gracefully if you upload an image while
+# this profile is active.
+#
+# When to use
+# -----------
+# - Heavy non-LLM work in parallel (Xcode, Docker, large IDE session)
+# - Travel / low-power scenarios where less memory pressure = lower
+#   sustained power draw
+# - When the 80B coder's agentic-recovery strength isn't needed and
+#   you'd rather have the RAM back for other tools
+#
+# When NOT to use
+# ---------------
+# - Long agentic coding sessions (Claude-Code chains) → default
+# - Top-tier chat quality wanted → max-100gb (Qwen3-Next-80B)
+# - OCR / screenshot / chart analysis → default (has VL-8B)
+# - Marathon coding with max KV headroom → mlx-coding
+#
+# Trade-offs vs default
+# ---------------------
+# - Coder is ~5–10% weaker on average on aider-polyglot-style tests
+# - No vision (image inputs fail or fall back to text-only)
+# - +34 GB free for other workloads
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - The 30B-A3B / 80B Coder-Next quality gap is small enough for
+#   daily work. If you find yourself frequently hitting limitations,
+#   default is the right answer.
+# - Qwen3-Coder-30B-A3B-Instruct is the right "lean coder" pick. As
+#   newer mid-size coder MoEs land (Devstral 3, GLM-Coder, etc.),
+#   benchmark before swapping.
+# - The "I want my RAM back" use case is still valuable. If you never
+#   actually switch to lean, consider deprecating.
+#
+# Last reviewed: 2026-05-15
 
 backend: omlx
 

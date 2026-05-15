@@ -1,12 +1,82 @@
-# Default profile: full Qwen3 stack via omlx — coder + chat + RAG
-# (embed + rerank) + on-demand vision.
+# default: full Qwen3 stack via omlx — daily-driver profile
+# =================================================================
+# Purpose
+# -------
+# Everyday balanced profile: strong coder + fast chat + full RAG
+# pipeline + on-demand vision. The intended "set and forget" daily
+# default for coding sessions interleaved with chat / research / RAG.
 #
-# Coder pinned; chat / embed / rerank / vision load on demand and stay
-# resident while memory permits. omlx evicts least-recently-used models
-# under pressure.
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Resident if all loaded:                  ~75 GB
+# Steady state (coder + chat + embed):     ~65 GB
+# KV-cache headroom in steady state:       ~35 GB — comfortable for
+#                                          long contexts on coder
+#                                          AND chat simultaneously.
+# Vision evicts under pressure via omlx LRU; reranker / embedder
+# barely register.
 #
-# Resident-if-all-loaded: ~75 GB. Steady state (coder + chat + embed):
-# ~65 GB on 110 GB usable VRAM — ample KV-cache headroom.
+# Why each slot
+# -------------
+# coder  — mlx-community/Qwen3-Coder-Next-4bit (80B / A3B MoE, ~42 GB)
+#          Why: agentic-recovery champion. Long-horizon reasoning,
+#          complex tool usage, recovery from execution failures. The
+#          project's coding-quality identity. pin: true because we
+#          want it always-resident — it dominates daily use.
+#
+# chat   — mlx-community/Qwen3.6-35B-A3B-4bit (~18 GB, MoE 3B-active)
+#          Why: ~105 tps real-world on M5 Max (localmaxxing), 3–4×
+#          the throughput a dense 31B would give. Newer than the
+#          previous Gemma 4 31B (2026-04-15 release). Same Qwen3
+#          family as the coder → coherent tool-call syntax. Drops
+#          Gemma's RotatingKVCache history this project paid for.
+#
+# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
+#          Why: MTEB-multilingual leader (70.58 mean). German +
+#          English strong, 32K context for long RAG chunks.
+#          STANDARDISED across lean / default / mlx-knowledge /
+#          max-100gb so knowledge bases stay valid across profile
+#          switches. Changing this is a heavy migration (reindex).
+#
+# rerank — mlx-community/Qwen3-Reranker-0.6B-mxfp8 (~0.7 GB)
+#          Why: hybrid-search re-ranking at trivial memory cost.
+#          Wired via OpenWebUI's "external" engine pointing at
+#          omlx's POST /v1/rerank (Cohere/Jina-compatible). The
+#          4B variant (max-100gb) is meaningfully better but the
+#          0.6B is "sufficient for 90% of RAG workloads" per the
+#          research review.
+#
+# vision — lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit (~9 GB)
+#          Why: OCR, screenshot reading, chart analysis. 8B is the
+#          right size for occasional use — the 32B variant (~22 GB)
+#          is power-user territory. ttl: 600 so it unloads when idle.
+#          model_type: vlm so omlx routes image inputs correctly.
+#
+# When to use
+# -----------
+# Default for daily work. Coding, chat, RAG, occasional vision.
+#
+# When NOT to use
+# ---------------
+# - You need ~70 GB free RAM for other apps → switch to lean
+# - You want the strongest possible chat (Qwen3-Next-80B) → max-100gb
+# - Marathon agentic coding session needing max KV headroom → mlx-coding
+# - Heavy vault synthesis without coder noise → mlx-knowledge
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - Qwen3-Coder-Next remains the strongest open-weight agentic coder.
+#   When Qwen3.7-Coder / Qwen4-Coder lands, re-benchmark.
+# - 4-bit quants are the right quality/speed point. 6-bit variants
+#   exist but the memory cost is real (~55 GB for the coder alone).
+# - Qwen3.6-35B-A3B German fluency is acceptable. If German polish
+#   becomes a daily pain point, consider a Gemma 3 27B hot-swap
+#   profile (NOT a regression to Gemma 4 — that's the bug we fixed).
+# - Vision usage justifies the +9 GB slot. If you rarely use OCR or
+#   image analysis, consider dropping vision from default.
+# - 8B embedder still leads MTEB-multilingual.
+#
+# Last reviewed: 2026-05-15
 
 backend: omlx
 
