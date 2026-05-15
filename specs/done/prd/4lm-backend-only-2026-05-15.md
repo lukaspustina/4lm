@@ -1,6 +1,7 @@
 # PRD: 4lm — Backend-Only Install Mode
 
-**Status**: Ready for Design
+**Status**: Done
+**Finished**: 2026-05-15
 **Created**: 2026-05-14
 **Refined**: 2026-05-15
 **Original**: specs/prd/4lm-backend-only.md
