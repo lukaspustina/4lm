@@ -193,18 +193,30 @@ hf_local_sha() {
 }
 
 # Return 0 if a HuggingFace repo has a completed download.
-# refs/main alone is insufficient — partial downloads leave it behind with
-# only metadata files. Require blobs to sum to at least 1 GB.
+# Requirements:
+#   1. refs/main exists (commit SHA written by huggingface_hub).
+#   2. snapshots/<sha>/ exists and is non-empty (file symlinks present).
+#   3. blobs/ has no *.incomplete files (HF marks in-flight downloads thus).
+# The earlier "blobs ≥ 1 GB" heuristic incorrectly rejected small models
+# (e.g. embedding models well under 1 GB).
 hf_is_cached() {
   local repo="$1"
   local cache_dir="${HF_HOME:-${HOME}/.cache/huggingface}/hub/models--${repo//\//--}"
   local ref_file="${cache_dir}/refs/main"
   [[ -f "${ref_file}" ]] || return 1
+  local sha
+  sha="$(<"${ref_file}")"
+  [[ -n "${sha}" ]] || return 1
+  local snap_dir="${cache_dir}/snapshots/${sha}"
+  [[ -d "${snap_dir}" ]] || return 1
+  # Snapshot dir must contain at least one file/symlink.
+  find "${snap_dir}" -mindepth 1 -print -quit 2>/dev/null | grep -q . || return 1
   local blobs_dir="${cache_dir}/blobs"
   [[ -d "${blobs_dir}" ]] || return 1
-  local total_bytes
-  total_bytes=$(du -sk "${blobs_dir}" 2>/dev/null | awk '{print $1 * 1024}')
-  [[ "${total_bytes}" -ge 1073741824 ]]
+  # Any *.incomplete file in blobs/ means a partial download.
+  local incomplete
+  incomplete="$(find "${blobs_dir}" -maxdepth 1 -name '*.incomplete' -print -quit 2>/dev/null)"
+  [[ -z "${incomplete}" ]]
 }
 
 # Emit "name|path|<od_value>" lines for every model entry in a profile YAML,
