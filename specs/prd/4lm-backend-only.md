@@ -22,7 +22,7 @@ Installing 4lm on a Mac that will only act as an LLM inference server for other 
 
 2. **Consumer host points OpenWebUI at the headless server** — operator SSHes into the headless Mac, runs `4lm start`, then on their workstation sets `OPENAI_API_BASE_URL=http://<headless>:8000/v1` in the user-installed OpenWebUI settings. Operator submits a prompt in the WebUI; it routes to the headless backend. The headless Mac's `4lm status` shows the backend running; no WebUI block appears because none was installed.
 
-3. **Consumer host runs opencode against the headless server** — operator configures `opencode` on their workstation with the LAN URL of the headless backend. The headless Mac has no `opencode` installed; `4lm opencode` on it exits 1 with `WebUI not installed (re-run ./install.sh to enable)` (the same dispatch-time error as any other absent component). The consumer workstation manages opencode independently.
+3. **Consumer host runs opencode against the headless server** — operator configures `opencode` on their workstation with the LAN URL of the headless backend. The headless Mac has no `opencode` installed; `4lm opencode` on it exits 1 with `OpenCode not installed (re-run ./install.sh to enable)` (the same per-component dispatch-time error as `4lm start webui`'s WebUI counterpart). The consumer workstation manages opencode independently.
 
 ## Goals
 
