@@ -6,9 +6,10 @@ SCRIPTS        := bin/4lm bin/4lm-backend-start.sh bin/4lm-webui-start.sh instal
 PLISTS         := launchd/com.4lm.backend.plist launchd/com.4lm.webui.plist
 SHFMT_OPTS     := -i 2 -ci
 HELPERS_PYTHON ?= $(HOME)/.4lm/venv/bin/python
+CI_VENV        := $(CURDIR)/.venv
 
 
-.PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint models models-list models-clean models-rm help
+.PHONY: check bootstrap install uninstall lint fmt syntax test plist-lint yaml-lint ci ci-default ci-backend-only ci-venv models models-list models-clean models-rm help
 
 check: lint syntax plist-lint yaml-lint test ## Run all gates (default)
 
@@ -54,6 +55,21 @@ plist-lint: ## plutil -lint + xmllint --noout on all plists
 
 yaml-lint: ## Validate every profile YAML against the bin/4lm schema
 	tests/lint-profiles.sh
+
+ci: ci-default ci-backend-only ## Run both CI matrix legs locally (mirrors .github/workflows/ci.yml)
+
+ci-default: ci-venv ## CI matrix leg install_mode=default (Brewfile + Brewfile-tui, make check)
+	brew bundle --file=Brewfile
+	brew bundle --file=Brewfile-tui
+	$(MAKE) check HELPERS_PYTHON=$(CI_VENV)/bin/python BACKEND_ONLY=
+
+ci-backend-only: ci-venv ## CI matrix leg install_mode=backend-only (Brewfile only, BACKEND_ONLY=1)
+	brew bundle --file=Brewfile
+	$(MAKE) check HELPERS_PYTHON=$(CI_VENV)/bin/python BACKEND_ONLY=1
+
+ci-venv: ## Build helpers venv at .venv from requirements-helpers.txt (matches CI cache key)
+	@if [ ! -x $(CI_VENV)/bin/python ]; then python3.12 -m venv $(CI_VENV); fi
+	@$(CI_VENV)/bin/pip install --quiet -r requirements-helpers.txt
 
 models: ## Download/update all models in config/profiles/ (backend-aware, idempotent)
 	@for yaml in config/profiles/*.yaml; do \
