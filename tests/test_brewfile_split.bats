@@ -52,7 +52,9 @@ SH
   export PATH="${STUB_BIN}:${PATH}"
 
   cd "${REPO_ROOT}"
-  run make bootstrap
+  # Clear inherited BACKEND_ONLY / MAKEFLAGS so a parent `make ci-backend-only`
+  # (or CI's matrix env) can't suppress the Brewfile-tui leg under test.
+  run env -u BACKEND_ONLY -u MAKEFLAGS PATH="${PATH}" make bootstrap
   [ "$status" -eq 0 ]
   run grep -c 'bundle --file=Brewfile$' "${RECORD}"
   [ "${output}" = "1" ]
