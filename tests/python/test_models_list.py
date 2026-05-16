@@ -17,12 +17,19 @@ def run_models_list(profiles_dir, hf_cache_dir):
 
 
 def _make_hf_cache(base: Path, repo: str, blobs_gb: float = 0) -> None:
-    """Create a fake HF cache entry for repo (e.g. 'mlx-community/Foo-4bit')."""
+    """Create a fake HF cache entry for repo (e.g. 'mlx-community/Foo-4bit').
+
+    Mirrors the layout _hf_is_cached() expects: refs/main with a SHA,
+    snapshots/<sha>/ with at least one entry, and blobs/ free of *.incomplete.
+    """
     slug = "models--" + repo.replace("/", "--")
-    refs = base / "hub" / slug / "refs"
-    refs.mkdir(parents=True, exist_ok=True)
-    (refs / "main").write_text("abc123")
-    blobs = base / "hub" / slug / "blobs"
+    sha = "abc123"
+    root = base / "hub" / slug
+    (root / "refs").mkdir(parents=True, exist_ok=True)
+    (root / "refs" / "main").write_text(sha)
+    (root / "snapshots" / sha).mkdir(parents=True, exist_ok=True)
+    (root / "snapshots" / sha / "config.json").write_text("{}")
+    blobs = root / "blobs"
     blobs.mkdir(parents=True, exist_ok=True)
     if blobs_gb > 0:
         # Write a sparse file of the right apparent size
@@ -46,8 +53,12 @@ def test_cached_full(tmp_path):
 
 
 def test_partial_download_not_cached(tmp_path):
-    # refs/main exists but blobs < 1 GB
+    # An in-flight HF download leaves a *.incomplete blob — _hf_is_cached
+    # must treat the model as not cached even if refs/main and snapshots/<sha>/
+    # already exist.
     _make_hf_cache(tmp_path, "mlx-community/Foo-4bit", blobs_gb=0.1)
+    slug = "models--mlx-community--Foo-4bit"
+    (tmp_path / "hub" / slug / "blobs" / "pending.incomplete").write_bytes(b"")
     result = run_models_list(FIXTURES, tmp_path)
     assert result.returncode == 0
     lines = [l for l in result.stdout.splitlines() if "Foo-4bit" in l]
@@ -70,9 +81,9 @@ def test_empty_profiles_dir(tmp_path):
     cache.mkdir()
     result = run_models_list(profiles, cache)
     assert result.returncode == 0
-    # Headers must be present even with zero data rows
-    for col in ("Model", "Backend", "Profiles", "Cached"):
-        assert col in result.stdout
+    # With no profiles and an empty cache, the helper prints a friendly empty
+    # state instead of a header-only table.
+    assert "No cached models found." in result.stdout
 
 
 def test_bad_yaml(tmp_path):
