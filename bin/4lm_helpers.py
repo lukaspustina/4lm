@@ -5,6 +5,7 @@ __version__ = "0.4.0"
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -283,9 +284,12 @@ def cmd_models_list(args: argparse.Namespace) -> int:
 
     hf_bin = subprocess.run(["which", "hf"], capture_output=True, text=True)
     if hf_bin.returncode == 0:
+        # Scope `hf cache list` to the cache dir we were given so tests (and any
+        # caller passing a non-default cache) don't leak the user's real cache.
+        hf_env = {**os.environ, "HF_HOME": hf_cache_dir}
         r = subprocess.run(
             ["hf", "cache", "list", "--format", "agent"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=hf_env,
         )
         for line in r.stdout.splitlines():
             parts = line.split("\t")
