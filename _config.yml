@@ -1,0 +1,41 @@
+title: 4lm
+description: Local LLM control plane for Apple Silicon — one command, your hardware, your data.
+url: https://lukaspustina.github.io
+baseurl: /4lm
+
+theme: jekyll-theme-cayman
+plugins:
+  - jekyll-seo-tag
+
+show_downloads: false
+
+github:
+  is_project_page: true
+  repository_url: https://github.com/lukaspustina/4lm
+
+exclude:
+  - bin/
+  - launchd/
+  - config/
+  - docs/
+  - tests/
+  - specs/
+  - install.sh
+  - uninstall.sh
+  - Makefile
+  - Brewfile
+  - Brewfile-tui
+  - requirements.txt
+  - requirements-helpers.txt
+  - CLAUDE.md
+  - CHANGELOG.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - LICENSE
+  - README.md
+  - .shellcheckrc
+  - .gitignore
+  - .github/
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
