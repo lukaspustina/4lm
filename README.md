@@ -152,7 +152,7 @@ assumptions-to-validate.
                               │ bootstrap / bootout / kickstart
                               ▼
         ┌──────────────────────────────────┐    ┌──────────────────────────────────┐
-        │ com.4lm.backend    │    │ com.4lm.webui      │
+        │ com.4lm.backend                  │    │ com.4lm.webui                    │
         │   omlx | mlx_lm | ollama         │    │   open-webui serve               │
         │   :8000 (OpenAI API)             │←───│   :3000 (Web UI)                 │
         └──────────────────────────────────┘    └──────────────────────────────────┘
@@ -295,10 +295,40 @@ consolidates onto the full Qwen3 stack (coder + chat + embed + rerank
 + vision) on a single omlx process. Per-version detail and the
 thinking-mode template story live in [`CHANGELOG.md`](CHANGELOG.md).
 
+## Credits
+
+4lm is glue around several upstream projects that do the actual heavy
+lifting. Go give them stars:
+
+- [**omlx**](https://github.com/jundot/omlx) — vLLM-style MLX inference
+  server with paged KV cache, continuous batching, and multi-model
+  EnginePool. Primary backend.
+- [**mlx_lm**](https://github.com/ml-explore/mlx-lm) — Apple's reference
+  MLX language-model library. Alternative single-model backend.
+- [**Ollama**](https://github.com/ollama/ollama) — llama.cpp + Metal
+  GGUF serving. Smoke-test backend.
+- [**Open WebUI**](https://github.com/open-webui/open-webui) — the
+  frontend. Without their PersistentConfig surface this stack would be
+  half the experience.
+- [**opencode**](https://github.com/sst/opencode) — the TUI client.
+- [**Qwen team @ Alibaba**](https://github.com/QwenLM) — the model
+  family carrying the default profile (Qwen3-Coder, Qwen3.6,
+  Qwen3-Embedding, Qwen3-Reranker, Qwen3-VL). Apache-2.0 licensed.
+- [**llmfit**](https://github.com/lukaspustina/llmfit) +
+  [**localmaxxing.com**](https://localmaxxing.com) — hardware-fit
+  scoring and community benchmarks used by `4lm model recommend`.
+
+## License
+
+[MIT](LICENSE).
+
 ## Documentation
 
 - [`docs/setup.md`](docs/setup.md) — operator runbook (sudoers, troubleshooting, model pulls, LAN client wiring)
 - [`docs/profile-schema.md`](docs/profile-schema.md) — YAML key reference for all backends
+- [`docs/autostart.md`](docs/autostart.md) — opt-in login autostart mechanics
 - [`specs/sdd/webui-tools-and-mcp.md`](specs/sdd/webui-tools-and-mcp.md) — active SDD for tool calling + MCP
 - [`specs/done/sdd/4lm-rework-2026-05-09.md`](specs/done/sdd/4lm-rework-2026-05-09.md) — archived design doc this repo implements
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, commit style, PR checklist
+- [`SECURITY.md`](SECURITY.md) — threat model + vulnerability reporting
 - [`CLAUDE.md`](CLAUDE.md) — orientation for AI assistants working in this repo
