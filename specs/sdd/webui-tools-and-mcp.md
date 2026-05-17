@@ -8,7 +8,7 @@
 
 ## Overview
 
-Wire end-to-end tool/function calling into the 4lm OpenWebUI stack so the locally-served Qwen3-Coder-Next and Gemma4-31B models can invoke OpenWebUI's built-in tools (web search, memory, notes, knowledge, code interpreter) instead of hallucinating. The first three phases close the tool-calling gap without touching MCP; phases 4–7 add MCP transports, default MCP servers, and Claude-Desktop-parity features (artifacts, filesystem) as later, independently-shippable increments.
+Wire end-to-end tool/function calling into the 4lm OpenWebUI stack so the locally-served Qwen3-Coder-Next and Qwen3.6-35B-A3B models can invoke OpenWebUI's built-in tools (web search, memory, notes, knowledge, code interpreter) instead of hallucinating. The first three phases close the tool-calling gap without touching MCP; phases 4–7 add MCP transports, default MCP servers, and Claude-Desktop-parity features (artifacts, filesystem) as later, independently-shippable increments.
 
 Aim: a competitive Claude Desktop replacement on local hardware, with the same agentic surface, addressed phase by phase.
 
@@ -17,7 +17,7 @@ Aim: a competitive Claude Desktop replacement on local hardware, with the same a
 ## Context & Constraints
 
 - **Stack**: Bash 5.x control plane (`bin/4lm`), Python 3.12 helper (`bin/4lm_helpers.py`), launchd user agents in `~/.4lm/launchd/`, OpenAI-compatible seam at `127.0.0.1:8000/v1`. macOS Apple Silicon only.
-- **Backends shipping today** (`config/profiles/default.yaml`): `omlx` serves `Qwen3-Coder-Next-4bit`, `Gemma4-31B-it-4bit`, and `qwen3-embedding`. `omlx-coding.yaml` and `mlx-coding.yaml` are Qwen3-Coder-only; `mlx-knowledge.yaml` is Qwen3.6-27B-only.
+- **Backends shipping today** (`config/profiles/default.yaml`): `omlx` serves the full Qwen3 stack — `Qwen3-Coder-Next-4bit` (coder), `Qwen3.6-35B-A3B-4bit` (chat), `Qwen3-Embedding-8B-4bit-DWQ` (embed), `Qwen3-Reranker-0.6B-4bit-DWQ` (rerank), `Qwen3-VL-8B-4bit-DWQ` (vision). `lean.yaml` and `max-100gb.yaml` are tier variants of the same stack; `mlx-coding.yaml` is Qwen3-Coder-only; `mlx-knowledge.yaml` is Qwen3.6-35B-A3B-only.
 - **WebUI today** (`bin/4lm-webui-start.sh`): exports `OPENAI_API_BASE_URL`, memory, DuckDuckGo web search, Pyodide code interpreter, local-embedding RAG. No `ENABLE_FUNCTION_CALLING`, no `tool_call_parser`, no MCP env vars.
 - **OpenWebUI version pinned**: `open-webui==0.9.2` (`requirements.txt`). MCP native HTTP/SSE support and per-model "Native Mode" function calling are both documented for current 0.9.x but the canonical REST surface is not formally versioned — pin and probe.
 - **PRD anchor** (`specs/prd/4lm.md` AC15): WebUI ships with memory, web search, code interpreter, and RAG via `qwen3-embedding`. This SDD extends that surface with tool calling and MCP without breaking it.

@@ -55,7 +55,7 @@ models:
     ttl: null
 ```
 
-See `config/profiles/omlx-coding.yaml` for a complete example.
+See `config/profiles/mlx-coding.yaml` for a complete example.
 
 ### `backend: mlx_lm`
 
@@ -73,11 +73,12 @@ Minimal mlx_lm profile skeleton:
 backend: mlx_lm
 
 models:
-  - model_path: mlx-community/gemma-4-26b-a4b-it-4bit   # HF repo (also the /v1/models id)
-    served_model_name: gemma4-26b                         # informational only for mlx_lm
+  - model_path: mlx-community/Qwen3-Coder-30B-A3B-4bit   # HF repo (also the /v1/models id)
+    served_model_name: qwen3-coder-30b                     # informational only for mlx_lm
 ```
 
-See `config/profiles/exp-mlxlm-gemma4.yaml` for a complete example.
+No shipping profile currently uses `backend: mlx_lm` — it remains
+supported for single-model upstream MLX use cases.
 
 ### `backend: ollama`
 
