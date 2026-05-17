@@ -1,8 +1,14 @@
 # 4lm — Local LLM Control Plane
 
-Personal local-LLM stack for Apple Silicon: `omlx` (MLX backend) +
-`open-webui` (frontend) + `opencode` (TUI client), managed by launchd and
-controlled by a single `4lm` command.
+**Thesis.** Single-command control plane for one engineer's local LLM
+stack on Apple Silicon. Two first-class deployment shapes —
+**workstation** (full stack: `omlx` + `open-webui` + `opencode`) and
+**appliance** (`./install.sh --backend-only`: headless `/v1/*` server
+for the LAN) — share one CLI, one profile system, one set of security
+defaults.
+
+The user-facing pitch lives in [`README.md`](README.md). This file is
+the working orientation for contributors and AI assistants.
 
 Model selection and the layered architecture rationale live in the
 archived rework SDD at `specs/done/sdd/4lm-rework-2026-05-09.md`. Read it
@@ -53,16 +59,36 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 
 ## Activation model
 
-Plists live in `~/.4lm/launchd/` (NOT `~/Library/LaunchAgents/`). Services do
-**not** auto-start at login by default; opt in via `4lm autostart enable`.
-`4lm start` calls `launchctl bootstrap`, `4lm stop` calls `launchctl bootout`.
-After reboot, services stopped unless autostart is enabled.
+Plists live in `~/.4lm/launchd/` (NOT `~/Library/LaunchAgents/`) → launchd
+never discovers them automatically. `4lm start` / `stop` call `launchctl
+bootstrap` / `bootout`. Autostart at login is opt-in via `4lm autostart
+enable`, which symlinks the plist into `~/Library/LaunchAgents/`. After
+reboot, services are stopped unless autostart is enabled.
 
 ## Network exposure
 
-`~/.4lm/config/network.yaml` is the single config channel. `mode: local`
-binds to `127.0.0.1`; `mode: lan` binds to `0.0.0.0`. Switching is done only
-via `4lm expose <mode> [--confirm]`. There are no env-var overrides.
+`~/.4lm/config/network.yaml` is the **single** config channel. `mode: local`
+binds to `127.0.0.1`; `mode: lan` binds to `0.0.0.0`. Switching is done
+only via `4lm expose <mode> --confirm`. No env-var overrides exist or
+should be added — the deliberate friction is a security feature.
+
+## Dual-shape conventions
+
+`./install.sh --backend-only` (or `make install BACKEND_ONLY=1`) skips
+`open-webui` (pipx), the webui plist, the webui wrapper, the `opencode`
+brew formula, and the seeded `~/.config/opencode/opencode.jsonc`. The
+contract this imposes:
+
+- `bin/4lm` **probes for the webui plist on disk** and treats the WebUI
+  layer as not installed when absent (status output, autostart targets,
+  `4lm doctor` checks all adapt). Never assume the WebUI exists.
+- Re-running the full installer over a backend-only install **upgrades**
+  cleanly to full; re-running `--backend-only` over a full install **does
+  not strip** existing WebUI artifacts. Tests for these invariants live
+  in the bats suite.
+- The CI matrix runs both legs (`make ci-default` + `make ci-backend-only`);
+  any new feature must work in both shapes or guard its behavior on the
+  webui-plist probe.
 
 ## Profile switching is atomic with rollback
 
@@ -86,34 +112,27 @@ before kickstarting, so YAML edits propagate without a full stop/start.
 - Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
   `test:`. Subject under 72 characters.
 
-## Profile lineup
+## Profile lineup (quick reference)
 
-Six profiles. The three Qwen3-stack tiers share an 8B embedder so
-knowledge bases stay valid across switches. Each YAML carries an
-extensive header comment with rationale per slot, memory math, when-
-to-use, and assumptions-to-validate — review periodically and update
-the `Last reviewed:` line.
+Full table with use-cases, fits-on, and memory math lives in
+[`README.md`](README.md). Contributor-relevant constraints:
 
-| Profile | Backend | Coder | Chat | Embed | Rerank | Vision | Steady |
-|---|---|---|---|---|---|---|---|
-| `lean` | omlx | Qwen3-Coder-30B-A3B | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | — | ~40 GB |
-| `default` | omlx | Qwen3-Coder-Next (80B) | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | Qwen3-VL-8B | ~65 GB |
-| `max-100gb` | omlx | Qwen3-Coder-Next (80B) | Qwen3-Next-80B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-4B | Qwen3-VL-8B | ~92 GB |
-| `mlx-coding` | omlx | Qwen3-Coder-Next (80B) | — | — | — | — | ~42 GB |
-| `mlx-knowledge` | omlx | — | Qwen3.6-35B-A3B | Qwen3-Embedding-8B | Qwen3-Reranker-0.6B | — | ~23 GB |
-| `ollama` | ollama | qwen3-coder-next:q4_K_M (GGUF) | — | — | — | — | ~22 GB |
+| Profile | Backend | Steady |
+|---|---|---|
+| `lean` | omlx | ~40 GB |
+| `default` | omlx | ~65 GB |
+| `max-100gb` | omlx | ~92 GB |
+| `mlx-coding` | omlx | ~42 GB |
+| `mlx-knowledge` | omlx | ~23 GB |
+| `ollama` | ollama | ~22 GB |
 
-`lean` / `default` / `max-100gb` are everyday tiers (memory-budget
-ladder). `mlx-coding` strips everything except the 80B coder for
-max KV-cache headroom on long agentic sessions. `mlx-knowledge` is
-text-only vault synthesis. `ollama` is the smoke test for the GGUF
-backend — switch to it occasionally to confirm ollama still works,
-then switch back.
-
-All omlx embedders share `served_model_name: qwen3-embedding`, all
-omlx rerankers share `qwen3-reranker`, vision is `qwen3-vl-8b`.
-Switching between omlx profiles never requires reindexing knowledge
-bases.
+All omlx embedders share `served_model_name: qwen3-embedding`, all omlx
+rerankers share `qwen3-reranker`, vision is `qwen3-vl-8b`. **Switching
+between omlx profiles never requires reindexing knowledge bases — do
+not change these served-model names without an explicit migration
+plan.** Each YAML carries an extensive header comment with slot-by-slot
+rationale, memory math, when-to-use, and assumptions-to-validate;
+review periodically and update the `Last reviewed:` line.
 
 ## OpenWebUI feature toggles
 
