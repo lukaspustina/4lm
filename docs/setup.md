@@ -10,8 +10,9 @@ local LLM stack on Apple Silicon.
   shfmt, bats-core from `Brewfile` and runs `pipx ensurepath`)
 - ~140 GB free disk for model weights
 
-> mlx-openai-server 1.8.1 requires Python `>=3.11,<3.13`, so install.sh
-> creates pipx venvs with `python3.12` even if your system default is newer.
+> Python 3.12 is pinned for compatibility with the MLX ecosystem
+> (mlx, mlx-lm, omlx). install.sh creates pipx venvs with `python3.12`
+> even if your system default is newer.
 
 ## Step 1 — Install
 
@@ -80,9 +81,9 @@ install upgrades to full.
 
 ## Step 2 — Pre-download model weights
 
-`mlx-openai-server` will pull on demand, but a 30+ GB model on residential
-fiber is 10-15 minutes of "is it broken or working?". Pre-pull all profile
-models in one shot:
+`omlx` will pull on demand, but a 30+ GB model on residential fiber is
+10-15 minutes of "is it broken or working?". Pre-pull all profile models
+in one shot:
 
 ```sh
 make models           # download/update every model in config/profiles/
@@ -98,7 +99,7 @@ Cache lives at `~/.cache/huggingface/hub/` (~140 GB for the default profile).
 ```sh
 4lm start         # bootstrap and start backend + webui
 4lm status        # see service state
-4lm health        # verify wired memory limit
+4lm doctor        # prereq + smoke-test sweep (wired memory, sudoers, inference)
 ```
 
 After reboot, services are stopped. Run `4lm start` to bring them back.
@@ -136,8 +137,10 @@ For each model in the active profile, create or update its OWUI record:
 5. **Default Features** → enable **Web Search**
 6. Save
 
-Apply to: `qwen3-coder-next`, `gemma4-31b` (default/ollama profile). Apply to
-any MLX profile models that have `enable_auto_tool_choice: true` as well.
+Apply to the default profile's coder and chat models: `qwen3-coder-next`
+and `qwen3.6-35b`. (The embedder, reranker, and vision models are wired
+via WebUI env vars rather than per-model records.) Apply the same to any
+other profile models that have `enable_auto_tool_choice: true`.
 
 ## Step 6 — OpenCode TUI
 
@@ -165,62 +168,46 @@ on subsequent runs.
 ## Profiles
 
 A "profile" is one YAML in `config/profiles/` (installed to
-`~/.4lm/config/profiles/`). It declares the backend (`ollama`, `mlx`, or
-`mlx_lm`) and the models to load. The active profile is selected via the
-`~/.4lm/config/active-profile` symlink; switch atomically with
+`~/.4lm/config/profiles/`). It declares the backend (`omlx`, `mlx_lm`,
+or `ollama`) and the models to load. The active profile is selected via
+the `~/.4lm/config/active-profile` symlink; switch atomically with
 `4lm profile set <name>`.
 
-### `default` (the daily driver — Ollama)
-
-Two models via the Ollama backend:
-
-| Model | Purpose | Size |
-|---|---|---|
-| Qwen3-Coder-Next (q4_K_M) | Code / tool calling | ~52 GB |
-| Gemma 4 31B Dense | Chat / reasoning / multimodal | ~20 GB |
-
-Both load on demand and stay resident as long as memory permits. On 128 GB
-unified memory both fit simultaneously with headroom for KV cache. Gemma 4
-runs via Ollama because its RotatingKVCache / sliding-window attention
-architecture is incompatible with the mlx backends (GPU stream thread-local
-bug, upstream unresolved as of 2026-05).
-
-### `mlx-coding`
-
-Single model via mlx-openai-server: Qwen3-Coder-Next at 32k context.
-
-**Use when**: you want the raw MLX path for the coder model (lower latency
-on this model, no Ollama overhead). Gemma 4 is not available.
-
-### `mlx-knowledge`
-
-Single model via mlx-openai-server: Qwen3.6-27B at 128k context with
-thinking disabled (`qwen3-no-think.jinja` template).
-
-**Use when**: long-form synthesis over a large corpus — Obsidian vault
-analysis, document RAG over big inputs.
-
-### Experimental profiles
-
-| Profile | Purpose |
-|---|---|
-| `exp-mlx-full` | Tracks mlx-openai-server fix for Gemma 4 (both models on MLX when fixed) |
-| `exp-mlxlm-gemma4` | Tracks mlx_lm fix for Gemma 4 (single model, different runtime path) |
-
-These are broken until the upstream Stream(gpu,1) bug is resolved.
+Six profiles ship with the repo. The full table — coder/chat/embed/
+rerank/vision per profile, steady RAM, fits-on hardware — lives in the
+[README](../README.md#profile-lineup). Profile YAML headers carry per-slot
+rationale, memory math, when-to-use, and assumptions-to-validate.
 
 ### When to switch
 
+| Situation | Profile |
+|---|---|
+| Default daily driver, 96 GB+ Mac | `default` |
+| 64 GB Mac, or want headroom on a bigger one | `lean` |
+| 128 GB Mac, willing to spend it on bigger chat + reranker | `max-100gb` |
+| Long agentic coding session (max KV-cache headroom) | `mlx-coding` |
+| Text-only knowledge synthesis / vault RAG | `mlx-knowledge` |
+| GGUF smoke test (confirm Ollama still works) | `ollama` |
+
 ```sh
-4lm profile list                    # see installed profiles
-4lm profile current                 # see active
-4lm profile set mlx-coding          # atomic, validated, rolls back on failure
+4lm profile list                 # installed profiles
+4lm profile current              # active
+4lm profile set <name>           # atomic, validated, rolls back on failure
+4lm profile show [<name>]        # print profile YAML
 ```
 
-Switching restarts the backend (~30-60 s cold load). Profile schema
-reference: [`profile-schema.md`](profile-schema.md). To customise:
-edit `~/.4lm/config/profiles/<name>.yaml` directly — `install.sh`
-won't overwrite a profile that already exists.
+Switching restarts the backend (~30-60 s cold load). All omlx profiles
+share the same embedder served-name (`qwen3-embedding`) and reranker
+(`qwen3-reranker`), so RAG indexes stay valid across switches.
+
+**Same-name re-issue is a live config reload.** After editing
+`~/.4lm/config/profiles/<active>.yaml`, run `4lm profile set <active>`
+to re-render `~/.omlx/model_settings.json`, re-stage model symlinks,
+and kickstart the backend — no full stop/start.
+
+Profile schema reference: [`profile-schema.md`](profile-schema.md). To
+customise: edit `~/.4lm/config/profiles/<name>.yaml` directly —
+`install.sh` won't overwrite a profile that already exists.
 
 ## Network exposure
 
@@ -264,20 +251,32 @@ after install, `diag` when something feels off.
 ### OpenCode / WebUI output loops on the same sentence
 
 Symptom: model output cycles two or three sentences verbatim. Classic
-`repetition_penalty=1.0` failure mode, especially with Qwen3.6.
+`repetition_penalty=1.0` failure mode, especially with chat models on
+long contexts.
 
 The OpenAI API spec has no `repetition_penalty` field — clients can only
-pass `frequency_penalty` / `presence_penalty`. mlx-openai-server's default
-is 1.0 (off). The fix is server-side: `bin/4lm-backend-start.sh` passes
-`--repetition-penalty 1.05` to the launch invocation. If you've edited
-the wrapper and removed it, restore it; if 1.05 isn't enough for a
-particularly stubborn model, raise to 1.10 (don't go above 1.15 — output
-quality starts dropping).
+pass `frequency_penalty` / `presence_penalty`. On omlx the fix is
+per-model in the profile YAML — add a `sampling:` block to the affected
+model entry:
+
+```yaml
+- model_path: mlx-community/Qwen3.6-35B-A3B-4bit-DWQ
+  served_model_name: qwen3.6-35b
+  sampling:
+    repetition_penalty: 1.05   # raise to 1.10 if 1.05 isn't enough
+```
+
+Then re-issue the profile (same name) to push the change live:
 
 ```sh
-# Verify penalty is on the running master's argv
-ps -o command= -p "$(pgrep -f 'mlx-openai-server launch' | head -1)" \
-  | tr ' ' '\n' | grep -A1 repetition-penalty
+4lm profile set <active>
+```
+
+Don't go above 1.15 — output quality starts dropping. Check the
+applied settings with:
+
+```sh
+cat ~/.omlx/model_settings.json | jq '.'
 ```
 
 ### `[metal::malloc] Resource limit (NNN) exceeded` (HTTP 500 to client)
@@ -287,15 +286,16 @@ Symptom: OpenCode or WebUI gets a 500 with the message
 where `NNN` is the size MLX failed to allocate (typically a KV-cache
 slab, ~hundreds of MB).
 
-This is **wired-memory exhaustion**, not the wedged-1.8.0 bug. After a
-long session with the `default` profile, two things grow inside the
-wired pool:
+This is **wired-memory exhaustion**. After a long session with the
+`default` profile (full Qwen3 stack — coder + chat + embed + rerank +
+vision), three things grow inside the wired pool:
 
 - **KV cache** per ongoing conversation — `cache_key_len` in the
   backend log climbs every turn (visible in `4lm diag` → "Last 5
   finished").
-- **Disk-backed prompt cache** (1.8.0 feature) keeps recent slabs
-  resident even after a request finishes.
+- **omlx paged KV cache + continuous-batching state** keeps recent
+  slabs resident even after a request finishes.
+- **Loaded model weights** for all five slots, pinned per profile YAML.
 
 Once the workers + caches + macOS itself fill the 96 GB wired-pool cap
 (`iogpu.wired_limit_mb=98304`), Metal refuses the next allocation and
@@ -304,19 +304,25 @@ the request fails fast.
 First-aid:
 
 ```sh
-4lm restart backend     # clears worker state, KV cache, disk-backed cache
+4lm restart backend     # clears worker state, KV cache, paged cache
 ```
 
 Cold reload is 30-60 s. Subsequent prompts rebuild caches on demand.
 
 If it recurs within minutes (not hours), tune one of:
 
-1. **Switch to a single-model MLX profile** to reduce memory pressure:
-   `4lm profile set mlx-coding` or `4lm profile set mlx-knowledge`.
-2. **Drop context_length** in an MLX profile. Edit the relevant entry in
-   `~/.4lm/config/profiles/<name>.yaml`, then `4lm profile set <name>`
-   to apply with rollback. (The default Ollama profile has no
-   `context_length` key — Ollama manages context internally.)
+1. **Drop to a leaner profile** to reduce the resident model set:
+   `4lm profile set lean` (~40 GB) or `4lm profile set mlx-coding`
+   (~42 GB; coder only). For pure RAG work,
+   `4lm profile set mlx-knowledge` (~23 GB).
+2. **Cap omlx memory in the profile YAML.** Add or tighten the
+   `omlx:` block:
+   ```yaml
+   omlx:
+     max_process_memory: "85%"
+     max_model_memory: "70%"
+   ```
+   Then `4lm profile set <active>` to apply.
 3. **Raise `iogpu.wired_limit_mb`** if you're willing to give MLX more
    of the 128 GB. Going past ~104 GB (107520) starts crowding macOS
    itself. The sudoers rule pins exactly `98304`, so if you change the
@@ -327,7 +333,7 @@ If it recurs only after long sessions (every few hours): treat as
 normal cache-growth wear — `4lm restart backend` periodically, or
 `4lm stop backend` overnight so the cache resets daily.
 
-### Worker burning CPU with no in-flight requests
+### Stuck worker burning CPU with no in-flight requests
 
 Symptom in `4lm diag`:
 
@@ -336,33 +342,38 @@ In-flight inference (admitted, not yet finished, last 10 min)
   (none)
 
 Backend worker processes
-  master pid=XXXXX  0.0% CPU,   0.6 GB RSS, etime …
   worker pid=YYYYY 44.0% CPU,  33.0 GB RSS, etime …    ← stuck
 ```
 
-`mlx-openai-server` 1.8.0 has been observed to leave a worker spinning
-on Metal command-encoder dispatches after the last request finishes
-(seen 2026-04-26 immediately after the 1.7.1 → 1.8.0 bump). Fix:
+Generic recovery for any backend (omlx, mlx_lm, ollama):
 
 ```sh
 4lm restart backend
 ```
 
-After restart, the worker should drop to `0.0% CPU` and GPU idle
+After restart the worker should drop to ~0.0% CPU and GPU idle
 residency rises to >90% (verify with the powermetrics line `4lm diag`
-prints). If the issue recurs, file upstream at
-<https://github.com/cubist38/mlx-openai-server/issues>.
+prints). If the issue recurs reproducibly on omlx, file upstream at
+<https://github.com/jundot/omlx/issues>.
 
-### `4lm health` exits 1
+### `4lm doctor` exits non-zero
+
+`4lm doctor` runs prereq checks (sudoers literal, sysctl wired-memory
+limit, binaries on PATH, profile validity) and then smoke-tests
+inference against `/v1/chat/completions` for each non-embedding model
+in the active profile. A non-zero exit means one of these failed —
+the output names which.
+
+For the wired-memory check specifically:
 
 ```
 iogpu.wired_limit_mb=<x> < 98304 — see docs/setup.md §Sudoers
 ```
 
 Set it interactively or re-run `make install` — install.sh writes the
-sudoers rule and sets the limit when its check fails. The setting persists
-until reboot, after which the backend wrapper re-applies it via the sudoers
-NOPASSWD entry on next start.
+sudoers rule and sets the limit when its check fails. The setting
+persists until reboot, after which the backend wrapper re-applies it
+via the sudoers NOPASSWD entry on next start.
 
 ### `sudo: a password is required` in backend.log
 
