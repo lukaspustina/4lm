@@ -4,45 +4,52 @@ Personal local-LLM stack for Apple Silicon: `omlx` (MLX backend) +
 `open-webui` (frontend) + `opencode` (TUI client), managed by launchd and
 controlled by a single `4lm` command.
 
-Model selection and the layered architecture rationale live in
-`specs/sdd/4lm-rework.md` (the SDD this repo implements). Read that before
-changing the model set, the backend choice, or the activation model.
+Model selection and the layered architecture rationale live in the
+archived rework SDD at `specs/done/sdd/4lm-rework-2026-05-09.md`. Read it
+before changing the model set, the backend choice, or the activation model.
 
 ## Repo layout
 
 ```
-bin/                       # 4lm and the two launchd wrapper scripts
+bin/                       # 4lm, launchd wrapper scripts, and 4lm_helpers.py
 launchd/                   # plist templates with __HOME__ placeholder
 config/profiles/           # lean / default / max-100gb (Qwen3 stack via omlx) + mlx-coding / mlx-knowledge / ollama YAMLs
 config/network.example.yaml
 config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
 docs/                      # setup runbook + profile schema reference
 tests/                     # bats suite (helpers/ has launchctl + curl stubs)
-.github/workflows/         # macOS CI: shellcheck, shfmt, plutil, xmllint, bats
-install.sh                 # idempotent installer (no bootstrap, no migration)
+.github/workflows/         # macOS CI: shellcheck, shfmt, plutil, xmllint, bats; matrix runs default + backend-only
+install.sh                 # idempotent installer; --backend-only skips WebUI + opencode
 uninstall.sh               # full removal (services, ~/.4lm, newsyslog)
 requirements.txt           # pinned open-webui, huggingface_hub[cli]; omlx from git
-Brewfile                   # shellcheck, shfmt, bats-core, python@3.12, pipx, opencode
-Makefile                   # bootstrap / install / uninstall / models* / check / lint / fmt / test
-specs/sdd/                 # active SDDs (4lm-rework.md is the rework spec)
+requirements-helpers.txt   # 4lm_helpers.py runtime deps (rich, pyyaml, pytest)
+Brewfile                   # core: shellcheck, shfmt, bats-core, jq, python@3.12, pipx, llmfit, ollama
+Brewfile-tui               # TUI extras: opencode (skipped when BACKEND_ONLY=1)
+Makefile                   # bootstrap / install / uninstall / models* / check / lint / fmt / test / ci / ci-default / ci-backend-only
+specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed work archived under specs/done/sdd/
 ```
 
 ## Key commands
 
 | Task | Command |
 |---|---|
-| Bootstrap dev tools | `make bootstrap` (runs Brewfile + `pipx ensurepath`) |
-| Install / re-install | `make install` (or `./install.sh`) |
+| Bootstrap dev tools | `make bootstrap` (Brewfile + Brewfile-tui + `pipx ensurepath`; `BACKEND_ONLY=1` skips TUI) |
+| Install / re-install | `make install` (or `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
 | Full uninstall | `make uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
 | Pre-download models | `make models` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download` |
 | Start everything | `4lm start` |
 | Stop everything | `4lm stop` |
-| Status | `4lm` (alias for `4lm status`) |
+| Status | `4lm` (alias for `4lm status`; `--json` for machine-readable) |
 | Switch profile | `4lm profile set <name>` |
 | Toggle LAN exposure | `4lm expose lan --confirm` |
 | OpenCode TUI | `4lm opencode` (alias `4lm code`) |
+| Login autostart | `4lm autostart enable\|disable\|status [backend\|webui\|all]` |
+| Sanity sweep | `4lm doctor` (prereqs + smoke-test); `4lm diag` (live clients, inflight work) |
+| Update probes | `4lm outdated` (PyPI / brew / HF); `4lm upgrade [brew\|models\|python]` to apply |
+| Model picks | `4lm model recommend [<use-case>]` (uses `llmfit` + localmaxxing benchmarks) |
 | Run all checks | `make check` |
 | Run tests | `make test` (requires `bats-core`) |
+| Mirror CI matrix locally | `make ci` (runs `ci-default` + `ci-backend-only`) |
 
 ## Activation model
 
@@ -142,5 +149,5 @@ from `/v1/models`. The staging layer (`stage_omlx_model_dir()` +
 `~/.4lm/runtime/<profile>/models/`) is therefore permanent; the TODO comment
 in `stage_omlx_model_dir()` remains as documentation of the probe outcome.
 
-See `specs/sdd/4lm-rework.md` for the rework SDD that this repo state
-implements.
+See `specs/done/sdd/4lm-rework-2026-05-09.md` for the archived rework SDD
+that this repo state implements.
