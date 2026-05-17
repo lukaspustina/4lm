@@ -12,9 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — pre-release tidy for public OSS launch.
 
 ### Changed
-- **BREAKING**: launchd labels renamed `com.4lm.{backend,webui}`
-  → `com.4lm.{backend,webui}`. Plist files renamed accordingly. Upgrade
-  path: `4lm autostart disable && 4lm stop && ./install.sh && 4lm start`
+- **BREAKING**: launchd labels generalized to `com.4lm.{backend,webui}`
+  (earlier per-user-prefixed labels removed via git history rewrite).
+  Plist files renamed accordingly. Upgrade path:
+  `4lm autostart disable && 4lm stop && ./install.sh && 4lm start`
   (existing services bound to the old labels need to be bootout'd before
   the new ones take over).
 - `omlx` git dependency pinned to commit `51907f08` (2026-05-14) in
