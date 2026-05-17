@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-17
+
 ### Added
 - `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`, README Credits section
-  — pre-release tidy for public OSS launch.
+  — public OSS launch tidy.
+- GitHub Pages landing site at <https://lukaspustina.github.io/4lm/> with
+  hand-rolled hero layout and `prefers-color-scheme` dark mode.
+- README badge row (CI, latest release, MIT, macOS · Apple Silicon).
+- GitHub issue templates (bug report + feature request) and pull-request
+  template derived from the `CONTRIBUTING.md` checklist.
+- Social preview image at `assets/social-preview.png` for rich-link
+  unfurls.
 
 ### Changed
 - **BREAKING**: launchd labels generalized to `com.4lm.{backend,webui}`
@@ -24,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `config/opencode.example.jsonc` rewritten for the v0.6 default profile
   (omlx + full Qwen3 stack); removed stale `mlx-openai-server`,
   `Qwen3.6-27B`, and `exp-*` profile references.
+- `bin/4lm_helpers.py` `__version__` bumped from `0.4.0` to `0.7.0` so
+  `4lm_helpers.py --version` reflects the public release.
 
 ### Fixed
 - `install.sh` post-install summary referenced the removed `4lm health`
