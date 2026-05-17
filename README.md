@@ -1,28 +1,28 @@
 # 4lm — Local LLM control plane for Apple Silicon
 
-One MacBook. One command. Two models, two daemons, zero Docker.
+One MacBook. One command. A full Qwen3 stack, two daemons, zero Docker.
 
-`4lm` runs Ollama (default backend), `open-webui` (frontend), and
+`4lm` runs `omlx` (MLX backend, default), `open-webui` (frontend), and
 `opencode` (TUI client) under launchd, controlled by a single CLI.
 Designed for a single engineer who wants their LLM stack to act like
 `brew services` — except with profile switching, atomic rollback, and a
 network-exposure command that refuses to bind to `0.0.0.0` without
-`--confirm`. MLX profiles (`mlx-coding`, `mlx-knowledge`) are available
-for Apple Silicon acceleration when Ollama's overhead matters.
+`--confirm`. An `ollama` profile is bundled as a GGUF smoke test;
+`mlx-coding` and `mlx-knowledge` are focused single-purpose tiers.
 
 ## What this is
 
 - **One CLI for the whole stack.** `4lm start | stop | status | logs |
   profile set <name> | expose lan | opencode`. No tab-juggling, no
   systemd cosplay.
-- **Profile-based model management.** The default profile runs two
-  Ollama models (coder + chat); MLX profiles offer additional slots.
-  Profiles switch atomically: validates the new profile, swaps the
-  active symlink, polls `/v1/models` for 30 s, rolls back the symlink
-  and restarts on failure.
+- **Profile-based model management.** The default profile runs the full
+  Qwen3 stack on `omlx` — coder, chat, embedder, reranker, vision — all
+  served from one process. Profiles switch atomically: validates the new
+  profile, swaps the active symlink, polls `/v1/models` for 30 s, rolls
+  back the symlink and restarts on failure.
 - **launchd, but quiet.** Plists live in `~/.4lm/launchd/` — not
   `~/Library/LaunchAgents/`. After every reboot the stack is stopped.
-  You start it when you want it.
+  You start it when you want it, or opt in via `4lm autostart enable`.
 - **`expose lan` is two-factor.** Refuses without `--confirm`. Security
   hardening applies in all modes: persistent `WEBUI_SECRET_KEY` (mode 0600),
   `WEBUI_REGISTRATION_ENABLED=false`, `DEFAULT_USER_ROLE=pending`.
@@ -30,11 +30,12 @@ for Apple Silicon acceleration when Ollama's overhead matters.
 - **WebUI is preconfigured for daily use.** DuckDuckGo web search, Pyodide
   code interpreter, personal memory, follow-up + autocomplete suggestions,
   and file-upload RAG — all on by default. RAG embeddings are served by the
-  same omlx backend (`mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ`, exposed
+  same omlx backend (`mlx-community/Qwen3-Embedding-8B-4bit-DWQ`, exposed
   as `qwen3-embedding`), so file upload works fully offline.
-- **Honest health check.** `4lm health` exits 1 if
-  `iogpu.wired_limit_mb` is below the threshold the 80B-class models
-  actually need.
+- **Honest sanity sweep.** `4lm doctor` checks prereqs and smoke-tests
+  inference if the backend is running; `4lm diag` surfaces live clients,
+  in-flight work, and top CPU consumers. The wired-memory threshold for
+  80B-class models is enforced at install time via `iogpu.wired_limit_mb`.
 - **Idempotent installer.** `make install` writes the sudoers rule the
   backend wrapper needs, sets the wired-memory limit, seeds
   `network.yaml` and `~/.config/opencode/opencode.jsonc`, hooks up
@@ -53,7 +54,7 @@ for Apple Silicon acceleration when Ollama's overhead matters.
 ## TL;DR
 
 ```sh
-make bootstrap    # brew: shellcheck, shfmt, bats-core, python@3.12, pipx, opencode
+make bootstrap    # brew core: shellcheck, shfmt, bats-core, jq, python@3.12, pipx, llmfit, ollama (+ opencode via Brewfile-tui)
 make install      # ~/.4lm/, sudoers, sysctl, pipx-installed deps, log rotation, opencode config
 make models       # ~140 GB of weights from HuggingFace (idempotent; the same target updates)
 4lm start         # bootstrap launchd agents
@@ -113,7 +114,7 @@ against the backend's `:8000/v1`.
 | Inference | `mlx_lm` (upstream MLX) | via omlx venv | co-installed with omlx |
 | Inference | `ollama` (GGUF/llama.cpp) | homebrew | brew formula |
 | Web UI | `open-webui` | 0.9.2 (pipx) | python@3.12 venv |
-| HF cache CLI | `huggingface_hub[cli]` | 1.13.0 (pipx) | python@3.12 venv |
+| HF cache CLI | `huggingface_hub[cli]` | 1.14.0 (pipx) | python@3.12 venv |
 | TUI client | `opencode` | homebrew/core | brew formula |
 | Daemons | launchd user agents | — | `launchctl bootstrap` via `4lm start` |
 | Config | profiles + `network.yaml` | — | atomic profile switch with rollback |
@@ -175,7 +176,7 @@ make uninstall                  # full: bootout, ~/.4lm/, sudoers/newsyslog, pip
 │   ├── previous-profile         plain text, used for rollback
 │   ├── network.yaml             bind mode + ports
 │   ├── webui_secret_key         mode 0600, generated on first lan-mode start
-│   └── profiles/                default.yaml, mlx-coding.yaml, mlx-knowledge.yaml, exp-*.yaml
+│   └── profiles/                lean.yaml, default.yaml, max-100gb.yaml, mlx-coding.yaml, mlx-knowledge.yaml, ollama.yaml
 ├── logs/                        backend.log, webui.log (merged stdout+stderr)
 └── openwebui-data/              Open WebUI database, settings, RAG index
 
@@ -248,11 +249,30 @@ server-side defaults remain as belt-and-suspenders for all models.
 Qwen3-Coder-30B-A3B (~18 GB at 4-bit) + Qwen3.6-27B (~17 GB at 4-bit) =
 ~35 GB always-on. GPT-OSS-120B loads on-demand into the remaining ~93 GB.
 
+### v0.4 / v0.5 — Backend pivot to omlx, autostart, single MLX backend
+
+`mlx-openai-server` is removed; `omlx` becomes the sole MLX backend
+(vLLM-style: paged KV cache, continuous batching, multi-model
+EnginePool, DFlash speculative decoding). `4lm autostart enable|disable|
+status` adds opt-in login autostart per service. `mlx_lm` and `ollama`
+remain available as alternative backends through the profile schema.
+
+### v0.6 — Full Qwen3 stack + lean/max-100gb tiers
+
+The `default` profile expands from coder+chat to the full Qwen3 stack
+on one omlx process: coder (Qwen3-Coder-Next 80B), chat (Qwen3.6-35B-A3B),
+embedder (Qwen3-Embedding-8B), reranker (Qwen3-Reranker-0.6B), vision
+(Qwen3-VL-8B). New tiers: `lean` (~40 GB working set, swaps the coder
+down to 30B-A3B) and `max-100gb` (~92 GB, swaps chat up to Qwen3-Next-80B
+and reranker up to 4B). All omlx profiles share `qwen3-embedding` /
+`qwen3-reranker` served-model names, so knowledge bases stay valid
+across profile switches.
+
 ## Documentation
 
 - [`docs/setup.md`](docs/setup.md) — operator runbook (sudoers, troubleshooting, model pulls)
 - [`docs/profile-schema.md`](docs/profile-schema.md) — YAML key reference for all backends
-- [`specs/sdd/4lm-rework.md`](specs/sdd/4lm-rework.md) — the design doc this repo implements
+- [`specs/done/sdd/4lm-rework-2026-05-09.md`](specs/done/sdd/4lm-rework-2026-05-09.md) — the archived design doc this repo implements
 - [`CLAUDE.md`](CLAUDE.md) — orientation for AI assistants working in this repo
 
 ## Development
