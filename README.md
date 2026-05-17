@@ -1,5 +1,10 @@
 # 4lm — Local LLM control plane for Apple Silicon
 
+[![CI](https://github.com/lukaspustina/4lm/actions/workflows/ci.yml/badge.svg)](https://github.com/lukaspustina/4lm/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/lukaspustina/4lm?sort=semver)](https://github.com/lukaspustina/4lm/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Platform: macOS · Apple Silicon](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Apple%20Silicon-blue)](#quickstart)
+
 **A local LLM stack you don't have to babysit.**
 
 Your Mac. Or a Mac in your closet. Either way, one command.

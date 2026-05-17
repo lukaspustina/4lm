@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/lukaspustina/4lm/blob/main/SECURITY.md
+    about: Do not open a public issue for security issues — see SECURITY.md.
+  - name: Setup question (operator runbook)
+    url: https://github.com/lukaspustina/4lm/blob/main/docs/setup.md
+    about: For setup or configuration questions, the runbook is usually faster.

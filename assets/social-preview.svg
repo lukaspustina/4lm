@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <!-- Background -->
+  <rect width="1280" height="640" fill="#0a0a0a"/>
+
+  <!-- Subtle top/bottom accent rules -->
+  <rect x="0" y="0" width="1280" height="3" fill="#262626"/>
+  <rect x="0" y="637" width="1280" height="3" fill="#262626"/>
+
+  <!-- Title -->
+  <text x="640" y="290" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="200" font-weight="700" fill="#fafafa">4lm</text>
+
+  <!-- Tagline -->
+  <text x="640" y="378" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="38" font-weight="400" fill="#a3a3a3">Local LLM control plane for Apple Silicon</text>
+
+  <!-- Subtagline -->
+  <text x="640" y="440" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="26" font-weight="400" fill="#737373">One command · your hardware · your data</text>
+
+  <!-- Repo URL (mono) -->
+  <text x="640" y="580" text-anchor="middle"
+        font-family="ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Mono', Consolas, monospace"
+        font-size="22" font-weight="400" fill="#525252">github.com/lukaspustina/4lm</text>
+</svg>

@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an enhancement or new feature
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        4lm has strong scope opinions — single-user, single-host,
+        single-login. See `CONTRIBUTING.md` for what's in and out of scope.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case before any proposed solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Optional. "Nothing yet, just flagging the problem" is a valid answer.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

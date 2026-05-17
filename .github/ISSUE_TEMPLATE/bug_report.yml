@@ -1,0 +1,71 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The fields below mirror
+        the report template in `CONTRIBUTING.md` — fill what you can.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what actually happened?
+    validations:
+      required: true
+
+  - type: input
+    id: mac-and-ram
+    attributes:
+      label: Mac model + RAM
+      placeholder: "e.g. M3 Max MacBook Pro, 128 GB"
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "e.g. Sequoia 15.3.1"
+    validations:
+      required: true
+
+  - type: input
+    id: profile
+    attributes:
+      label: Active profile
+      description: "Output of `4lm profile current`."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-mode
+    attributes:
+      label: Install mode
+      options:
+        - full (backend + WebUI + opencode)
+        - --backend-only
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: 4lm doctor output
+      render: shell
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: 4lm diag output (if relevant)
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Last ~50 lines of backend log
+      description: "From `4lm logs backend` or `~/.4lm/logs/backend.log`."
+      render: shell
