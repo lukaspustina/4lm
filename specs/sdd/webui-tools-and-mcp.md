@@ -94,7 +94,7 @@ Phases 1–3 light up the path WebUI → omlx → tool_calls and let the built-i
 12. `bin/4lm` shall manage a third launchd service `com.4lm.mcpo` that runs the `mcpo` proxy on a local port, bridging stdio MCP servers into OpenAPI tools consumable by OpenWebUI.
 13. The Anthropic Fetch MCP server shall be the only stdio server shipped by default; additional stdio servers shall be opt-in via a YAML config file (path TBD in Phase 4 detail).
 14. `4lm` shall expose a subcommand surface for adding remote (HTTP / SSE) MCP servers to OpenWebUI — either by orchestrating the existing admin-UI flow or by direct REST API integration (transport choice deferred to Phase 5 detail).
-15. The personal vault MCP servers (`personal-vault-example`, `personal-vault-example`) shall be addable via the same surface as Requirement 14 with documented examples in `docs/setup.md`.
+15. Custom stdio MCP servers (e.g. an Obsidian-vault server keyed on the operator's local notes path) shall be addable via the same surface as Requirement 14 with a documented example in `docs/setup.md`. The operator's specific server names are out of scope for this SDD.
 16. Claude-Desktop-parity for artifacts (interactive previews, side-by-side editing) and a scoped filesystem MCP server shall ship as later phases; their requirements remain undefined here.
 
 ---
@@ -400,16 +400,24 @@ To be detailed during phase planning. Minimum coverage:
 
 ---
 
-## Phase 6 — Personal vault MCP servers — outline
+## Phase 6 — Custom stdio MCP server examples — outline
 
-Wire `personal-vault-example` and `personal-vault-example` (existing personal Obsidian MCP servers) as default-shipped stdio servers in the `mcpo.yaml` from Phase 4.
+Ship `mcpo.yaml.example` entries that demonstrate how an operator can
+wire their own stdio MCP servers (commonly: an Obsidian vault server
+keyed on the operator's notes path). The operator's specific server
+names are out of scope; this phase ships the template, not the data.
 
 Sketch:
-- Mention both in `mcpo.yaml.example` with comments; default to disabled so the operator opts in.
-- Document the vault-path resolution + permissions in `docs/setup.md`.
+- Add a commented-out vault example to `mcpo.yaml.example` so the
+  operator can copy + adapt — default disabled so installing 4lm does
+  not silently expose private notes via MCP.
+- Document the vault-path resolution + permissions in `docs/setup.md`,
+  with a worked example.
 - No new code beyond config + docs.
 
-**Phase complete when**: enabling the two entries and running `4lm mcp restart` makes vault search/read tools available in WebUI; the assistant can answer "what did I note about X last week" by invoking personal-vault-example.
+**Phase complete when**: an operator enabling a custom stdio entry and
+running `4lm mcp restart` makes that server's tools available in WebUI;
+the assistant can invoke the operator's custom tool.
 
 ### Test Scenarios
 

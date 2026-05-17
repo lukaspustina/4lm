@@ -298,12 +298,14 @@ done <"${SOURCE_DIR}/requirements.txt"
 
 # ---- 9b. Install omlx from GitHub (not on PyPI) ----------------------------
 # omlx has no PyPI release; install directly from source.
+# Pinned to a specific commit for reproducibility; bump deliberately.
 # Idempotent: skip if already installed.
+readonly OMLX_GIT_REF="51907f08074742defec4375fb629e289801a8a9f" # 2026-05-14
 if pipx list --short 2>/dev/null | grep -q "^omlx "; then
   ok "omlx already installed ($(pipx list --short 2>/dev/null | grep "^omlx " | awk '{print $2}'))"
 else
-  info "pipx install --python ${PIPX_PYTHON} git+https://github.com/jundot/omlx.git"
-  pipx install --python "${PIPX_PYTHON}" "git+https://github.com/jundot/omlx.git"
+  info "pipx install --python ${PIPX_PYTHON} git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
+  pipx install --python "${PIPX_PYTHON}" "git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
 fi
 
 # ---- 9c. Inject extras into huggingface-hub venv ----------------------------
@@ -444,6 +446,7 @@ echo "       ${C_DIM}4lm start${C_RST}"
 echo
 echo "  ${C_BLU}3.${C_RST} Verify:"
 echo "       ${C_DIM}4lm status${C_RST}"
-echo "       ${C_DIM}4lm health${C_RST}"
+echo "       ${C_DIM}4lm doctor${C_RST}    (prereqs + smoke-test inference)"
 echo
 echo "Services do NOT auto-start at login. Run \`4lm start\` after each reboot."
+echo "Opt in to autostart per service with \`4lm autostart enable\`."
