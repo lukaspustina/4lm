@@ -1,23 +1,15 @@
 ---
 layout: default
-title: 4lm — Local LLM control plane for Apple Silicon
-description: One command, your hardware, your data, no metered bill. Run a full local LLM stack on Apple Silicon without administering it.
+title: Local LLM control plane for Apple Silicon
+tagline: Local LLM control plane for Apple Silicon
+description: A local LLM stack you don't have to babysit. Your Mac. Or a Mac in your closet. Either way, one command. Your hardware, your data, no metered bill.
 ---
-
-**A local LLM stack you don't have to babysit.**
-
-Your Mac. Or a Mac in your closet. Either way, one command.
-Your hardware, your data, no metered bill.
 
 Running multiple local LLMs on Apple Silicon means juggling ~140 GB of
 weights, wired-memory limits, profile YAMLs, and Open WebUI config
 drift. You end up administering the stack instead of using it.
 
 `4lm` is the CLI that refuses to let that happen.
-
-[Get it on GitHub](https://github.com/lukaspustina/4lm){: .btn }
-[Setup runbook](https://github.com/lukaspustina/4lm/blob/main/docs/setup.md){: .btn }
-[Profile schema](https://github.com/lukaspustina/4lm/blob/main/docs/profile-schema.md){: .btn }
 
 ## Two shapes
 

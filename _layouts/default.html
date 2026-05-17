@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="color-scheme" content="light dark">
+
+  <title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+  <meta name="description" content="{{ page.description | default: site.description }}">
+
+  {%- seo title=false -%}
+
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1 class="hero-title">{{ site.title }}</h1>
+      {%- if page.tagline -%}
+        <p class="hero-tagline">{{ page.tagline }}</p>
+      {%- endif -%}
+      {%- if page.description -%}
+        <p class="hero-description">{{ page.description }}</p>
+      {%- endif -%}
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="https://github.com/lukaspustina/4lm">View on GitHub</a>
+        <a class="btn" href="https://github.com/lukaspustina/4lm/blob/main/docs/setup.md">Setup runbook</a>
+        <a class="btn" href="https://github.com/lukaspustina/4lm/blob/main/docs/profile-schema.md">Profile schema</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container content">
+    {{ content }}
+  </main>
+
+  <footer class="container site-footer">
+    <p>
+      <a href="https://github.com/lukaspustina/4lm">4lm on GitHub</a>
+      ·
+      <a href="https://github.com/lukaspustina/4lm/blob/main/LICENSE">MIT licensed</a>
+    </p>
+    <p class="footer-credits">
+      Built on
+      <a href="https://github.com/jundot/omlx">omlx</a>,
+      <a href="https://github.com/ml-explore/mlx-lm">mlx_lm</a>,
+      <a href="https://github.com/ollama/ollama">Ollama</a>,
+      <a href="https://github.com/open-webui/open-webui">Open WebUI</a>,
+      <a href="https://github.com/sst/opencode">opencode</a>,
+      and the <a href="https://github.com/QwenLM">Qwen3 model family</a>.
+    </p>
+  </footer>
+</body>
+</html>

@@ -3,11 +3,8 @@ description: Local LLM control plane for Apple Silicon — one command, your har
 url: https://lukaspustina.github.io
 baseurl: /4lm
 
-theme: jekyll-theme-cayman
 plugins:
   - jekyll-seo-tag
-
-show_downloads: false
 
 github:
   is_project_page: true
