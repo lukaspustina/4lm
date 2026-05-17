@@ -81,6 +81,14 @@ require_helpers_python() {
   fi
 }
 
+# ---- Hard prerequisites ----------------------------------------------------
+# Refuse fast on non-supported hardware so users hit a clear message instead
+# of a confused failure deep inside omlx / ollama / open-webui. Lives below
+# the helper definitions so die() can format the error.
+if [[ "$(uname)" != "Darwin" ]] || [[ "$(uname -m)" != "arm64" ]]; then
+  die "4lm requires macOS on Apple Silicon (uname -sm: $(uname -sm))"
+fi
+
 # webui_installed: true (0) iff the WebUI plist exists on disk.
 # Plist presence is the source of truth for "WebUI is part of this install."
 webui_installed() {
@@ -1498,6 +1506,7 @@ cmd_doctor() {
   fi
 
   _doctor_check_models_cached
+  _doctor_check_ram || fail=1
 
   if is_loaded "${BACKEND_LABEL}"; then
     require_helpers_python
@@ -1507,6 +1516,32 @@ cmd_doctor() {
   fi
 
   return "${fail}"
+}
+
+# Warn when the host has less RAM than the active profile needs. Uses a
+# static map (profile name → min GB) matching the README "Fits on" column.
+# Custom profiles not in the map are skipped silently.
+_doctor_check_ram() {
+  [[ -L "${ACTIVE_CONFIG}" ]] || return 0
+  local profile
+  profile="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+  local need_gb
+  case "${profile}" in
+    lean | mlx-coding) need_gb=64 ;;
+    default) need_gb=96 ;;
+    max-100gb) need_gb=128 ;;
+    mlx-knowledge | ollama) need_gb=36 ;;
+    *) return 0 ;;
+  esac
+  local memsize_bytes have_gb
+  memsize_bytes="$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null || echo 0)"
+  have_gb=$((memsize_bytes / 1024 / 1024 / 1024))
+  if ((have_gb < need_gb)); then
+    warn "host has ${have_gb} GB RAM, profile '${profile}' wants ${need_gb} GB+ — consider: 4lm profile set lean"
+    return 1
+  fi
+  ok "host RAM ${have_gb} GB ≥ profile '${profile}' min ${need_gb} GB"
+  return 0
 }
 
 _doctor_check_models_cached() {
@@ -1846,8 +1881,10 @@ cmd_models_download() {
   echo
 
   local seen_mlx="" seen_ollama="" seen_ollama_server=false backend model_path _served _od
-  # Register cleanup in case we exit early while ollama is running.
+  # Cleanup on any exit, plus a friendly note on SIGINT/SIGTERM so users
+  # know partial downloads resume on re-run (hf + ollama both cache-aware).
   trap '[[ -n "${_ollama_tmp_pid:-}" ]] && kill "${_ollama_tmp_pid}" 2>/dev/null || true' EXIT
+  trap 'warn "interrupted — re-run \`4lm model download\` to resume (hf + ollama caches are honored)"; exit 130' INT TERM
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
     backend="$(profile_backend "${profile_yaml}" 2>/dev/null || true)"

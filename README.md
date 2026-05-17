@@ -20,12 +20,19 @@ One installer, one CLI, two ways to run it.
 ```sh
 ./install.sh           # omlx + Open WebUI + opencode TUI
 4lm start
-4lm opencode           # daily driver
+open http://localhost:3000   # register your admin account here, first
+4lm opencode                 # daily driver
 ```
 
 Open WebUI on `http://localhost:3000` with RAG, web search, code
 interpreter, and memory wired in by default. `opencode` in your
 terminal, pointed at the local `/v1`. Your laptop is the assistant.
+
+> **Register your WebUI admin account before doing anything else.** New
+> accounts default to the `pending` role with no privileges, and
+> registration is locked after the first user. If you skip this and
+> later run `4lm expose lan --confirm` on a network you don't fully
+> control, you can lock yourself out.
 
 ### Appliance — a Mac in your closet serves the LAN
 
@@ -39,6 +46,10 @@ Headless OpenAI-compatible `/v1/*` API on the LAN. Other machines run
 their own clients (`opencode`, Open WebUI, Continue.dev — anything that
 speaks `/v1`) pointed at `http://<host>:8000`. The Mac Studio in the
 closet does the inference; the Air on the couch does the typing.
+
+> **The backend has no auth.** Anyone who can reach `:8000` on your LAN
+> can call `/v1/*`. Use this on a network you trust, or front it with
+> Tailscale (or another VPN that does authenticate).
 
 ## What it refuses to do
 
@@ -78,6 +89,9 @@ closet does the inference; the Air on the couch does the typing.
   Pyodide code interpreter, personal memory, follow-up + autocomplete
   suggestions, file-upload RAG. Embeddings + reranker served by the
   same omlx backend → no second service, no cloud calls, fully offline.
+  (Most of these settings are PersistentConfig: copied into `webui.db`
+  on first init only — after that the admin UI is source of truth.
+  Toggles in the admin panel survive restarts; env-var changes do not.)
 - **Idempotent install / upgrade / uninstall.** Every step is a
   no-op on re-run: sudoers, sysctl, newsyslog, pipx, opencode config.
   Re-running `--backend-only` over a full install does not strip the
@@ -99,6 +113,12 @@ make models      # ~140 GB from HuggingFace (idempotent; same target updates)
 4lm start        # bootstrap launchd agents
 4lm opencode     # daily driver (alias: 4lm code)
 ```
+
+> **64 GB Macs: switch to the `lean` profile first** —
+> `4lm profile set lean` before `make models`. The `default` profile
+> wants 96 GB+ steady; `lean` fits in 40 GB and downloads ~80 GB instead
+> of ~140 GB. `4lm doctor` will warn you if the active profile doesn't
+> fit your hardware.
 
 After a reboot: `4lm start`. There's no autostart and that's a feature.
 
