@@ -1,0 +1,95 @@
+# ornith-vs-qwen: head-to-head coder A/B via omlx — experimental
+# =================================================================
+# Purpose
+# -------
+# Side-by-side evaluation profile. Loads TWO coders at once and serves
+# both from one omlx instance so you can fire the same prompt / repo /
+# session at each and compare directly — zero profile-switch latency,
+# no state drift. Not a daily-driver profile; a measurement rig.
+#
+# This exploits omlx being multi-model (paged KV cache): both coders
+# stay resident, you flip the model in opencode / WebUI to switch.
+#
+# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
+# ---------------------------------------------------
+# Qwen3-Coder-Next (4-bit):                ~42 GB
+# Ornith-1.0-35B (5-bit MLX):              ~24 GB
+# Resident (both pinned):                  ~66 GB
+# KV-cache headroom (shared):              ~44 GB — ample for comparison
+#                                          tasks, but LOWER per-model
+#                                          than either coder gets solo.
+# No embed / rerank / vision: the rig isolates the coder so the only
+# variable is the model. For RAG-in-the-loop comparison, add those back
+# (and budget the memory) — but then you are no longer A/B-ing cleanly.
+#
+# Why each slot
+# -------------
+# qwen3-coder-next — mlx-community/Qwen3-Coder-Next-4bit (80B / A3B MoE,
+#          ~42 GB). The incumbent. The project's coding-quality
+#          identity: agentic-recovery champion, long-horizon reasoning,
+#          complex tool usage. pin: true so it never evicts while you
+#          test the challenger.
+#
+# ornith-35b — leonsarmiento/Ornith-1.0-35B-5bit-mlx (35B MoE, ~24 GB).
+#          The challenger. DeepReinforce's self-scaffolding agentic
+#          coder (MIT). Whole pitch is agentic coding + recovery, which
+#          is exactly Qwen3-Coder-Next's claimed strength — so multi-
+#          tool recovery scenarios are where they diverge. pin: true so
+#          it does not idle out while you test the incumbent (a ttl here
+#          would make the next Ornith call pay a reload).
+#
+# Fairness caveats — READ before trusting numbers
+# ------------------------------------------------
+# - QUANT ASYMMETRY: Qwen is 4-bit, this Ornith is 5-bit → Ornith gets
+#   a slight quality edge from more bits. For a true apples-to-apples
+#   fight find a 4-bit Ornith MLX; otherwise note 5-bit in results.
+# - THIRD-PARTY CONVERSION: leonsarmiento/* is a community MLX quant of
+#   a days-old model (DeepReinforce, released 2026-06-25). Confirm omlx
+#   actually loads it — `4lm doctor`, then check GET /v1/models lists
+#   both served names — before drawing conclusions.
+# - SHARED KV: with both pinned, each coder's max usable context /
+#   throughput here is lower than it achieves solo. For peak-perf
+#   numbers (tps, context ceiling) use solo profiles instead and switch
+#   via `4lm profile set`.
+# - NON-VL variant on purpose (model_type: lm). The MLX-VL-oQ5 build is
+#   multimodal; only swap to it if you also want to test vision.
+#
+# When to use
+# -----------
+# Evaluating Ornith-1.0 as a candidate for the coder slot in default /
+# mlx-coding / max-100gb. Run the same agentic tasks through both,
+# weighting multi-tool recovery scenarios. Track: task success, tool-
+# call correctness, tokens-to-solution, tps (`4lm diag` for inflight,
+# localmaxxing for a tps reference).
+#
+# When NOT to use
+# ---------------
+# - Daily work → default. This rig has no chat / RAG / vision.
+# - Peak single-model perf → solo profiles (mlx-coding vs an Ornith-only
+#   clone), not this shared-KV setup.
+# - You need ~70 GB free RAM for other apps → too heavy; test sequentially.
+#
+# Assumptions to validate on review
+# ---------------------------------
+# - omlx loads the community Ornith MLX quant without a staging quirk.
+# - 5-bit Ornith vs 4-bit Qwen is an acceptable comparison, or a 4-bit
+#   Ornith has appeared on HF.
+# - If Ornith wins, promote it into a real profile (own served name) and
+#   retire this rig. This file is disposable once the verdict is in.
+#
+# Last reviewed: 2026-06-30
+
+backend: omlx
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    model_type: lm
+    pin: true
+    ttl: null
+
+  - model_path: leonsarmiento/Ornith-1.0-35B-5bit-mlx
+    served_model_name: ornith-35b
+    model_type: lm
+    pin: true
+    ttl: null
