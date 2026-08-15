@@ -3,7 +3,22 @@
 **Status**: Living
 **Created**: 2026-05-12
 **Refined**: 2026-05-12
-**Retroactive**: Yes — documents the shipped product at v0.6.0; reverse-engineered from `specs/done/sdd/4lm-rework-2026-05-09.md`, README, CLAUDE.md, and the four other done SDDs.
+**Reviewed**: 2026-08-15 — carried forward to v0.7.0, see below
+**Retroactive**: Yes — originally written against the shipped product at v0.6.0; reverse-engineered from `specs/done/sdd/4lm-rework-2026-05-09.md`, README, CLAUDE.md, and the other done SDDs.
+
+**Currency (2026-08-15).** This is a Living PRD, so it is not archived — it is kept current
+instead, and it had fallen a release behind. The product ships at **v0.7.0**. What arrived after
+v0.6.0 is release-hardening and reach rather than new product intent, which is why nothing below
+changes:
+
+- **Public release** — LICENSE, rebranded labels, pinned omlx, README warnings, badges, GitHub
+  issue templates and a Pages landing site.
+- **Guardrails at launch** — a RAM check, an architecture guardrail and a SIGINT trap.
+- **Profiles** — the full Qwen3 stack plus `lean` and `max-100gb` tiers.
+- **Fixes** — `models list` now scopes the Hugging Face cache listing to the cache directory it
+  was passed.
+- The backend-only strand completed and archived (`specs/done/sdd/4lm-backend-only-2026-05-15.md`),
+  so there are six done SDDs now, not five.
 
 ---
 
@@ -178,7 +193,7 @@ AC22: The `README.md §TL;DR` sequence (`make bootstrap && make install && make 
 
 ## Open Decisions
 
-None. The product is shipping at v0.6.0; new product decisions land via new PRDs.
+None. The product is shipping at v0.7.0; new product decisions land via new PRDs.
 
 ## References
 
