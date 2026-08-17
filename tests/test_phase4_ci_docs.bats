@@ -47,6 +47,12 @@ load helpers/setup
   [[ "${output}" == *"8000/v1"* ]]
 }
 
+@test "docs/setup.md says a re-install replaces a deviating omlx version" {
+  run grep -A8 'Changing pinned package versions' "${REPO_ROOT}/docs/setup.md"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"omlx"* ]]
+}
+
 @test "docs/setup.md mentions --backend-only flag and BACKEND_ONLY env var" {
   run grep -c -- '--backend-only' "${REPO_ROOT}/docs/setup.md"
   [ "${output}" -ge 1 ]
