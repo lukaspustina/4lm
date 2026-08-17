@@ -24,7 +24,7 @@ SH
   # omlx's line is marker-aware (SDD bump-omlx, Requirement 10): when
   # OMLX_INSTALLED_MARKER is set and the file exists, its contents become
   # the reported version — empty contents mean "not installed" (no omlx
-  # line at all). Otherwise fall back to the hardcoded 0.3.8 literal, so
+  # line at all). Otherwise fall back to the hardcoded 0.6.0 literal, so
   # the pre-existing "runs twice" test (which never seeds the marker)
   # keeps working unmodified.
   #
@@ -39,7 +39,7 @@ case "$1" in
       omlx_version="$(cat "${OMLX_INSTALLED_MARKER}")"
       [[ -n "${omlx_version}" ]] && echo "omlx ${omlx_version}"
     else
-      echo "omlx 0.3.8"
+      echo "omlx 0.6.0"
     fi
     echo "open-webui 0.6.43"
     ;;
@@ -73,7 +73,7 @@ SH
 
 @test "install.sh runs twice and produces identical state" {
   # OMLX_INSTALLED_MARKER is deliberately not seeded here (SDD bump-omlx,
-  # Requirement 10): the stub falls back to the hardcoded 0.3.8 literal on
+  # Requirement 10): the stub falls back to the hardcoded 0.6.0 literal on
   # both runs, and the stub must not error on that unset-marker path.
   [ -z "${OMLX_INSTALLED_MARKER:-}" ]
 
@@ -118,7 +118,7 @@ SH
 
 @test "install.sh reports omlx already installed at expected version" {
   marker="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
-  echo "0.3.9.dev1" >"${marker}"
+  echo "0.6.0" >"${marker}"
   log="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
   : >"${log}"
   export OMLX_INSTALLED_MARKER="${marker}"
@@ -131,7 +131,7 @@ SH
   run grep -c 'omlx.git@' "${log}"
   [ "${output}" = "0" ]
 
-  [[ "${install_output}" == *"0.3.9.dev1"* ]]
+  [[ "${install_output}" == *"0.6.0"* ]]
   [[ "${install_output}" == *"already installed"* ]]
 }
 
@@ -155,7 +155,7 @@ SH
   [ "${output}" = "1" ]
 
   [[ "${install_output}" == *"0.3.8"* ]]
-  [[ "${install_output}" == *"0.3.9.dev1"* ]]
+  [[ "${install_output}" == *"0.6.0"* ]]
 }
 
 @test "install.sh converges omlx to expected version across two runs" {
@@ -165,7 +165,7 @@ SH
   : >"${log}"
   export OMLX_INSTALLED_MARKER="${marker}"
   export OMLX_INSTALL_LOG="${log}"
-  export OMLX_INSTALL_RESULT_VERSION="0.3.9.dev1"
+  export OMLX_INSTALL_RESULT_VERSION="0.6.0"
 
   run "${REPO_ROOT}/install.sh"
   [ "$status" -eq 0 ]
@@ -176,7 +176,7 @@ SH
   run grep -c -- '--force' "${log}"
   [ "${output}" = "1" ]
 
-  [ "$(cat "${marker}")" = "0.3.9.dev1" ]
+  [ "$(cat "${marker}")" = "0.6.0" ]
 
   : >"${log}"
 
