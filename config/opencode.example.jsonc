@@ -23,7 +23,9 @@
       "models": {
         // default / lean / max-100gb / mlx-coding profiles
         "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code)" },
-        // default / lean / mlx-knowledge profiles
+        // default / mlx-knowledge profiles
+        "qwen3.8-27b":      { "name": "Qwen3.8-27B (plan/chat)" },
+        // lean profile (keeps the faster MoE chat model)
         "qwen3.6-35b":      { "name": "Qwen3.6-35B-A3B (plan/chat)" },
         // max-100gb profile (chat tier upgrade)
         "qwen3-next-80b":   { "name": "Qwen3-Next-80B-A3B (heavy reasoning)" },

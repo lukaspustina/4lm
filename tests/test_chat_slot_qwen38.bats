@@ -63,12 +63,14 @@ load helpers/setup
   done
 }
 
-@test "opencode template lists the new chat slot and not the old one" {
+@test "opencode template lists both chat slots" {
+  # lean still serves qwen3.6-35b, so the template must keep that alias
+  # alongside the new one — dropping it would strip lean's chat model.
   jsonc="${REPO_ROOT}/config/opencode.example.jsonc"
   run grep -c '"qwen3.8-27b"' "${jsonc}"
   [ "${output}" -ge 1 ]
   run grep -c '"qwen3.6-35b"' "${jsonc}"
-  [ "${output}" -eq 0 ]
+  [ "${output}" -ge 1 ]
 }
 
 @test "state-machine test no longer hard-codes a chat model name" {

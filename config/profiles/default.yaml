@@ -8,9 +8,9 @@
 #
 # Memory budget (110 GB usable VRAM on M5 Max 128 GB)
 # ---------------------------------------------------
-# Resident if all loaded:                  ~75 GB
-# Steady state (coder + chat + embed):     ~65 GB
-# KV-cache headroom in steady state:       ~35 GB — comfortable for
+# Resident if all loaded:                  ~72 GB
+# Steady state (coder + chat + embed):     ~62 GB
+# KV-cache headroom in steady state:       ~38 GB — comfortable for
 #                                          long contexts on coder
 #                                          AND chat simultaneously.
 # Vision evicts under pressure via omlx LRU; reranker / embedder
@@ -24,12 +24,22 @@
 #          project's coding-quality identity. pin: true because we
 #          want it always-resident — it dominates daily use.
 #
-# chat   — mlx-community/Qwen3.6-35B-A3B-4bit (~18 GB, MoE 3B-active)
-#          Why: ~105 tps real-world on M5 Max (localmaxxing), 3–4×
-#          the throughput a dense 31B would give. Newer than the
-#          previous Gemma 4 31B (2026-04-15 release). Same Qwen3
-#          family as the coder → coherent tool-call syntax. Drops
-#          Gemma's RotatingKVCache history this project paid for.
+# chat   — mlx-community/Qwen3.8-27B-4bit (15.27 GB resident, dense 27B)
+#          Why: stronger reasoning than the Qwen3.6-35B-A3B it
+#          replaces, with a 262K native context. Same Qwen3 family
+#          as the coder → coherent tool-call syntax.
+#          The trade is throughput: this is a DENSE 27B (all
+#          parameters active), not a 3B-active MoE. Measured on this
+#          machine: ~27 tok/s (3452 tokens in 128 s), against the
+#          MoE's ~105 tps. Choose lean if you want the fast one.
+#          CAVEAT — the model's chat template defaults
+#          reasoning_effort to 'xhigh'. An unconfigured complex
+#          prompt ran past 600 s here without finishing; the same
+#          prompt with chat_template_kwargs {reasoning_effort: low}
+#          in the REQUEST BODY finished in ~2 minutes. The same key
+#          in ~/.omlx/model_settings.json does NOT take effect
+#          (measured), so this cannot be set from the profile —
+#          clients must send it per request.
 #
 # embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
 #          Why: MTEB-multilingual leader (70.58 mean). German +
@@ -69,14 +79,14 @@
 #   When Qwen3.7-Coder / Qwen4-Coder lands, re-benchmark.
 # - 4-bit quants are the right quality/speed point. 6-bit variants
 #   exist but the memory cost is real (~55 GB for the coder alone).
-# - Qwen3.6-35B-A3B German fluency is acceptable. If German polish
+# - Qwen3.8-27B German fluency is acceptable. If German polish
 #   becomes a daily pain point, consider a Gemma 3 27B hot-swap
 #   profile (NOT a regression to Gemma 4 — that's the bug we fixed).
 # - Vision usage justifies the +9 GB slot. If you rarely use OCR or
 #   image analysis, consider dropping vision from default.
 # - 8B embedder still leads MTEB-multilingual.
 #
-# Last reviewed: 2026-05-15
+# Last reviewed: 2026-08-17
 
 backend: omlx
 
@@ -87,9 +97,9 @@ models:
     pin: true
     ttl: null
 
-  - model_path: mlx-community/Qwen3.6-35B-A3B-4bit
-    served_model_name: qwen3.6-35b
-    model_type: lm
+  - model_path: mlx-community/Qwen3.8-27B-4bit
+    served_model_name: qwen3.8-27b
+    model_type: vlm
     pin: false
     ttl: 600
 
