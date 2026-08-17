@@ -1,6 +1,7 @@
 # SDD: Swap the chat slot to Qwen3.8-27B
 
-Status: Ready for Implementation
+Status: Done
+Finished: 2026-08-17
 Original: specs/sdd/qwen38-profile.md
 Refined: 2026-08-17
 
