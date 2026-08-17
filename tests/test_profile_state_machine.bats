@@ -569,7 +569,13 @@ YAML
   run make -C "${REPO_ROOT}" models
   [ "$status" -eq 0 ]
   # All profiles now use omlx or mlx_lm (no ollama); make models dispatches hf download.
-  # default.yaml carries Qwen3.6-35B-A3B as the chat model.
-  grep -q "mlx-community/Qwen3.6-35B-A3B-4bit" "${HF_LOG}"
+  # The chat model is read out of default.yaml rather than hard-coded, so a
+  # future chat-slot swap does not fail this test for an unrelated reason.
+  # shellcheck source=../bin/4lm
+  source "${REPO_ROOT}/bin/4lm"
+  chat_path="$(profile_model_entries "${REPO_ROOT}/config/profiles/default.yaml" |
+    sed -n '2p' | cut -d'|' -f2)"
+  [ -n "${chat_path}" ]
+  grep -q "${chat_path}" "${HF_LOG}"
   [ -s "${HF_LOG}" ]
 }
