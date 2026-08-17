@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- omlx pinned to v0.6.0 (`b16a1d1b`), the first release that loads Qwen3.8
+  checkpoints (blockwise FP8, embedded MTP, ModelOpt NVFP4).
+- `install.sh` now **enforces** the omlx pin instead of only recording it: it
+  compares the installed package version against `OMLX_EXPECTED_VERSION` and
+  reinstalls with `pipx install --force` when they differ. Previously any
+  installed omlx short-circuited the check, so a pin bump never reached a
+  machine that already had 4lm.
+
 ## [0.7.0] - 2026-05-17
 
 ### Added

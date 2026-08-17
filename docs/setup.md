@@ -415,6 +415,13 @@ omlx is pinned the same way but in `install.sh` itself (`OMLX_GIT_REF` plus
 `OMLX_EXPECTED_VERSION`, since it ships from git rather than PyPI). Re-running
 the installer replaces a deviating omlx version with the pinned one.
 
+Bump both together. The comparison is on the version string, not the ref — pipx
+does not retain the git SHA — so moving `OMLX_GIT_REF` to a commit that reports
+the same version is a silent no-op on machines that already have omlx. Read the
+target commit's `omlx/_version.py` and set `OMLX_EXPECTED_VERSION` to that exact
+value; commits between releases report dev suffixes (`0.3.9.dev1`), not clean
+tags.
+
 ### `4lm logs backend` shows no file
 
 The service hasn't run yet. Run `4lm start backend` first.
