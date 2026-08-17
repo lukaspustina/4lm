@@ -48,9 +48,13 @@ load helpers/setup
 }
 
 @test "docs/setup.md says a re-install replaces a deviating omlx version" {
-  run grep -A8 'Changing pinned package versions' "${REPO_ROOT}/docs/setup.md"
+  # Heading-to-heading range, not a fixed -A window: the section must be
+  # allowed to grow without silently pushing the sentence out of view.
+  run awk '/^### Changing pinned package versions/{f=1;next} /^### /{f=0} f' \
+    "${REPO_ROOT}/docs/setup.md"
   [ "$status" -eq 0 ]
   [[ "${output}" == *"omlx"* ]]
+  [[ "${output}" == *"replaces a deviating omlx version with the pinned one"* ]]
 }
 
 @test "docs/setup.md mentions --backend-only flag and BACKEND_ONLY env var" {

@@ -411,6 +411,10 @@ The `requirements.txt` pin is intentional. To change a version, edit
 the installer detects existing pipx installs and reinstalls with `--force`
 when the pinned version differs. Don't `pip install --upgrade` out-of-band.
 
+omlx is pinned the same way but in `install.sh` itself (`OMLX_GIT_REF` plus
+`OMLX_EXPECTED_VERSION`, since it ships from git rather than PyPI). Re-running
+the installer replaces a deviating omlx version with the pinned one.
+
 ### `4lm logs backend` shows no file
 
 The service hasn't run yet. Run `4lm start backend` first.
