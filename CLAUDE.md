@@ -159,6 +159,35 @@ source of truth — changing the env value won't override the DB. Set
 `ENABLE_PERSISTENT_CONFIG=False` to make env vars authoritative every start
 (at the cost of disabling all admin-UI persistence).
 
+## What a profile can and cannot configure
+
+`render_omlx_settings` writes exactly two per-model keys to
+`~/.omlx/model_settings.json`: `is_pinned` and `ttl_seconds`. Everything else
+in a profile entry is either consumed by 4lm itself or is documentation.
+
+- **`model_type` never reaches omlx.** It is validated (`lm` | `vlm`) and
+  otherwise unused — omlx detects the type from the checkpoint's own
+  `config.json` (`Discovered model: … type: vlm, engine: vlm`). Set it
+  correctly for readers, but do not expect it to change behaviour.
+- **Chat-template defaults cannot be overridden from a profile.** Measured
+  2026-08-17 on Qwen3.8-27B, whose template carries
+  `reasoning_effort|default('xhigh')`: the same key in `chat_template_kwargs`
+  works in the **request body** (128 s for a prompt) and has **no effect** via
+  `model_settings.json` (336 s for the same prompt on the same server, which
+  logged `Loaded settings for 1 models`). Client-side is the only lever.
+  `docs/profile-schema.md` documents a `chat_template_kwargs` profile field
+  that `bin/4lm` does not implement — do not build on it.
+
+## Changing a served_model_name
+
+Embedder, reranker and vision names are contractual (see below). The coder and
+chat names are not, but changing one still touches seven places: the profile
+YAMLs, `config/opencode.example.jsonc`, the profile tables in `README.md`,
+`index.md` and this file, the served-model examples in `docs/setup.md`, and
+any active SDD under `specs/sdd/` that describes the shipped stack. Grep for
+both the `served_model_name` and the `model_path` — they diverge in spelling
+(`qwen3.6-35b` vs `Qwen3.6-35B-A3B-4bit`), so one grep finds only half.
+
 ## omlx pin
 
 omlx ships from git, not PyPI, and pipx does **not** retain the ref it was
