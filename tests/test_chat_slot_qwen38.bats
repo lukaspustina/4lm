@@ -11,7 +11,8 @@ load helpers/setup
   # Anchor on the chat entry and read the three lines that follow it. A
   # forward scan would be satisfied by the vision slot, which is also vlm.
   run awk '/model_path: mlx-community\/Qwen3.8-27B-4bit/{for(i=1;i<=4;i++){getline; print}; exit}' "${yaml}"
-  [ "$status" -eq 0 ]
+  # awk exits 0 even when the anchor never matches, so assert on the output.
+  [ -n "${output}" ]
   [[ "${output}" == *"served_model_name: qwen3.8-27b"* ]]
   [[ "${output}" == *"model_type: vlm"* ]]
   # Requirement 1: the entry's pin/ttl are carried over unchanged.

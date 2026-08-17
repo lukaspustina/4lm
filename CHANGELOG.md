@@ -10,11 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **BREAKING**: the chat slot of the `default` and `mlx-knowledge` profiles
   serves `qwen3.8-27b` (`mlx-community/Qwen3.8-27B-4bit`) instead of
-  `qwen3.6-35b`. Anything hard-coding the old served-model name — an existing
-  `~/.config/opencode/opencode.jsonc`, OpenWebUI presets, scripts — must be
-  updated by hand; the seeded template only covers fresh installs. `lean`
-  keeps `qwen3.6-35b` deliberately. Knowledge bases need no reindexing: the
-  embedder and reranker names are unchanged.
+  `qwen3.6-35b`. **Run `make models` before switching**: the ~15 GB
+  checkpoint must be in the HF cache, or `4lm profile set default` fails in
+  staging with "HF model not found". Anything hard-coding the old
+  served-model name — an existing `~/.config/opencode/opencode.jsonc`,
+  OpenWebUI presets, scripts — must be updated by hand; the seeded template
+  only covers fresh installs. `lean` keeps `qwen3.6-35b` deliberately.
+  Knowledge bases need no reindexing: the embedder and reranker names are
+  unchanged.
   The new model is a dense 27B, not a 3B-active MoE — measured ~27 tok/s here
   against the MoE's ~105 tps. Its chat template also defaults
   `reasoning_effort` to `xhigh`, which must be overridden per request

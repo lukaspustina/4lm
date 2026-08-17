@@ -150,9 +150,10 @@ deliberately — a dense 27B is the opposite of lean.
    do not read as a contradiction.
 9. `docs/setup.md:141` shall name `qwen3.8-27b` instead of `qwen3.6-35b`.
    `docs/setup.md:264`'s `served_model_name: qwen3.6-35b` line shall become
-   `served_model_name: qwen3.8-27b`; the `model_path:` line above it
-   (line 263, pre-existing `-DWQ` mismatch) is unchanged — out of scope per
-   Context & Constraints.
+   `served_model_name: qwen3.8-27b`, and the `model_path:` line above it
+   (line 263) shall become `mlx-community/Qwen3.8-27B-4bit`. Leaving the old
+   path would keep the example internally inconsistent and preserve the
+   pre-existing `-DWQ` suffix defect, which the replacement removes anyway.
 10. `CLAUDE.md`'s profile lineup table (`CLAUDE.md:122-127`) shall read
     `~62 GB` for `default` and `~20 GB` for `mlx-knowledge`.
 11. `CHANGELOG.md`'s `[Unreleased]` section (`CHANGELOG.md:8-17`) shall gain
@@ -167,7 +168,7 @@ deliberately — a dense 27B is the opposite of lean.
 |---|---|
 | `config/profiles/default.yaml` | chat-slot entry (lines 90-94) + header (memory budget, "Why: chat" bullet, assumptions bullet, `Last reviewed:`) |
 | `config/profiles/mlx-knowledge.yaml` | chat-slot entry (lines 66-70) + header (same set) |
-| `config/opencode.example.jsonc` | line 26-27: comment + model alias `qwen3.6-35b` → `qwen3.8-27b` |
+| `config/opencode.example.jsonc` | line 26-27: add a `qwen3.8-27b` alias and re-comment both entries; `qwen3.6-35b` is retained for `lean` |
 | `tests/test_profile_state_machine.bats` | lines 566-575: `profile_model_entries()`-based extraction instead of the literal model string |
 | `README.md` | table rows (149-155) + memory-math paragraph (156-161) |
 | `index.md` | table rows (70-76), same table, GitHub Pages copy |
@@ -341,8 +342,9 @@ None.
 - omlx 0.6.0 listing HF-cache models in `/v1/models` beyond the active
   profile's slots (confirmed to be cache discovery, not a profile leak).
 - Any change to `lean` or `max-100gb`.
-- The `-DWQ` suffix mismatch in `docs/setup.md:263`'s example `model_path` —
-  pre-existing, predates this SDD.
+  (The `-DWQ` suffix mismatch in `docs/setup.md:263` was originally scoped
+  out here as pre-existing; Requirement 9 now covers it, because replacing
+  the model name on that line removes the suffix as a side effect.)
 - Reconciling README's componentwise memory-math method with the profile
   header's "Steady state" figure into a single accounting method — pre-
   existing ~0.6 GB gap, unrelated to this swap (see Decision Log).

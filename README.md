@@ -155,11 +155,12 @@ knowledge bases stay valid across switches.
 
 **Memory math for `default` on a 128 GB Mac.** Qwen3-Coder-Next 80B
 (~42 GB 4-bit) + Qwen3.8-27B (~15.27 GB) + Qwen3-Embedding-8B
-(~5 GB) + Qwen3-Reranker-0.6B (~0.4 GB) + Qwen3-VL-8B (~5 GB) ≈
-68 GB with everything resident — the table's ~62 GB is the steady state,
-where vision is evicted under pressure by omlx's LRU. The coder is an MoE with ~3B active params, so KV cache
-and batched decoding fit comfortably in the remaining ~28 GB of the
-wired-memory budget. The chat model is dense — all 27B parameters are
+(~5 GB) + Qwen3-Reranker-0.6B (~0.7 GB) + Qwen3-VL-8B (~9 GB) ≈
+72 GB with everything resident. The table's ~62 GB is the steady state:
+vision and the reranker are evicted under pressure by omlx's LRU, and
+they account for exactly that ~10 GB difference. The coder is an MoE
+with ~3B active params, so KV cache and batched decoding fit
+comfortably in the remaining ~24 GB of the 96 GB wired-memory budget. The chat model is dense — all 27B parameters are
 read per token, which costs throughput rather than memory.
 
 The everyday ladder is `lean` → `default` → `max-100gb`. `mlx-coding`
