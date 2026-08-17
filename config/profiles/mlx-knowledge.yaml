@@ -69,6 +69,9 @@
 # the MoE variant for speed parity with the rest of the fleet, and
 # added the shared embedder + reranker so vault RAG is a first-class
 # capability of this profile.
+# Changed 2026-08-17: back to a dense model (Qwen3.8-27B). The speed
+# parity above was deliberately traded for reasoning quality and the
+# 262K context — see the chat slot's rationale.
 #
 # Last reviewed: 2026-08-17
 
