@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
 LOG="${PIPX_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/pipx-calls}"
 echo "$*" >> "${LOG}"
+# `list --short` reports whatever the test seeded in PIPX_LIST_SHORT; unset or
+# empty means "nothing installed", which is what every consumer saw before.
+if [[ "$1" == "list" && "$2" == "--short" && -n "${PIPX_LIST_SHORT:-}" ]]; then
+  printf '%s\n' "${PIPX_LIST_SHORT}"
+fi
 exit 0
