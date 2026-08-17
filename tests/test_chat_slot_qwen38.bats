@@ -8,13 +8,15 @@ load helpers/setup
 
 @test "default profile: chat slot serves Qwen3.8-27B as a vlm" {
   yaml="${REPO_ROOT}/config/profiles/default.yaml"
-  run grep -c "mlx-community/Qwen3.8-27B-4bit" "${yaml}"
-  [ "${output}" -ge 1 ]
-  run grep -c "served_model_name: qwen3.8-27b" "${yaml}"
-  [ "${output}" -ge 1 ]
-  # The chat entry is models[1]; assert its three fields sit together.
-  run awk '/model_path: mlx-community\/Qwen3.8-27B-4bit/{f=1} f&&/model_type: vlm/{print "ok"; exit}' "${yaml}"
-  [ "${output}" = "ok" ]
+  # Anchor on the chat entry and read the three lines that follow it. A
+  # forward scan would be satisfied by the vision slot, which is also vlm.
+  run awk '/model_path: mlx-community\/Qwen3.8-27B-4bit/{for(i=1;i<=4;i++){getline; print}; exit}' "${yaml}"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"served_model_name: qwen3.8-27b"* ]]
+  [[ "${output}" == *"model_type: vlm"* ]]
+  # Requirement 1: the entry's pin/ttl are carried over unchanged.
+  [[ "${output}" == *"pin: false"* ]]
+  [[ "${output}" == *"ttl: 600"* ]]
 }
 
 @test "default profile: outgoing chat model is gone" {
