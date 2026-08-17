@@ -299,13 +299,24 @@ done <"${SOURCE_DIR}/requirements.txt"
 # ---- 9b. Install omlx from GitHub (not on PyPI) ----------------------------
 # omlx has no PyPI release; install directly from source.
 # Pinned to a specific commit for reproducibility; bump deliberately.
-# Idempotent: skip if already installed.
+# The pin is enforced, not just recorded: pipx does not retain the git ref
+# (package_or_url is truncated after install), so OMLX_EXPECTED_VERSION is
+# the marker standing in for the SHA. A deviating version is force-reinstalled.
+# §9a's one-line grep idiom is not reused here because it cannot distinguish
+# "absent" (install) from "wrong version" (install --force).
+readonly OMLX_EXPECTED_VERSION="0.3.9.dev1"
 readonly OMLX_GIT_REF="51907f08074742defec4375fb629e289801a8a9f" # 2026-05-14
-if pipx list --short 2>/dev/null | grep -q "^omlx "; then
-  ok "omlx already installed ($(pipx list --short 2>/dev/null | grep "^omlx " | awk '{print $2}'))"
-else
+# `|| true`: no omlx line makes grep exit 1, which set -euo pipefail would
+# treat as fatal — but "absent" is a normal state, handled by the branch below.
+omlx_installed="$(pipx list --short 2>/dev/null | grep "^omlx " | awk '{print $2}' || true)"
+if [[ -z "${omlx_installed}" ]]; then
   info "pipx install --python ${PIPX_PYTHON} git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
   pipx install --python "${PIPX_PYTHON}" "git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
+elif [[ "${omlx_installed}" == "${OMLX_EXPECTED_VERSION}" ]]; then
+  ok "omlx already installed (${omlx_installed})"
+else
+  info "omlx ${omlx_installed} != pinned ${OMLX_EXPECTED_VERSION} — reinstalling at ${OMLX_GIT_REF}"
+  pipx install --python "${PIPX_PYTHON}" --force "git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
 fi
 
 # ---- 9c. Inject extras into huggingface-hub venv ----------------------------
