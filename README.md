@@ -147,18 +147,19 @@ knowledge bases stay valid across switches.
 | Profile         | Backend | Coder                   | Chat            | Embed | Rerank | Vision | Steady | Fits on |
 |-----------------|---------|-------------------------|-----------------|-------|--------|--------|--------|---------|
 | `lean`          | omlx    | Qwen3-Coder-30B-A3B     | Qwen3.6-35B-A3B | 8B    | 0.6B   | —      | ~40 GB | 64 GB+  |
-| `default`       | omlx    | Qwen3-Coder-Next (80B)  | Qwen3.6-35B-A3B | 8B    | 0.6B   | VL-8B  | ~65 GB | 96 GB+  |
+| `default`       | omlx    | Qwen3-Coder-Next (80B)  | Qwen3.8-27B     | 8B    | 0.6B   | VL-8B  | ~62 GB | 96 GB+  |
 | `max-100gb`     | omlx    | Qwen3-Coder-Next (80B)  | Qwen3-Next-80B  | 8B    | 4B     | VL-8B  | ~92 GB | 128 GB  |
 | `mlx-coding`    | omlx    | Qwen3-Coder-Next (80B)  | —               | —     | —      | —      | ~42 GB | 64 GB+  |
-| `mlx-knowledge` | omlx    | —                       | Qwen3.6-35B-A3B | 8B    | 0.6B   | —      | ~23 GB | 36 GB+  |
+| `mlx-knowledge` | omlx    | —                       | Qwen3.8-27B     | 8B    | 0.6B   | —      | ~20 GB | 36 GB+  |
 | `ollama`        | ollama  | qwen3-coder-next:q4_K_M | —               | —     | —      | —      | ~22 GB | 36 GB+  |
 
 **Memory math for `default` on a 128 GB Mac.** Qwen3-Coder-Next 80B
-(~42 GB 4-bit) + Qwen3.6-35B-A3B (~12 GB) + Qwen3-Embedding-8B
+(~42 GB 4-bit) + Qwen3.8-27B (~15.27 GB) + Qwen3-Embedding-8B
 (~5 GB) + Qwen3-Reranker-0.6B (~0.4 GB) + Qwen3-VL-8B (~5 GB) ≈
-65 GB steady. Both 80B-class models are MoE → ~3B active params each
-→ KV cache and batched decoding fit comfortably in the remaining
-~33 GB of the wired-memory budget.
+68 GB steady. The coder is an MoE with ~3B active params, so KV cache
+and batched decoding fit comfortably in the remaining ~28 GB of the
+wired-memory budget. The chat model is dense — all 27B parameters are
+read per token, which costs throughput rather than memory.
 
 The everyday ladder is `lean` → `default` → `max-100gb`. `mlx-coding`
 strips everything except the 80B coder so long agentic sessions get
