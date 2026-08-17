@@ -138,7 +138,7 @@ For each model in the active profile, create or update its OWUI record:
 6. Save
 
 Apply to the default profile's coder and chat models: `qwen3-coder-next`
-and `qwen3.6-35b`. (The embedder, reranker, and vision models are wired
+and `qwen3.8-27b`. (The embedder, reranker, and vision models are wired
 via WebUI env vars rather than per-model records.) Apply the same to any
 other profile models that have `enable_auto_tool_choice: true`.
 
@@ -260,8 +260,8 @@ per-model in the profile YAML — add a `sampling:` block to the affected
 model entry:
 
 ```yaml
-- model_path: mlx-community/Qwen3.6-35B-A3B-4bit-DWQ
-  served_model_name: qwen3.6-35b
+- model_path: mlx-community/Qwen3.8-27B-4bit
+  served_model_name: qwen3.8-27b
   sampling:
     repetition_penalty: 1.05   # raise to 1.10 if 1.05 isn't enough
 ```

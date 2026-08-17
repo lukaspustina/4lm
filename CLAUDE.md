@@ -120,10 +120,10 @@ Full table with use-cases, fits-on, and memory math lives in
 | Profile | Backend | Steady |
 |---|---|---|
 | `lean` | omlx | ~40 GB |
-| `default` | omlx | ~65 GB |
+| `default` | omlx | ~62 GB |
 | `max-100gb` | omlx | ~92 GB |
 | `mlx-coding` | omlx | ~42 GB |
-| `mlx-knowledge` | omlx | ~23 GB |
+| `mlx-knowledge` | omlx | ~20 GB |
 | `ollama` | ollama | ~22 GB |
 
 All omlx embedders share `served_model_name: qwen3-embedding`, all omlx
