@@ -9,18 +9,30 @@
 #
 # Memory budget (110 GB usable VRAM on M5 Max 128 GB)
 # ---------------------------------------------------
-# Resident if all loaded:        ~24 GB
-# Steady state (chat + embed):   ~23 GB
-# KV-cache headroom:             ~85 GB — generous, supports the full
+# Resident if all loaded:        ~21 GB
+# Steady state (chat + embed):   ~20 GB
+# KV-cache headroom:             ~88 GB — generous, supports the full
 #                                native 262K-token context window.
 #
 # Why each slot
 # -------------
-# chat   — mlx-community/Qwen3.6-35B-A3B-4bit (~18 GB, MoE 3B-active)
-#          Why: same model as default/lean/max chat. MoE so throughput
-#          is ~105 tps real-world on M5 Max (faster than 27B dense
-#          options). 262K native context covers whole-doc synthesis.
-#          2026-04-15 polish release with stable tool calling.
+# chat   — mlx-community/Qwen3.8-27B-4bit (15.27 GB resident, dense 27B)
+#          Why: the 262K native context is this profile's reason to
+#          exist, and this model pairs it with stronger reasoning
+#          than the Qwen3.6-35B-A3B it replaces — whole-document
+#          synthesis is exactly where that pays. Same model as
+#          default's chat slot; lean keeps the MoE.
+#          The trade is throughput: DENSE 27B (all parameters
+#          active), measured ~27 tok/s on this machine (3452 tokens
+#          in 128 s), against the MoE's ~105 tps.
+#          CAVEAT — the model's chat template defaults
+#          reasoning_effort to 'xhigh'. An unconfigured complex
+#          prompt ran past 600 s here without finishing; the same
+#          prompt with chat_template_kwargs {reasoning_effort: low}
+#          in the REQUEST BODY finished in ~2 minutes. The same key
+#          in ~/.omlx/model_settings.json does NOT take effect
+#          (measured), so this cannot be set from the profile —
+#          clients must send it per request.
 #
 # embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
 #          Why: MTEB-multilingual leader (70.58), strong German +
@@ -49,8 +61,8 @@
 # ---------------------------------
 # - Vault content is primarily text. Visual content needs default profile.
 # - 262K context is enough for typical synthesis (rarely hit cap).
-# - Qwen3.6-35B-A3B remains the right pick — re-evaluate if a stronger
-#   Qwen3.7 / Qwen4 MoE chat model lands with comparable footprint.
+# - Qwen3.8-27B remains the right pick — re-evaluate if a stronger
+#   dense reasoning/chat model lands with comparable footprint.
 # - 8B embedder still leads MTEB-multilingual on review date.
 #
 # Changed 2026-05-15: was Qwen3.6-27B Dense single-model. Upgraded to
@@ -58,14 +70,14 @@
 # added the shared embedder + reranker so vault RAG is a first-class
 # capability of this profile.
 #
-# Last reviewed: 2026-05-15
+# Last reviewed: 2026-08-17
 
 backend: omlx
 
 models:
-  - model_path: mlx-community/Qwen3.6-35B-A3B-4bit
-    served_model_name: qwen3.6-35b
-    model_type: lm
+  - model_path: mlx-community/Qwen3.8-27B-4bit
+    served_model_name: qwen3.8-27b
+    model_type: vlm
     pin: true
     ttl: null
 
