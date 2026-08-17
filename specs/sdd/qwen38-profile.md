@@ -108,11 +108,12 @@ deliberately — a dense 27B is the opposite of lean.
      shall read `2026-08-17`.
    - The historical `Changed 2026-05-15:` note in `mlx-knowledge.yaml:56-59`
      is untouched — it documents a past change, not the current state.
-5. `config/opencode.example.jsonc` shall rename the `qwen3.6-35b` entry
-   (line 27) to `qwen3.8-27b` with display name `"Qwen3.8-27B (plan/chat)"`,
-   and update its preceding comment (line 26, `// default / lean /
-   mlx-knowledge profiles`) to `// default / mlx-knowledge profiles` — `lean`
-   no longer shares this served name after Requirement 3.
+5. `config/opencode.example.jsonc` shall **add** a `qwen3.8-27b` entry with
+   display name `"Qwen3.8-27B (plan/chat)"` under a
+   `// default / mlx-knowledge profiles` comment, and **retain** the existing
+   `qwen3.6-35b` entry under a comment naming `lean`. Renaming the entry
+   would strip `lean`'s only chat model from the seeded template, since
+   Requirement 3 keeps `lean` on that served name.
 6. `tests/test_profile_state_machine.bats`'s `"make models: dispatches hf
    download for all omlx profiles"` test (lines 566-575) shall extract the
    chat entry's `model_path` from `config/profiles/default.yaml` at run time
@@ -141,6 +142,12 @@ deliberately — a dense 27B is the opposite of lean.
    "~28 GB" (96 GB wired budget − 68 GB ≈ 28 GB). This resolves the
    pre-existing `~12`-vs-`~18` GB contradiction between this paragraph and the
    profile headers (Context & Constraints) as part of the same edit.
+   The paragraph's claim that "Both 80B-class models are MoE → ~3B active
+   params each" shall be rewritten too: it describes the chat model, which is
+   dense after the swap, so leaving it would ship a statement this change
+   itself falsified. The paragraph shall also signpost why its total differs
+   from the table's (everything-resident vs. steady state), so the two figures
+   do not read as a contradiction.
 9. `docs/setup.md:141` shall name `qwen3.8-27b` instead of `qwen3.6-35b`.
    `docs/setup.md:264`'s `served_model_name: qwen3.6-35b` line shall become
    `served_model_name: qwen3.8-27b`; the `model_path:` line above it
@@ -211,7 +218,8 @@ both legs, and `4lm profile set default` followed by `curl /v1/models` lists
 - GIVEN `config/profiles/lean.yaml` WHEN read THEN it still contains
   `mlx-community/Qwen3.6-35B-A3B-4bit` verbatim (no diff on this profile).
 - GIVEN `config/opencode.example.jsonc` WHEN parsed as JSONC THEN it defines
-  a model key `qwen3.8-27b` and no key `qwen3.6-35b`.
+  both a model key `qwen3.8-27b` (default / mlx-knowledge) and a model key
+  `qwen3.6-35b` (lean, which keeps the MoE per Requirement 3).
 - GIVEN `tests/test_profile_state_machine.bats` WHEN grepped for the literal
   strings `Qwen3.6-35B-A3B-4bit` and `Qwen3.8-27B-4bit` THEN neither appears
   in the test file itself (only in fixture-independent extraction code).
