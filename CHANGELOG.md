@@ -17,11 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenWebUI presets, scripts — must be updated by hand; the seeded template
   only covers fresh installs. `lean` keeps `qwen3.6-35b` deliberately.
   Knowledge bases need no reindexing: the embedder and reranker names are
-  unchanged.
+  unchanged. **An existing install does not pick this up by re-running the
+  installer** — `install.sh` never overwrites an installed profile. Copy it
+  by hand (`cp config/profiles/default.yaml ~/.4lm/config/profiles/`) and
+  re-issue `4lm profile set default`.
   The new model is a dense 27B, not a 3B-active MoE — measured ~27 tok/s here
   against the MoE's ~105 tps. Its chat template also defaults
   `reasoning_effort` to `xhigh`, which must be overridden per request
   (`chat_template_kwargs`); setting it in `model_settings.json` has no effect.
+- `install.sh` now reports drift between a repo profile and its installed
+  copy under `~/.4lm/config/profiles/`, printing the `diff` and `cp` commands
+  to inspect and adopt it. Installed profiles are still never overwritten;
+  previously the mismatch passed silently as "Profile exists, not overwriting".
 - omlx pinned to v0.6.0 (`b16a1d1b`), the first release that loads Qwen3.8
   checkpoints (blockwise FP8, embedded MTP, ModelOpt NVFP4).
 - `install.sh` now **enforces** the omlx pin instead of only recording it: it
