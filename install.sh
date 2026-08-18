@@ -156,7 +156,13 @@ for profile in "${SOURCE_DIR}"/config/profiles/*.yaml; do
   [[ -f "${profile}" ]] || continue
   target="${PROFILES_DIR}/$(basename "${profile}")"
   if [[ -f "${target}" ]]; then
-    info "Profile exists, not overwriting: $(basename "${profile}")"
+    if cmp -s "${profile}" "${target}"; then
+      info "Profile up to date: $(basename "${profile}")"
+    else
+      warn "Profile differs from repo, not overwriting: $(basename "${profile}")"
+      echo "    Inspect:  diff ${target} ${profile}"
+      echo "    Adopt:    cp ${profile} ${target}"
+    fi
   else
     cp "${profile}" "${target}"
     ok "Profile → $(basename "${profile}")"
