@@ -68,12 +68,12 @@ setup() {
 
 # ---- profile list empty state ------------------------------------------------
 
-@test "profile list with no yaml files prints No profiles and make install" {
+@test "profile list with no yaml files prints No profiles and just install" {
   rm -f "${HOME}/.4lm/config/profiles/"*.yaml
   run "${REPO_ROOT}/bin/4lm" profile list
   [ "$status" -eq 0 ]
   echo "$output" | grep -qi "No profiles"
-  echo "$output" | grep -q "make install"
+  echo "$output" | grep -q "just install"
 }
 
 # ---- help surface: model cleanup entry ------------------------------------

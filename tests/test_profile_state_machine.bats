@@ -205,7 +205,7 @@ YAML
 }
 
 @test "models list: mlx_lm profile annotated with (mlx_lm)" {
-  [[ -x "${LLM_HELPERS_PYTHON:-}" ]] || skip "venv not installed — run: make install"
+  [[ -x "${LLM_HELPERS_PYTHON:-}" ]] || skip "venv not installed — run: just install"
   cat > "${HOME}/.4lm/config/profiles/mlxlm-ann.yaml" <<'YAML'
 backend: mlx_lm
 models:
@@ -301,7 +301,7 @@ YAML
 }
 
 @test "models list: ollama profile annotated with (ollama) and shows ~ not hf cache path" {
-  [[ -x "${LLM_HELPERS_PYTHON:-}" ]] || skip "venv not installed — run: make install"
+  [[ -x "${LLM_HELPERS_PYTHON:-}" ]] || skip "venv not installed — run: just install"
   export HF_LOG="${BATS_TMPDIR}/hf-list-calls"
   rm -f "${HF_LOG}"
   cat > "${HOME}/.4lm/config/profiles/ollama-ann.yaml" <<'YAML'
@@ -563,12 +563,12 @@ YAML
   [[ "$output" == *"Switched to mlx-knowledge"* ]]
 }
 
-@test "make models: dispatches hf download for all omlx profiles" {
+@test "just models: dispatches hf download for all omlx profiles" {
   export HF_LOG="${BATS_TMPDIR}/hf-make-calls"
   rm -f "${HF_LOG}"
-  run make -C "${REPO_ROOT}" models
+  run just --justfile "${REPO_ROOT}/justfile" --working-directory "${REPO_ROOT}" models
   [ "$status" -eq 0 ]
-  # All profiles now use omlx or mlx_lm (no ollama); make models dispatches hf download.
+  # All profiles now use omlx or mlx_lm (no ollama); just models dispatches hf download.
   # The chat model is read out of default.yaml rather than hard-coded, so a
   # future chat-slot swap does not fail this test for an unrelated reason.
   # shellcheck source=../bin/4lm

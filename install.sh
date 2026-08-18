@@ -259,7 +259,7 @@ fi
 # tool. Pin to python3.12 (or 3.11) for compatibility.
 info "Installing Python deps with pipx…"
 if ! command -v pipx >/dev/null; then
-  die "pipx not found — run: make bootstrap"
+  die "pipx not found — run: just bootstrap"
 fi
 
 PIPX_PYTHON=""
@@ -270,7 +270,7 @@ for candidate in python3.12 python3.11; do
   fi
 done
 if [[ -z "${PIPX_PYTHON}" ]]; then
-  die "no compatible Python found (need 3.11 or 3.12) — run: make bootstrap"
+  die "no compatible Python found (need 3.11 or 3.12) — run: just bootstrap"
 fi
 info "using ${PIPX_PYTHON} for pipx venvs"
 

@@ -50,13 +50,13 @@ setup() {
   [[ "$output" == *"Unknown channel"* ]] || [[ "${stderr:-}" == *"Unknown channel"* ]]
 }
 
-@test "migrated command with missing venv prints error: and make install hint, exits 1" {
+@test "migrated command with missing venv prints error: and just install hint, exits 1" {
   run env LLM_HELPERS_PYTHON=/nonexistent/python \
       LLM_4LM_REPO="${REPO_ROOT}" \
       "${REPO_ROOT}/bin/4lm" outdated
   [ "$status" -eq 1 ]
   echo "$output" | grep -q "error:"
-  echo "$output" | grep -q "make install"
+  echo "$output" | grep -q "just install"
 }
 
 @test "upgrade warns when helpers have an outdated dep" {
@@ -152,13 +152,13 @@ FAKE
   echo "$output" | grep -q "error:"
 }
 
-@test "make test skips pytest and exits 0 when venv absent" {
+@test "just test skips pytest and exits 0 when venv absent" {
   run bash -c '
     HELPERS_PYTHON=/nonexistent/python
     if [ -x "${HELPERS_PYTHON}" ]; then
       "${HELPERS_PYTHON}" -m pytest
     else
-      echo "skip: pytest — venv not installed (run make install)"
+      echo "skip: pytest — venv not installed (run just install)"
     fi
   '
   [ "$status" -eq 0 ]

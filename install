@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "$@" >>"/var/folders/s1/r57tv8q13dg8r00f16sjv0xm0000gn/T/install-record-test_make_install_BACKEND-5fONLY-3d1_passes_-2d-2dbackend-2donly_to_install-2esh"
+exit 0
