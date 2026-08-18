@@ -4,8 +4,8 @@
 # Verifies:
 #   - Brewfile no longer contains 'opencode'
 #   - Brewfile-tui (new file) contains exactly one 'brew "opencode"' line
-#   - make bootstrap runs both Brewfiles; BACKEND_ONLY=1 skips Brewfile-tui
-#   - make install BACKEND_ONLY=1 forwards --backend-only to install.sh
+#   - just bootstrap runs both Brewfiles; BACKEND_ONLY=1 skips Brewfile-tui
+#   - just install 1 forwards --backend-only to install.sh
 #   - bin/4lm exposes webui_installed/opencode_installed/require_component
 #   - require_component writes WEBUI_MISSING_MSG to stderr verbatim (no die prefix)
 #   - tests/helpers/opencode stub is executable
@@ -33,7 +33,7 @@ readonly EXPECTED_OPENCODE_MISSING="OpenCode not installed (re-run ./install.sh 
   [[ "${output}" == \#* ]]
 }
 
-@test "make bootstrap (no env) runs brew bundle on both Brewfile and Brewfile-tui" {
+@test "just bootstrap (no env) runs brew bundle on both Brewfile and Brewfile-tui" {
   STUB_BIN="${BATS_TMPDIR}/stubs-${BATS_TEST_NAME}"
   mkdir -p "${STUB_BIN}"
   RECORD="${BATS_TMPDIR}/brew-record-${BATS_TEST_NAME}"
@@ -54,7 +54,7 @@ SH
   cd "${REPO_ROOT}"
   # Clear inherited BACKEND_ONLY / MAKEFLAGS so a parent `make ci-backend-only`
   # (or CI's matrix env) can't suppress the Brewfile-tui leg under test.
-  run env -u BACKEND_ONLY -u MAKEFLAGS PATH="${PATH}" make bootstrap
+  run env -u BACKEND_ONLY PATH="${PATH}" just bootstrap
   [ "$status" -eq 0 ]
   run grep -c 'bundle --file=Brewfile$' "${RECORD}"
   [ "${output}" = "1" ]
@@ -62,7 +62,7 @@ SH
   [ "${output}" = "1" ]
 }
 
-@test "make bootstrap BACKEND_ONLY=1 skips Brewfile-tui" {
+@test "just bootstrap 1 skips Brewfile-tui" {
   STUB_BIN="${BATS_TMPDIR}/stubs-${BATS_TEST_NAME}"
   mkdir -p "${STUB_BIN}"
   RECORD="${BATS_TMPDIR}/brew-record-${BATS_TEST_NAME}"
@@ -81,7 +81,7 @@ SH
   export PATH="${STUB_BIN}:${PATH}"
 
   cd "${REPO_ROOT}"
-  run make bootstrap BACKEND_ONLY=1
+  run just bootstrap 1
   [ "$status" -eq 0 ]
   run grep -c 'bundle --file=Brewfile$' "${RECORD}"
   [ "${output}" = "1" ]
@@ -89,7 +89,7 @@ SH
   [ "${output}" = "0" ]
 }
 
-@test "make install BACKEND_ONLY=1 passes --backend-only to install.sh" {
+@test "just install 1 passes --backend-only to install.sh" {
   ORIG="${REPO_ROOT}/install.sh"
   BACKUP="${BATS_TMPDIR}/install.sh.real-${BATS_TEST_NAME}"
   RECORD="${BATS_TMPDIR}/install-record-${BATS_TEST_NAME}"
@@ -103,7 +103,7 @@ SH
   : >"${RECORD}"
 
   cd "${REPO_ROOT}"
-  run make install BACKEND_ONLY=1
+  run just install 1
 
   # Restore unconditionally so a failure doesn't leave the repo broken.
   cp "${BACKUP}" "${ORIG}"

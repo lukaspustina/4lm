@@ -77,7 +77,7 @@ info() { echo "${C_BLU}→${C_RST} $*"; }
 
 require_helpers_python() {
   if [[ ! -x "${HELPERS_PYTHON}" ]]; then
-    die "helpers venv missing — run: make install"
+    die "helpers venv missing — run: just install"
   fi
 }
 
@@ -792,7 +792,7 @@ cmd_upgrade() {
   # huggingface_hub[cli]; if it's missing we surface a hint and skip.
   if ((${#OUTDATED_HF[@]} > 0)); then
     if ! command -v hf >/dev/null 2>&1; then
-      warn "hf CLI not on PATH — run 'make install' to provision it, then retry"
+      warn "hf CLI not on PATH — run 'just install' to provision it, then retry"
     else
       local r
       for r in "${OUTDATED_HF[@]}"; do
@@ -1098,7 +1098,7 @@ cmd_profile() {
         fi
       done
       if [[ "${found}" != "true" ]]; then
-        printf 'No profiles found in %s — run: make install\n' "${PROFILES_DIR}"
+        printf 'No profiles found in %s — run: just install\n' "${PROFILES_DIR}"
       fi
       ;;
     set | use)
@@ -1477,7 +1477,7 @@ cmd_doctor() {
   if command -v omlx >/dev/null; then
     ok "omlx: $(command -v omlx)"
   else
-    warn "omlx not in PATH (run: make install)"
+    warn "omlx not in PATH (run: just install)"
     fail=1
   fi
   # open-webui binary check: only when the webui plist is installed.
@@ -1485,7 +1485,7 @@ cmd_doctor() {
     if command -v open-webui >/dev/null; then
       ok "open-webui: $(command -v open-webui)"
     else
-      warn "open-webui not in PATH (run: make install)"
+      warn "open-webui not in PATH (run: just install)"
       fail=1
     fi
   fi
@@ -1495,7 +1495,7 @@ cmd_doctor() {
     if command -v opencode >/dev/null; then
       ok "opencode: $(command -v opencode)"
     else
-      warn "opencode not in PATH (run: make bootstrap)"
+      warn "opencode not in PATH (run: just bootstrap)"
       fail=1
     fi
   fi
@@ -1868,7 +1868,7 @@ cmd_models_download() {
       if [[ "${repo}" == *:* ]]; then
         die "explicit download is HF-only; use: ollama pull ${repo}"
       fi
-      command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+      command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: just install"
       info "Downloading ${repo}…"
       _hf_download_with_progress "${repo}"
       ok "${repo}"
@@ -1902,7 +1902,7 @@ cmd_models_download() {
         ollama pull "${model_path}" || die "ollama pull failed: ${model_path}"
         ok "${model_path}"
       else
-        command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+        command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: just install"
         grep -qxF "${model_path}" <<<"${seen_mlx}" && continue
         seen_mlx="${seen_mlx}${model_path}"$'\n'
         info "Checking ${model_path}…"
@@ -1920,7 +1920,7 @@ cmd_models_download() {
 }
 
 cmd_models_prune() {
-  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: just install"
   info "Pruning orphaned HuggingFace cache revisions…"
   hf cache prune --yes
 }
@@ -1939,7 +1939,7 @@ cmd_models_rm() {
     printf 'Pass --confirm to remove: %s\n' "${repo}"
     return 0
   fi
-  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: make install"
+  command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: just install"
   info "Removing ${repo} from cache…"
   hf cache rm "${repo}"
   ok "Removed ${repo}"
