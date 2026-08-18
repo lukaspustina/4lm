@@ -6,7 +6,7 @@ local LLM stack on Apple Silicon.
 ## Requirements
 
 - macOS, Apple Silicon (`uname -m` must report `arm64`)
-- Homebrew, then `make bootstrap` (installs Python 3.12, pipx, shellcheck,
+- Homebrew, then `just bootstrap` (installs Python 3.12, pipx, shellcheck,
   shfmt, bats-core from `Brewfile` and runs `pipx ensurepath`)
 - ~140 GB free disk for model weights
 
@@ -17,7 +17,7 @@ local LLM stack on Apple Silicon.
 ## Step 1 — Install
 
 ```sh
-make install
+just install
 ```
 
 The installer is idempotent and will:
@@ -45,13 +45,13 @@ WebUI browsing, no `opencode` TUI — install the backend layer only:
 ```sh
 ./install.sh --backend-only
 # or
-make install BACKEND_ONLY=1
+just install BACKEND_ONLY=1
 ```
 
 The flag skips: `open-webui` pipx package, `4lm-webui-start.sh` wrapper,
 the webui launchd plist, the `webui.log` newsyslog rotation entry,
 `~/.config/opencode/opencode.jsonc`, and the `Brewfile-tui` (which only
-contains `opencode`). `make bootstrap BACKEND_ONLY=1` skips `Brewfile-tui`
+contains `opencode`). `just bootstrap BACKEND_ONLY=1` skips `Brewfile-tui`
 during dev-tool bootstrap as well.
 
 After install, expose the backend on the LAN:
@@ -86,10 +86,10 @@ install upgrades to full.
 in one shot:
 
 ```sh
-make models           # download/update every model in config/profiles/
-make models-list      # see what's cached
-make models-clean     # prune orphaned revisions
-make models-rm MODEL=<repo>   # remove one specific model
+just models           # download/update every model in config/profiles/
+just models-list      # see what's cached
+just models-clean     # prune orphaned revisions
+just models-rm MODEL=<repo>   # remove one specific model
 ```
 
 Cache lives at `~/.cache/huggingface/hub/` (~140 GB for the default profile).
@@ -144,8 +144,8 @@ other profile models that have `enable_auto_tool_choice: true`.
 
 ## Step 6 — OpenCode TUI
 
-`make bootstrap` installs the homebrew/core `opencode` formula (anomalyco's
-distribution; sst/opencode no longer exists). `make install` seeds
+`just bootstrap` installs the homebrew/core `opencode` formula (anomalyco's
+distribution; sst/opencode no longer exists). `just install` seeds
 `~/.config/opencode/opencode.jsonc` from `config/opencode.example.jsonc` if
 absent — pre-wired with provider `mlx-4lm` pointing at
 `http://127.0.0.1:8000/v1` and the three default-profile models.
@@ -370,7 +370,7 @@ For the wired-memory check specifically:
 iogpu.wired_limit_mb=<x> < 98304 — see docs/setup.md §Sudoers
 ```
 
-Set it interactively or re-run `make install` — install.sh writes the
+Set it interactively or re-run `just install` — install.sh writes the
 sudoers rule and sets the limit when its check fails. The setting
 persists until reboot, after which the backend wrapper re-applies it
 via the sudoers NOPASSWD entry on next start.
@@ -385,7 +385,7 @@ edited or removed. Wrapper invokes:
 sudo -n /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
 ```
 
-Re-run `make install` to restore the sudoers file.
+Re-run `just install` to restore the sudoers file.
 
 ### `newsyslog: cannot open` after install
 

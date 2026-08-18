@@ -39,10 +39,10 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 
 | Task | Command |
 |---|---|
-| Bootstrap dev tools | `make bootstrap` (Brewfile + Brewfile-tui + `pipx ensurepath`; `BACKEND_ONLY=1` skips TUI) |
-| Install / re-install | `make install` (or `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
-| Full uninstall | `make uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
-| Pre-download models | `make models` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download` |
+| Bootstrap dev tools | `just bootstrap` (Brewfile + Brewfile-tui + `pipx ensurepath`; `BACKEND_ONLY=1` skips TUI) |
+| Install / re-install | `just install` (or `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
+| Full uninstall | `just uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
+| Pre-download models | `just models` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download` |
 | Start everything | `4lm start` |
 | Stop everything | `4lm stop` |
 | Status | `4lm` (alias for `4lm status`; `--json` for machine-readable) |
@@ -53,9 +53,9 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 | Sanity sweep | `4lm doctor` (prereqs + smoke-test); `4lm diag` (live clients, inflight work) |
 | Update probes | `4lm outdated` (PyPI / brew / HF); `4lm upgrade [brew\|models\|python]` to apply |
 | Model picks | `4lm model recommend [<use-case>]` (uses `llmfit` + localmaxxing benchmarks) |
-| Run all checks | `make check` |
-| Run tests | `make test` (requires `bats-core`) |
-| Mirror CI matrix locally | `make ci` (runs `ci-default` + `ci-backend-only`) |
+| Run all checks | `just check` |
+| Run tests | `just test` (requires `bats-core`) |
+| Mirror CI matrix locally | `just ci` (runs `ci-default` + `ci-backend-only`) |
 
 ## Activation model
 
@@ -74,7 +74,7 @@ should be added — the deliberate friction is a security feature.
 
 ## Dual-shape conventions
 
-`./install.sh --backend-only` (or `make install BACKEND_ONLY=1`) skips
+`./install.sh --backend-only` (or `just install BACKEND_ONLY=1`) skips
 `open-webui` (pipx), the webui plist, the webui wrapper, the `opencode`
 brew formula, and the seeded `~/.config/opencode/opencode.jsonc`. The
 contract this imposes:
@@ -86,7 +86,7 @@ contract this imposes:
   cleanly to full; re-running `--backend-only` over a full install **does
   not strip** existing WebUI artifacts. Tests for these invariants live
   in the bats suite.
-- The CI matrix runs both legs (`make ci-default` + `make ci-backend-only`);
+- The CI matrix runs both legs (`just ci-default` + `just ci-backend-only`);
   any new feature must work in both shapes or guard its behavior on the
   webui-plist probe.
 

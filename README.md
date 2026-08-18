@@ -109,18 +109,18 @@ closet does the inference; the Air on the couch does the typing.
 ## Quickstart
 
 ```sh
-make bootstrap   # Brewfile + Brewfile-tui (skipped if BACKEND_ONLY=1)
+just bootstrap   # Brewfile + Brewfile-tui (skipped if BACKEND_ONLY=1)
                  # core: shellcheck, shfmt, bats-core, jq, python@3.12,
                  # pipx, llmfit, ollama; tui extra: opencode
-make install     # ~/.4lm/, sudoers, sysctl, pipx-installed deps,
+just install     # ~/.4lm/, sudoers, sysctl, pipx-installed deps,
                  # log rotation, opencode config
-make models      # ~140 GB from HuggingFace (idempotent; same target updates)
+just models      # ~140 GB from HuggingFace (idempotent; same target updates)
 4lm start        # bootstrap launchd agents
 4lm opencode     # daily driver (alias: 4lm code)
 ```
 
 > **64 GB Macs: switch to the `lean` profile first** —
-> `4lm profile set lean` before `make models`. The `default` profile
+> `4lm profile set lean` before `just models`. The `default` profile
 > wants 96 GB+ steady; `lean` fits in 40 GB and downloads ~80 GB instead
 > of ~140 GB. `4lm doctor` will warn you if the active profile doesn't
 > fit your hardware.
@@ -130,7 +130,7 @@ After a reboot: `4lm start`. There's no autostart and that's a feature.
 Backend-only variant:
 
 ```sh
-make bootstrap BACKEND_ONLY=1   # skips opencode brew formula
+just bootstrap BACKEND_ONLY=1   # skips opencode brew formula
 ./install.sh --backend-only     # skips Open WebUI + opencode + their plists/configs
 4lm start && 4lm expose lan --confirm
 ```
@@ -217,7 +217,7 @@ hosts on the LAN run their own clients against the backend's
 4lm profile validate [--all]
 
 # Models
-make models                        # download/update everything in config/profiles/
+just models                        # download/update everything in config/profiles/
 4lm model list                     # what's loaded vs cached
 4lm model recommend [<use-case>]   # top picks via llmfit + localmaxxing benchmarks
 
@@ -240,7 +240,7 @@ make models                        # download/update everything in config/profil
 
 # Removal
 4lm uninstall                      # bootout, remove ~/.local/bin/4lm; keep ~/.4lm/
-make uninstall                     # full: bootout, ~/.4lm/, sudoers, newsyslog, pipx packages
+just uninstall                     # full: bootout, ~/.4lm/, sudoers, newsyslog, pipx packages
 ```
 
 Every command has `--help`.
@@ -289,18 +289,18 @@ Foundation is shipped at v0.6; agentic phases are draft.
 ## Development
 
 ```sh
-make bootstrap    # one-time: Brewfile + Brewfile-tui + pipx ensurepath
-make lint         # shellcheck + shfmt -d
-make fmt          # shfmt -w
-make test         # bats + pytest
-make check        # everything; CI runs this on macos-latest
-make ci           # mirror the CI matrix locally (default + backend-only legs)
+just bootstrap    # one-time: Brewfile + Brewfile-tui + pipx ensurepath
+just lint         # shellcheck + shfmt -d
+just fmt          # shfmt -w
+just test         # bats + pytest
+just check        # everything; CI runs this on macos-latest
+just ci           # mirror the CI matrix locally (default + backend-only legs)
 ```
 
 CI on every PR (`.github/workflows/ci.yml`):
 `shellcheck`, `shfmt -d`, `bash -n`, `plutil -lint`, `xmllint --noout`,
 profile YAML validation, bats suite — both install modes — driven by
-`make check`.
+`just check`.
 
 ## Conventions
 

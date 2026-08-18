@@ -1,5 +1,10 @@
 # 4lm developer + runtime dependencies.
-# Install with: make bootstrap (or: brew bundle --file=Brewfile)
+# Install with: just bootstrap (or: brew bundle --file=Brewfile)
+
+# The verb contract itself (pdt-adlc ADR 0008). Listed first because every
+# other verb in this file is reached through it — a machine without `just`
+# cannot run `just bootstrap` to get the rest.
+brew "just"
 
 # Lint / format / test
 brew "shellcheck"

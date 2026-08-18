@@ -23,15 +23,15 @@ flexibility" without a current caller.
 ```sh
 git clone https://github.com/<repo>
 cd 4lm
-make bootstrap    # Brewfile + Brewfile-tui + pipx ensurepath
-make check        # lint + syntax + plist-lint + yaml-lint + test
+just bootstrap    # Brewfile + Brewfile-tui + pipx ensurepath
+just check        # lint + syntax + plist-lint + yaml-lint + test
 ```
 
-`make check` is what CI runs. Get it green locally before opening a PR.
+`just check` is what CI runs. Get it green locally before opening a PR.
 For the matrix:
 
 ```sh
-make ci           # runs ci-default + ci-backend-only locally
+just ci           # runs ci-default + ci-backend-only locally
 ```
 
 ## Commit style
@@ -45,7 +45,7 @@ make ci           # runs ci-default + ci-backend-only locally
 
 ## PR checklist
 
-- [ ] `make check` passes.
+- [ ] `just check` passes.
 - [ ] Tests added/updated for any behavior change.
 - [ ] CLAUDE.md or README.md updated if you introduced a new convention,
       key decision, or non-obvious gotcha.
