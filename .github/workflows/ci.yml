@@ -45,8 +45,8 @@ jobs:
           python3.12 -m venv "${{ github.workspace }}/.venv"
           "${{ github.workspace }}/.venv/bin/pip" install --quiet -r requirements-helpers.txt
 
-      - name: make check
-        run: make check
+      - name: just check
+        run: just check
         env:
           HELPERS_PYTHON: ${{ github.workspace }}/.venv/bin/python
           BACKEND_ONLY: ${{ matrix.install_mode == 'backend-only' && '1' || '' }}
