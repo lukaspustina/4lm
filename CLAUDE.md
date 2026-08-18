@@ -90,6 +90,18 @@ contract this imposes:
   any new feature must work in both shapes or guard its behavior on the
   webui-plist probe.
 
+## Installed profiles are never overwritten
+
+`install.sh` §4 copies `config/profiles/*.yaml` into
+`~/.4lm/config/profiles/` **only when the target is absent** — a re-run never
+updates an existing copy, by design (it would clobber local edits). A repo
+profile change therefore does not reach a machine that already has 4lm
+installed; adopt it with an explicit `cp` and re-issue `4lm profile set
+<name>`. Since 2026-08-18 the installer prints a drift warning with the
+`diff` and `cp` commands instead of staying silent, so the gap is at least
+visible. The check below it reports the other direction: profiles present
+under `~/.4lm` that no longer exist in the repo.
+
 ## Profile switching is atomic with rollback
 
 `4lm profile set <name>` validates the YAML, saves the previous profile name,
