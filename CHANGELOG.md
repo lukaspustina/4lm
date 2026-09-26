@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - omlx pinned to v0.7.0rc1 (`35be079d`): loads the current
   model generation, adds M5 prefill kernels, and refuses a non-loopback bind
   without an API key. With a key configured, loopback clients need it too.
+- open-webui 0.11.4, huggingface_hub 2.0.0, pytest 9.1.1. Checked against
+  every env var, `hf` subcommand and output format 4lm uses; no edits needed.
 - **BREAKING**: `4lm expose lan` refuses without a key file or when the active
   backend is not omlx, and the ollama and `mlx_lm` wrappers exit 78 on
   `mode: lan` — neither can enforce a key. An existing
