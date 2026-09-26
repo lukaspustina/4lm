@@ -17,10 +17,24 @@ setup() {
   export PATH="${BATS_TEST_DIRNAME}/helpers:${PATH}"
 }
 
-@test "registration disabled: env contains WEBUI_REGISTRATION_ENABLED=false" {
+@test "registration disabled: env contains ENABLE_SIGNUP=False" {
   run "${BATS_TEST_DIRNAME}/../bin/4lm-webui-start.sh"
   [ "$status" -eq 0 ]
-  grep -qx 'WEBUI_REGISTRATION_ENABLED=false' "${BATS_TMPDIR}/open-webui.env"
+  grep -qx 'ENABLE_SIGNUP=False' "${BATS_TMPDIR}/open-webui.env"
+}
+
+@test "web search uses Open WebUI's variable names" {
+  run "${BATS_TEST_DIRNAME}/../bin/4lm-webui-start.sh"
+  [ "$status" -eq 0 ]
+  grep -qx 'ENABLE_WEB_SEARCH=True' "${BATS_TMPDIR}/open-webui.env"
+  grep -qx 'WEB_SEARCH_ENGINE=duckduckgo' "${BATS_TMPDIR}/open-webui.env"
+  grep -qx 'WEB_SEARCH_RESULT_COUNT=3' "${BATS_TMPDIR}/open-webui.env"
+}
+
+@test "no env vars Open WebUI does not read" {
+  run "${BATS_TEST_DIRNAME}/../bin/4lm-webui-start.sh"
+  [ "$status" -eq 0 ]
+  run ! grep -qE '^(WEBUI_REGISTRATION_ENABLED|ENABLE_RAG_WEB_SEARCH|RAG_WEB_SEARCH_ENGINE|RAG_WEB_SEARCH_RESULT_COUNT)=' "${BATS_TMPDIR}/open-webui.env"
 }
 
 @test "default role pending: env contains DEFAULT_USER_ROLE=pending" {

@@ -153,7 +153,7 @@ review periodically and update the `Last reviewed:` line.
 WebUI Claude-Desktop-style behavior on first launch:
 
 - Memory (`ENABLE_MEMORIES`)
-- DuckDuckGo web search (`ENABLE_RAG_WEB_SEARCH`, `RAG_WEB_SEARCH_ENGINE=duckduckgo`)
+- DuckDuckGo web search (`ENABLE_WEB_SEARCH`, `WEB_SEARCH_ENGINE=duckduckgo`)
 - Pyodide code interpreter (`ENABLE_CODE_INTERPRETER`, `CODE_INTERPRETER_ENGINE=pyodide`)
 - Follow-up + autocomplete suggestions
 - RAG embeddings via omlx (`RAG_EMBEDDING_ENGINE=openai`,

@@ -232,7 +232,7 @@ For remote clients, create a sub key per consumer in the omlx admin UI
 endpoints, and can be revoked individually.
 
 Security hardening applied in all modes (not LAN-only):
-- `WEBUI_REGISTRATION_ENABLED=false` — no new accounts can register after setup
+- `ENABLE_SIGNUP=False` — no new accounts can register after the first (admin) one
 - `DEFAULT_USER_ROLE=pending` — new accounts have no privileges until promoted
 - `WEBUI_SECRET_KEY` persisted to `~/.4lm/config/webui_secret_key` (mode 0600)
 

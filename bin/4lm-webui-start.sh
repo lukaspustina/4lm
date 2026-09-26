@@ -81,7 +81,8 @@ export DEFAULT_USER_ROLE="pending"
 export ANONYMIZED_TELEMETRY="False"
 export DO_NOT_TRACK="true"
 export SCARF_NO_ANALYTICS="true"
-export WEBUI_REGISTRATION_ENABLED="false"
+# The first account (the admin) is exempt; Open WebUI >= 0.11 gates only later sign-ups.
+export ENABLE_SIGNUP="False"
 
 # ---- Branding & UX ---------------------------------------------------------
 export WEBUI_NAME="4lm"
@@ -94,9 +95,9 @@ export ENABLE_AUTOCOMPLETE_GENERATION="True"
 export ENABLE_MEMORIES="True"
 
 # ---- Web search (DuckDuckGo — no API key, no telemetry) -------------------
-export ENABLE_RAG_WEB_SEARCH="True"
-export RAG_WEB_SEARCH_ENGINE="duckduckgo"
-export RAG_WEB_SEARCH_RESULT_COUNT="3"
+export ENABLE_WEB_SEARCH="True"
+export WEB_SEARCH_ENGINE="duckduckgo"
+export WEB_SEARCH_RESULT_COUNT="3"
 
 # ---- Code interpreter (Pyodide runs in-browser, no extra service) ---------
 export ENABLE_CODE_INTERPRETER="True"

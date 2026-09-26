@@ -61,6 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed omlx short-circuited the check, so a pin bump never reached a
   machine that already had 4lm.
 
+### Fixed
+- Open WebUI sign-up was never disabled: 4lm set `WEBUI_REGISTRATION_ENABLED`,
+  which Open WebUI does not read. It now sets `ENABLE_SIGNUP=False`. Web
+  search likewise used `RAG_`-prefixed names that do not exist and now sets
+  `ENABLE_WEB_SEARCH`, `WEB_SEARCH_ENGINE`, `WEB_SEARCH_RESULT_COUNT`. Both
+  are first-boot defaults: an existing `webui.db` keeps its stored values —
+  check **Admin → Settings → General → Enable New Sign Ups** by hand.
+
 ### Removed
 - `omlx.max_process_memory` and `omlx.max_model_memory`. omlx has no such
   flags (neither v0.6.0 nor v0.7.0rc1); no shipped profile set them. Unknown

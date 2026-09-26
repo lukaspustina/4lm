@@ -14,7 +14,7 @@ mode only on a network you trust, or put the host behind Tailscale
 or another VPN that provides authentication.
 
 The WebUI hardening defaults shipped by 4lm — `DEFAULT_USER_ROLE=pending`,
-`WEBUI_REGISTRATION_ENABLED=false`, persistent `WEBUI_SECRET_KEY` —
+`ENABLE_SIGNUP=False`, persistent `WEBUI_SECRET_KEY` —
 mitigate WebUI account-takeover scenarios but **do not** add auth to
 the raw backend API.
 
