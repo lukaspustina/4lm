@@ -159,6 +159,9 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
     --host "${BIND_HOST}"
     --port "${NET_PORT}"
     --model-dir "${_MODEL_DIR}"
+    # omlx >= 0.7 also serves every model in the HF cache; the profile's
+    # staged set is the only one a client may load.
+    --no-hf-cache
   )
   [[ -n "${_OMLX_MEMORY_GUARD_GB}" ]] && OMLX_ARGS+=(--memory-guard-gb "${_OMLX_MEMORY_GUARD_GB}")
   [[ -n "${_OMLX_HOT_CACHE}" ]] && OMLX_ARGS+=(--hot-cache-max-size "${_OMLX_HOT_CACHE}")

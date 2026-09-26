@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine that already had 4lm.
 
 ### Fixed
+- omlx v0.7.0rc1 served every model in the HuggingFace cache next to the
+  profile's staged set, so a client could load any downloaded checkpoint.
+  The backend now runs with `--no-hf-cache`.
 - Open WebUI sign-up was never disabled: 4lm set `WEBUI_REGISTRATION_ENABLED`,
   which Open WebUI does not read. It now sets `ENABLE_SIGNUP=False`. Web
   search likewise used `RAG_`-prefixed names that do not exist and now sets

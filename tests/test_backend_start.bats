@@ -244,3 +244,10 @@ YAML
   [ "$status" -ne 0 ]
   [[ "$output" == *"profile"* ]] && [[ "$output" == *"invalid"* ]]
 }
+
+@test "omlx profile: HF cache discovery is off, only the staged profile is served" {
+  _write_omlx_profile
+  run "${BACKEND_START}"
+  [ "$status" -eq 0 ]
+  grep -q -- "--no-hf-cache" "${OMLX_LOG}"
+}
