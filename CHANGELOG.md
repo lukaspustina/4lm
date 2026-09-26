@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profile field `omlx.memory_guard_gb`, forwarded as `--memory-guard-gb`
   (omlx's process memory ceiling), and per-model `max_context_window`,
   rendered into `~/.omlx/model_settings.json`.
+- `4lm bench`: cold and warm TTFT, prefill and decode rate, and peak memory
+  per model through omlx's admin benchmark API, plus system memory pressure.
+  `--context` also measures the largest admissible prompt under the memory
+  guard (omlx unloads the model afterwards); `--json` for tables in `docs/`.
 
 ### Changed
 - omlx pinned to v0.7.0rc1 (`35be079d`): loads the current

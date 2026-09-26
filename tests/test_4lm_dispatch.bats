@@ -165,3 +165,21 @@ FAKE
   [ "$status" -eq 0 ]
   [[ "$output" == *"skip: pytest"* ]]
 }
+
+@test "help lists bench" {
+  run "${REPO_ROOT}/bin/4lm" help
+  [[ "$output" == *"4lm bench"* ]]
+}
+
+@test "bench refuses a non-omlx profile" {
+  cat > "${HOME}/.4lm/config/profiles/ol.yaml" <<'YAML'
+backend: ollama
+models:
+  - model_path: gemma4:27b
+    served_model_name: gemma4-27b
+YAML
+  ln -sfn "${HOME}/.4lm/config/profiles/ol.yaml" "${HOME}/.4lm/config/active-profile"
+  run "${REPO_ROOT}/bin/4lm" bench
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"omlx"* ]]
+}

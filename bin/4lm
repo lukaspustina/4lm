@@ -583,6 +583,16 @@ cmd_diag() {
     "${LOG_DIR}/backend.log" "$(net_backend_port)"
 }
 
+# ---- Bench -----------------------------------------------------------------
+# Measures the active profile's models through omlx's admin bench API.
+cmd_bench() {
+  local backend
+  backend="$(profile_backend "${ACTIVE_CONFIG}")" || die "no valid active profile"
+  [[ "${backend}" == "omlx" ]] || die "bench needs the omlx backend (active: ${backend})"
+  require_helpers_python
+  "${HELPERS_PYTHON}" "${HELPERS_PY}" bench "$(backend_url)" "$@"
+}
+
 # ---- Outdated / Upgrade ---------------------------------------------------
 # Check HuggingFace model repos for newer versions. Python/Homebrew checking
 # is delegated to the Python helper. `outdated` is read-only; `upgrade`
@@ -2251,6 +2261,8 @@ ${C_DIM}Service control:${C_RST}
   4lm status [--json]                Show service state, URLs, and backend HTTP ping
   4lm doctor                         Check prerequisites; smoke-tests inference if backend is running
   4lm diag                           Show live TCP clients, in-flight inference, worker PIDs
+  4lm bench [model…] [--context] [--json]
+                                     Measure TTFT (cold/warm), decode, peak memory via omlx
 
 ${C_DIM}Autostart:${C_RST}
   4lm autostart status               Show whether each service auto-starts at login
@@ -2310,6 +2322,7 @@ main() {
     expose) cmd_expose "$@" ;;
     doctor) cmd_doctor "$@" ;;
     diag | diagnose) cmd_diag ;;
+    bench) cmd_bench "$@" ;;
     model | m) cmd_models "$@" ;;
     outdated | out) cmd_outdated ;;
     upgrade | up) cmd_upgrade "$@" ;;

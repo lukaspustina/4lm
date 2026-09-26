@@ -672,6 +672,161 @@ def cmd_hello(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---- bench -------------------------------------------------------------------
+# Drives omlx's admin benchmark API.
+# omlx measures cold TTFT, decode rate and peak memory; 4lm adds the warm TTFT
+# (omlx benches skip the prefix cache) and system memory pressure.
+
+_BENCH_TERMINAL = {"completed", "error", "cancelled"}
+_BENCH_MAX_WAIT_S = 2 * 3600
+
+
+def _memory_pressure() -> dict:
+    """System-wide free percentage as reported by `memory_pressure -Q`."""
+    import re
+    import subprocess
+
+    out = subprocess.run(["memory_pressure", "-Q"], capture_output=True, text=True).stdout
+    m = re.search(r"free percentage:\s*(\d+)%", out)
+    return {"free_percent": int(m.group(1))} if m else {}
+
+
+def _bench_json(opener, url: str, payload: dict | None = None, timeout: float = 30) -> dict:
+    import urllib.request
+
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with opener.open(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def _bench_poll(opener, url: str, poll_seconds: float) -> dict:
+    import time
+
+    deadline = time.time() + _BENCH_MAX_WAIT_S
+    while True:
+        result = _bench_json(opener, url)
+        if result.get("status") in _BENCH_TERMINAL:
+            if result["status"] != "completed":
+                raise RuntimeError(f"{url}: {result['status']}: {result.get('error')}")
+            return result
+        if time.time() > deadline:
+            raise RuntimeError(f"{url}: no result after {_BENCH_MAX_WAIT_S}s")
+        time.sleep(poll_seconds)
+
+
+def _ttft_ms(base_url: str, model_id: str, prompt: str) -> float:
+    """Time to the first streamed chunk of a 1-token completion."""
+    import time
+    import urllib.request
+
+    payload = json.dumps({
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1,
+        "stream": True,
+    }).encode()
+    req = urllib.request.Request(
+        f"{base_url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json", **_backend_headers()},
+    )
+    t0 = time.time()
+    with urllib.request.urlopen(req, timeout=_BENCH_MAX_WAIT_S) as resp:
+        for line in resp:
+            if line.startswith(b"data:"):
+                ms = (time.time() - t0) * 1000
+                resp.read()
+                return round(ms, 1)
+    raise RuntimeError(f"{model_id}: stream ended without data")
+
+
+def _bench_model(opener, args, model_id: str) -> dict:
+    base = args.base_url
+    start = _bench_json(opener, f"{base}/admin/api/bench/start", {
+        "model_id": model_id,
+        "prompt_lengths": [args.prompt_length],
+        "generation_length": 128,
+    })
+    trial = _bench_poll(opener, f"{base}/admin/api/bench/{start['bench_id']}/results",
+                        args.poll_seconds)["results"][0]
+
+    # ~4 characters per token; the first request fills the prefix cache.
+    prompt = ("Summarise the following log line by line. " * (args.prompt_length // 9))
+    _ttft_ms(base, model_id, prompt)
+    warm = _ttft_ms(base, model_id, prompt)
+
+    ctx = None
+    if args.context:
+        cstart = _bench_json(opener, f"{base}/admin/api/bench/context/start",
+                             {"model_id": model_id, "target_tokens": 131072})
+        cres = _bench_poll(opener, f"{base}/admin/api/bench/context/{cstart['bench_id']}/results",
+                           args.poll_seconds)
+        ctx = cres["result"]["measured_tokens"]
+
+    peak = trial.get("peak_memory_bytes")
+    return {
+        "model": model_id,
+        "prompt_tokens": trial.get("prompt_tokens"),
+        "cold_ttft_ms": trial.get("ttft_ms"),
+        "warm_ttft_ms": warm,
+        "prefill_tps": trial.get("processing_tps"),
+        "decode_tps": trial.get("gen_tps"),
+        "peak_memory_gib": round(peak / 1024**3, 1) if peak else None,
+        "max_context_window": ctx,
+    }
+
+
+def cmd_bench(args: argparse.Namespace) -> int:
+    import http.cookiejar
+    import urllib.error
+    import urllib.request
+
+    headers = _backend_headers()
+    if not headers:
+        print("error: API key missing: ~/.4lm/config/api-key (run: just install)", file=sys.stderr)
+        return 1
+    key = headers["Authorization"].removeprefix("Bearer ")
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+    try:
+        _bench_json(opener, f"{args.base_url}/admin/api/login", {"api_key": key})
+        models = list(args.models)
+        if not models:
+            req = urllib.request.Request(f"{args.base_url}/v1/models", headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                ids = [m["id"] for m in json.loads(resp.read()).get("data", [])]
+            models = [m for m in ids if not _is_embedding_model(m) and "rerank" not in m.lower()]
+        report = {"memory_pressure_before": _memory_pressure(), "models": []}
+        for model_id in models:
+            report["models"].append(_bench_model(opener, args, model_id))
+        report["memory_pressure_after"] = _memory_pressure()
+    except (urllib.error.URLError, OSError, RuntimeError, KeyError) as e:
+        print(f"error: bench failed: {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(title=f"4lm bench — {args.prompt_length} prompt tokens")
+    cols = ["model", "cold_ttft_ms", "warm_ttft_ms", "prefill_tps", "decode_tps",
+            "peak_memory_gib", "max_context_window"]
+    for c in cols:
+        table.add_column(c)
+    for row in report["models"]:
+        table.add_row(*["-" if row[c] is None else str(row[c]) for c in cols])
+    console = Console()
+    console.print(table)
+    console.print(f"memory free: {report['memory_pressure_before'].get('free_percent', '?')}% before, "
+                  f"{report['memory_pressure_after'].get('free_percent', '?')}% after")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="4lm_helpers",
@@ -699,6 +854,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_diag.add_argument("log_file", help="path to backend.log")
     p_diag.add_argument("backend_port", help="backend HTTP port")
 
+    p_bench = sub.add_parser("bench", help="benchmark the active profile's models via omlx")
+    p_bench.add_argument("base_url", help="backend base URL (e.g. http://127.0.0.1:8000)")
+    p_bench.add_argument("models", nargs="*", help="served model names (default: all but embed/rerank)")
+    p_bench.add_argument("--context", action="store_true",
+                         help="also measure max_context_window (unloads the model afterwards)")
+    p_bench.add_argument("--json", action="store_true", help="emit JSON instead of a table")
+    p_bench.add_argument("--prompt-length", type=int, default=65536, help="prompt tokens (omlx: fixed set)")
+    p_bench.add_argument("--poll-seconds", type=float, default=5.0, help=argparse.SUPPRESS)
+
     p_out = sub.add_parser("outdated", help="check for outdated Python and Homebrew packages")
     p_out.add_argument("repo_dir", help="path to 4lm repo root")
     p_out.add_argument("--porcelain", action="store_true", help="emit JSON instead of rich table")
@@ -722,6 +886,8 @@ def main() -> int:
         return cmd_diag(args)
     if args.command == "outdated":
         return cmd_outdated(args)
+    if args.command == "bench":
+        return cmd_bench(args)
 
     parser.print_help()
     return 1

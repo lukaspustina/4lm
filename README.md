@@ -105,7 +105,9 @@ closet does the inference; the Air on the couch does the typing.
   cleanly.
 - **Visibility commands.** `4lm doctor` (prereqs + smoke-test
   inference), `4lm diag` (live clients, in-flight requests, top CPU
-  consumers), `4lm outdated` / `4lm upgrade` (PyPI + Homebrew + HF).
+  consumers), `4lm bench` (cold/warm TTFT, decode rate, peak memory
+  and the admissible context per model, via omlx's own benchmarks),
+  `4lm outdated` / `4lm upgrade` (PyPI + Homebrew + HF).
 
 ## Quickstart
 
