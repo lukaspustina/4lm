@@ -2,4 +2,4 @@
 # Pinned by commit SHA (OMLX_GIT_REF) in install.sh; bump deliberately.
 # omlx @ git+https://github.com/jundot/omlx.git@<sha>
 open-webui==0.11.4
-huggingface_hub[cli]==1.14.0
+huggingface_hub[cli]==2.0.0
