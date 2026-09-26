@@ -97,15 +97,13 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
 
   # Extract optional omlx: block fields via standalone awk (cannot source bin/4lm).
   # Use while-read with | separator to safely assign values without eval.
-  _OMLX_MAX_PROC_MEM=""
-  _OMLX_MAX_MODEL_MEM=""
+  _OMLX_MEMORY_GUARD_GB=""
   _OMLX_HOT_CACHE=""
   _OMLX_SSD_CACHE_DIR=""
   _OMLX_MAX_CONCUR=""
   while IFS='|' read -r _omlx_key _omlx_val; do
     case "${_omlx_key}" in
-      max_process_memory) _OMLX_MAX_PROC_MEM="${_omlx_val}" ;;
-      max_model_memory) _OMLX_MAX_MODEL_MEM="${_omlx_val}" ;;
+      memory_guard_gb) _OMLX_MEMORY_GUARD_GB="${_omlx_val}" ;;
       hot_cache_max_size) _OMLX_HOT_CACHE="${_omlx_val}" ;;
       paged_ssd_cache_dir) _OMLX_SSD_CACHE_DIR="${_omlx_val}" ;;
       max_concurrent_requests) _OMLX_MAX_CONCUR="${_omlx_val}" ;;
@@ -118,8 +116,7 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
       gsub(/^["\x27]|["\x27]$/, "", line)
       print key "|" line
     }
-    in_block && /^[[:space:]]+max_process_memory:/     { extract($0, "max_process_memory") }
-    in_block && /^[[:space:]]+max_model_memory:/       { extract($0, "max_model_memory") }
+    in_block && /^[[:space:]]+memory_guard_gb:/        { extract($0, "memory_guard_gb") }
     in_block && /^[[:space:]]+hot_cache_max_size:/     { extract($0, "hot_cache_max_size") }
     in_block && /^[[:space:]]+paged_ssd_cache_dir:/    { extract($0, "paged_ssd_cache_dir") }
     in_block && /^[[:space:]]+max_concurrent_requests:/ { extract($0, "max_concurrent_requests") }
@@ -163,8 +160,7 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
     --port "${NET_PORT}"
     --model-dir "${_MODEL_DIR}"
   )
-  [[ -n "${_OMLX_MAX_PROC_MEM}" ]] && OMLX_ARGS+=(--max-process-memory "${_OMLX_MAX_PROC_MEM}")
-  [[ -n "${_OMLX_MAX_MODEL_MEM}" ]] && OMLX_ARGS+=(--max-model-memory "${_OMLX_MAX_MODEL_MEM}")
+  [[ -n "${_OMLX_MEMORY_GUARD_GB}" ]] && OMLX_ARGS+=(--memory-guard-gb "${_OMLX_MEMORY_GUARD_GB}")
   [[ -n "${_OMLX_HOT_CACHE}" ]] && OMLX_ARGS+=(--hot-cache-max-size "${_OMLX_HOT_CACHE}")
   [[ -n "${_OMLX_SSD_CACHE_DIR}" ]] && OMLX_ARGS+=(--paged-ssd-cache-dir "${_OMLX_SSD_CACHE_DIR}")
   [[ -n "${_OMLX_MAX_CONCUR}" ]] && OMLX_ARGS+=(--max-concurrent-requests "${_OMLX_MAX_CONCUR}")

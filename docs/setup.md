@@ -326,12 +326,14 @@ If it recurs within minutes (not hours), tune one of:
    `4lm profile set lean` (~40 GB) or `4lm profile set mlx-coding`
    (~42 GB; coder only). For pure RAG work,
    `4lm profile set mlx-knowledge` (~23 GB).
-2. **Cap omlx memory in the profile YAML.** Add or tighten the
-   `omlx:` block:
+2. **Cap omlx memory in the profile YAML.** Set omlx's memory guard
+   ceiling in the `omlx:` block, and cap each model's prompt length:
    ```yaml
    omlx:
-     max_process_memory: "85%"
-     max_model_memory: "70%"
+     memory_guard_gb: 90        # soft stop at 85 %, hard abort at 95 %
+   models:
+     - model_path: …
+       max_context_window: 65536
    ```
    Then `4lm profile set <active>` to apply.
 

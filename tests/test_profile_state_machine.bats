@@ -389,7 +389,7 @@ _find_real_jq() {
   cat > "${BATS_TMPDIR}/omlx-valid.yaml" <<'YAML'
 backend: omlx
 omlx:
-  max_process_memory: "80%"
+  memory_guard_gb: 80
   max_concurrent_requests: 8
 models:
   - model_path: mlx-community/Qwen3-Coder-Next-4bit

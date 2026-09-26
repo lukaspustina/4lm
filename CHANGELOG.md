@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opencode config (`{file:…}`), `4lm` probes and the helpers send it as a
   bearer token. `4lm doctor` checks the key file and `~/.omlx/settings.json`
   are 0600.
+- Profile field `omlx.memory_guard_gb`, forwarded as `--memory-guard-gb`
+  (omlx's process memory ceiling), and per-model `max_context_window`,
+  rendered into `~/.omlx/model_settings.json`.
 
 ### Changed
 - **BREAKING**: `4lm expose lan` refuses without a key file or when the active
@@ -52,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine that already had 4lm.
 
 ### Removed
+- `omlx.max_process_memory` and `omlx.max_model_memory`. omlx has no such
+  flags (neither v0.6.0 nor v0.7.0rc1); no shipped profile set them. Unknown
+  `omlx:` keys now fail validation instead of being ignored.
 - The `iogpu.wired_limit_mb` mechanism: `install.sh` no longer installs
   `/etc/sudoers.d/4lm-stack` or runs `sysctl`, the `mlx_lm` wrapper no longer
   calls `sudo`, and `4lm doctor` drops its wired-limit check. The hard-coded

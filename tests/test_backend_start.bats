@@ -133,8 +133,7 @@ _write_omlx_profile_with_block() {
   cat > "${BATS_TMPDIR}/omlx-block-test.yaml" <<'YAML'
 backend: omlx
 omlx:
-  max_process_memory: "80%"
-  max_model_memory: "100GB"
+  memory_guard_gb: 100
   hot_cache_max_size: "20%"
   paged_ssd_cache_dir: "~/.4lm/cache/omlx"
   max_concurrent_requests: 8
@@ -169,8 +168,7 @@ YAML
   _write_omlx_profile_with_block
   run "${BACKEND_START}"
   [ "$status" -eq 0 ]
-  grep -q -- "--max-process-memory" "${OMLX_LOG}"
-  grep -q -- "--max-model-memory" "${OMLX_LOG}"
+  grep -q -- "--memory-guard-gb 100" "${OMLX_LOG}"
   grep -q -- "--hot-cache-max-size" "${OMLX_LOG}"
   grep -q -- "--max-concurrent-requests" "${OMLX_LOG}"
 }
@@ -179,8 +177,7 @@ YAML
   _write_omlx_profile
   run "${BACKEND_START}"
   [ "$status" -eq 0 ]
-  run ! grep -q -- "--max-process-memory" "${OMLX_LOG}"
-  run ! grep -q -- "--max-model-memory" "${OMLX_LOG}"
+  run ! grep -q -- "--memory-guard-gb" "${OMLX_LOG}"
   run ! grep -q -- "--hot-cache-max-size" "${OMLX_LOG}"
   run ! grep -q -- "--paged-ssd-cache-dir" "${OMLX_LOG}"
   run ! grep -q -- "--max-concurrent-requests" "${OMLX_LOG}"

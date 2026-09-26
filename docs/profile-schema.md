@@ -22,8 +22,7 @@ fallback in the profile YAML.
 
 | Key | Type | Notes |
 |---|---|---|
-| `max_process_memory` | string | Passed as `--max-process-memory` (e.g. `"80%"`, `"100GB"`) |
-| `max_model_memory` | string | Passed as `--max-model-memory` |
+| `memory_guard_gb` | number > 0 | Passed as `--memory-guard-gb`: omlx's process memory ceiling in GB. Soft stop (admission pause, LRU eviction) at 85 %, in-flight abort at 95 %. Absent = omlx's dynamic `balanced` tier |
 | `hot_cache_max_size` | string | Passed as `--hot-cache-max-size` |
 | `paged_ssd_cache_dir` | string | Passed as `--paged-ssd-cache-dir`; tilde-expanded; validated |
 | `max_concurrent_requests` | int | Passed as `--max-concurrent-requests` |
@@ -37,11 +36,14 @@ fallback in the profile YAML.
 | `model_type` | `lm` \| `vlm` | no | Default: `lm`. Use `lm` for all non-visual models including embeddings and rerankers. |
 | `pin` | bool | no | Keep model in memory (default: `false`) |
 | `ttl` | int \| null | no | Unload after N seconds idle; `null` = never unload |
+| `max_context_window` | int > 0 | no | Longest prompt omlx admits for this model, in tokens; longer requests are rejected up front. Measure it with omlx's context benchmark |
 | `chat_template_kwargs` | dict | no | Passed to `~/.omlx/settings.json`; empty `{}` is omitted |
 | `sampling` | dict | no | Per-model sampling defaults; empty `{}` is omitted |
 
-`~/.omlx/settings.json` is a **derived runtime artifact** rendered from the
-active profile YAML by `render_omlx_settings()`. Never edit it by hand.
+`~/.omlx/model_settings.json` is a **derived runtime artifact** rendered from
+the active profile YAML by `render_omlx_settings()` on every `profile set`,
+which overwrites it in full. A per-model value set in the omlx admin UI does
+not survive; put it in the profile. Unknown `omlx:` keys fail validation.
 
 Minimal omlx profile skeleton:
 

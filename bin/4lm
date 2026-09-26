@@ -885,12 +885,13 @@ validate_profile() {
       /^[[:space:]]*-[[:space:]]*model_path:/ {
         if (in_entry) _flush()
         in_entry = 1
-        path = $NF; served = ""; ttl = ""; model_type = ""
-        has_ttl = 0; has_model_type = 0
+        path = $NF; served = ""; ttl = ""; model_type = ""; ctx = ""
+        has_ttl = 0; has_model_type = 0; has_ctx = 0
       }
       in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
       in_entry && /^[[:space:]]+ttl:/ { ttl = $NF; has_ttl = 1 }
       in_entry && /^[[:space:]]+model_type:/ { model_type = $NF; has_model_type = 1 }
+      in_entry && /^[[:space:]]+max_context_window:/ { ctx = $NF; has_ctx = 1 }
       function _flush() {
         name = (served != "") ? served : path
         if (path == "") { print "model entry missing required field '"'"'model_path'"'"'"; return }
@@ -901,11 +902,31 @@ validate_profile() {
         if (has_ttl && ttl != "null" && ttl !~ /^[0-9]+$/) {
           print "model '"'"'" name "'"'"' field '"'"'ttl'"'"' must be integer or null"
         }
+        if (has_ctx && ctx !~ /^[1-9][0-9]*$/) {
+          print "model '"'"'" name "'"'"' field '"'"'max_context_window'"'"' must be a positive integer"
+        }
         if (has_model_type && model_type != "lm" && model_type != "vlm") {
           print "model '"'"'" name "'"'"' field '"'"'model_type'"'"' must be '"'"'lm'"'"' or '"'"'vlm'"'"'"
         }
       }
       END { if (in_entry) _flush() }
+    ' "${yaml_path}")
+    # Optional omlx: block — known keys only; memory_guard_gb must be > 0.
+    while IFS= read -r omlx_err_line; do
+      warn "${omlx_err_line}"
+      omlx_err=1
+    done < <(awk '
+      /^omlx:/ { in_block = 1; next }
+      in_block && /^[^[:space:]#]/ { in_block = 0 }
+      in_block && /^[[:space:]]+[a-z_]+:/ {
+        key = $1; sub(":$", "", key); val = $0
+        sub("^[[:space:]]+[a-z_]+:[[:space:]]*", "", val)
+        if (key !~ /^(memory_guard_gb|hot_cache_max_size|paged_ssd_cache_dir|max_concurrent_requests)$/) {
+          print "unknown omlx: key '"'"'" key "'"'"'"
+        } else if (key == "memory_guard_gb" && (val !~ /^[0-9]+(\.[0-9]+)?$/ || val + 0 <= 0)) {
+          print "omlx: memory_guard_gb must be a positive number of GB"
+        }
+      }
     ' "${yaml_path}")
     [[ "${omlx_err}" -eq 0 ]] || return 1
     return 0
@@ -972,15 +993,16 @@ render_omlx_settings() {
     /^[[:space:]]*-[[:space:]]*model_path:/ {
       if (in_entry) _emit()
       in_entry = 1
-      served = ""; pin = ""; ttl_val = ""; has_pin = 0; has_ttl = 0
+      served = ""; pin = ""; ttl_val = ""; ctx = ""; has_pin = 0; has_ttl = 0
     }
     in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
     in_entry && /^[[:space:]]+pin:/ { pin = $NF; has_pin = 1 }
     in_entry && /^[[:space:]]+ttl:/ { ttl_val = $NF; has_ttl = 1 }
+    in_entry && /^[[:space:]]+max_context_window:/ { ctx = $NF }
     function _emit() {
       if (served == "") return
       print served "|" (has_pin ? pin : "") "|" (has_pin ? "1" : "0") "|" \
-            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0")
+            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0") "|" ctx
     }
     END { if (in_entry) _emit() }
   ' "${yaml_path}")"
@@ -992,7 +1014,7 @@ render_omlx_settings() {
 
   # Build a jq object: {"model_id": {per-model settings}, ...}
   local models_obj="{}"
-  while IFS='|' read -r served pin has_pin ttl_val has_ttl; do
+  while IFS='|' read -r served pin has_pin ttl_val has_ttl ctx; do
     [[ -z "${served}" ]] && continue
     local entry
     # shellcheck disable=SC2016  # jq filter: $vars are jq args, not shell vars
@@ -1001,8 +1023,10 @@ render_omlx_settings() {
       --arg has_pin "${has_pin}" \
       --arg ttl_val "${ttl_val}" \
       --arg has_ttl "${has_ttl}" \
+      --arg ctx "${ctx}" \
       '(if $has_pin == "1" and $pin_val == "true" then {is_pinned: true} else {} end) +
-       (if $has_ttl == "1" and $ttl_val != "null" then {ttl_seconds: ($ttl_val | tonumber)} else {} end)')"
+       (if $has_ttl == "1" and $ttl_val != "null" then {ttl_seconds: ($ttl_val | tonumber)} else {} end) +
+       (if $ctx != "" then {max_context_window: ($ctx | tonumber)} else {} end)')"
     # shellcheck disable=SC2016
     models_obj="$("${_jq}" -n \
       --arg model_id "${served}" \
