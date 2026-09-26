@@ -2,6 +2,16 @@
 # Stub: configurable response per test via env vars.
 #   CURL_STUB_RESPONSE  — body printed on stdout
 #   CURL_STUB_EXIT      — exit code (default 1, mimicking --fail on no server)
+#   CURL_LOG            — when set, argv is appended, plus the stdin config
+#                         when called with `--config -`
+
+if [[ -n "${CURL_LOG:-}" ]]; then
+  echo "argv: $*" >> "${CURL_LOG}"
+  for a in "$@"; do
+    [[ "${a}" == "-" && "${prev:-}" == "--config" ]] && sed 's/^/config: /' >> "${CURL_LOG}"
+    prev="${a}"
+  done
+fi
 
 if [[ -n "${CURL_STUB_RESPONSE:-}" ]]; then
   printf '%s' "${CURL_STUB_RESPONSE}"

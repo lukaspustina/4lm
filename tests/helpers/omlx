@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 LOG="${OMLX_LOG:-${BATS_TMPDIR:-${TMPDIR:-/tmp}}/omlx-calls}"
 echo "$*" >> "${LOG}"
+[[ -n "${OMLX_ENV_LOG:-}" ]] && env > "${OMLX_ENV_LOG}"
 exit "${OMLX_STUB_EXIT:-0}"
