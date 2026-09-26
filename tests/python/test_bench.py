@@ -2,6 +2,7 @@
 import json
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -74,7 +75,12 @@ class FakeOmlx(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            self.wfile.write(b'data: {"choices":[{"delta":{"content":"x"}}]}\n\ndata: [DONE]\n\n')
+            # omlx sends a keepalive and a bare role chunk before prefill ends.
+            self.wfile.write(b'data: {"model":"keepalive","choices":[{"delta":{"role":"assistant","content":""}}]}\n\n')
+            self.wfile.write(b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n')
+            self.wfile.flush()
+            time.sleep(0.2)
+            self.wfile.write(b'data: {"choices":[{"delta":{"reasoning_content":"x"}}]}\n\ndata: [DONE]\n\n')
             return
         return self._json(404, {})
 
@@ -130,7 +136,7 @@ def test_bench_json_maps_results(omlx, capsys):
     assert row["cold_ttft_ms"] == 41000.0
     assert row["decode_tps"] == 52.3
     assert row["peak_memory_gib"] == 150.0
-    assert row["warm_ttft_ms"] is not None
+    assert row["warm_ttft_ms"] >= 200  # first token, not the keepalive/role chunks
     assert row["max_context_window"] is None
     assert report["memory_pressure_before"] == {"free_percent": 40}
 
