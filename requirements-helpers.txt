@@ -2,4 +2,4 @@
 # bump deliberately. CI caches this venv keyed on this file's content.
 rich==15.0.0
 pyyaml==6.0.3
-pytest==9.0.3
+pytest==9.1.1
