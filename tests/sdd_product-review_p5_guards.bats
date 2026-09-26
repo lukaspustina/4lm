@@ -30,7 +30,8 @@ setup() {
 @test "model rm with --confirm invokes hf cache rm with correct repo" {
   run "${REPO_ROOT}/bin/4lm" model rm org/myrepo --confirm
   [ "$status" -eq 0 ]
-  grep -q "cache rm org/myrepo" "${BATS_TMPDIR}/hf-calls"
+  # huggingface_hub >= 2.0 only matches the typed id and prompts without --yes.
+  grep -qx "cache rm model/org/myrepo --yes" "${BATS_TMPDIR}/hf-calls"
 }
 
 # ---- uninstall --confirm guard -----------------------------------------------

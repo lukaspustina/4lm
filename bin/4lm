@@ -2003,7 +2003,8 @@ cmd_models_rm() {
   fi
   command -v hf >/dev/null 2>&1 || die "hf CLI not found — run: just install"
   info "Removing ${repo} from cache…"
-  hf cache rm "${repo}"
+  # huggingface_hub >= 2.0 matches only the typed id (model/<org>/<repo>).
+  hf cache rm "model/${repo#model/}" --yes
   ok "Removed ${repo}"
 }
 

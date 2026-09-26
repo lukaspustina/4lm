@@ -141,7 +141,7 @@ models-clean: _require-hf
 
 # Remove a cached model: just models-rm mlx-community/GLM-4.7-Flash-8bit
 models-rm model: _require-hf
-    hf cache rm "{{model}}"
+    hf cache rm "model/{{trim_start_match(model, "model/")}}"
 
 [private]
 _require-hf:
