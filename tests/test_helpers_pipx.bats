@@ -8,7 +8,7 @@ bats_require_minimum_version 1.5.0
 load helpers/setup
 
 @test "pipx stub: list --short emits PIPX_LIST_SHORT verbatim when set" {
-  export PIPX_LIST_SHORT="omlx 0.6.0
+  export PIPX_LIST_SHORT="omlx 0.7.0rc1
 open-webui 0.6.43"
   run pipx list --short
   [ "$status" -eq 0 ]

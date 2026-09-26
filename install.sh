@@ -323,8 +323,8 @@ done <"${SOURCE_DIR}/requirements.txt"
 # the marker standing in for the SHA. A deviating version is force-reinstalled.
 # §9a's one-line grep idiom is not reused here because it cannot distinguish
 # "absent" (install) from "wrong version" (install --force).
-readonly OMLX_EXPECTED_VERSION="0.6.0"
-readonly OMLX_GIT_REF="b16a1d1b4647dfeb19facc95aa9bfd0d78168269" # v0.6.0, 2026-08-16
+readonly OMLX_EXPECTED_VERSION="0.7.0rc1"
+readonly OMLX_GIT_REF="35be079d8a86a44dc2c6d485fbfbf43754e66298" # v0.7.0rc1, 2026-09-25
 # `|| true`: no omlx line makes grep exit 1, which set -euo pipefail would
 # treat as fatal — but "absent" is a normal state, handled by the branch below.
 omlx_installed="$(pipx list --short 2>/dev/null | grep "^omlx " | awk '{print $2}' || true)"
