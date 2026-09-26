@@ -75,3 +75,16 @@ def test_diag_probe_sends_key(tmp_path, monkeypatch):
 
     assert seen, "diag made no HTTP request"
     assert seen[0].get_header("Authorization") == f"Bearer {KEY}"
+
+
+def test_smoke_routes_reranker_to_rerank(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    seen = []
+
+    def fake_urlopen(req, timeout=None):
+        seen.append(req.full_url)
+        return _response({"results": [{"index": 0, "relevance_score": 0.9}]})
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        assert helpers._smoke_one("http://127.0.0.1:8000", "qwen3-reranker", MagicMock()) is True
+    assert seen == ["http://127.0.0.1:8000/v1/rerank"]

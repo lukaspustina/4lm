@@ -366,6 +366,36 @@ def _smoke_embedding(base_url: str, model_id: str, console: "Console") -> bool:
         return False
 
 
+def _smoke_rerank(base_url: str, model_id: str, console: "Console") -> bool:
+    import time
+    import urllib.error
+    import urllib.request
+
+    payload = json.dumps({"model": model_id, "query": "hi", "documents": ["hi", "bye"]}).encode()
+    req = urllib.request.Request(
+        f"{base_url}/v1/rerank",
+        data=payload,
+        headers={"Content-Type": "application/json", **_backend_headers()},
+        method="POST",
+    )
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        ms = int((time.time() - t0) * 1000)
+        if result.get("results"):
+            console.print(f"  [green]✓[/] smoke test: {model_id} responded in {ms}ms (rerank)")
+            return True
+        console.print(f"  [yellow]warn:[/] smoke test: empty rerank result from {model_id}")
+        return False
+    except urllib.error.HTTPError as e:
+        console.print(f"  [yellow]warn:[/] smoke test: HTTP {e.code} from {model_id} (/v1/rerank)")
+        return False
+    except (urllib.error.URLError, OSError) as e:
+        console.print(f"  [yellow]warn:[/] smoke test: {model_id} failed ({type(e).__name__})")
+        return False
+
+
 def _smoke_one(base_url: str, model_id: str, console: "Console") -> bool:
     import time
     import urllib.error
@@ -375,6 +405,8 @@ def _smoke_one(base_url: str, model_id: str, console: "Console") -> bool:
     # /v1/embeddings instead. Detected by id substring.
     if _is_embedding_model(model_id):
         return _smoke_embedding(base_url, model_id, console)
+    if "rerank" in model_id.lower():
+        return _smoke_rerank(base_url, model_id, console)
 
     payload = json.dumps({
         "model": model_id,
