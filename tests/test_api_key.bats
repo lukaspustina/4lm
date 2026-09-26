@@ -189,3 +189,11 @@ SH
   run "${REPO_ROOT}/bin/4lm" doctor
   [[ "$output" == *"api-key"*"600"* ]] || false
 }
+
+@test "expose on a backend-only install prints no WebUI URL" {
+  _seed_key
+  _profile omlx
+  run "${REPO_ROOT}/bin/4lm" expose lan --confirm
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"WebUI"* ]]
+}
