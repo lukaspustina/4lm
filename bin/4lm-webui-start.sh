@@ -64,7 +64,14 @@ fi
 
 # ---- Environment for Open WebUI --------------------------------------------
 export OPENAI_API_BASE_URL="${BACKEND_URL}"
-export OPENAI_API_KEY="local-no-auth"
+API_KEY_FILE="${CONFIG_DIR}/api-key"
+if [[ ! -s "${API_KEY_FILE}" ]]; then
+  echo "[$(date -Iseconds)] FATAL: API key missing: ${API_KEY_FILE}" >&2
+  echo "  Run: just install" >&2
+  exit 78
+fi
+OPENAI_API_KEY="$(<"${API_KEY_FILE}")"
+export OPENAI_API_KEY
 # DATA_DIR is already set above; readonly forbids reassignment, just mark for export.
 export DATA_DIR
 export ENABLE_OLLAMA_API="False"

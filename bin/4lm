@@ -20,6 +20,7 @@ readonly CONFIG_DIR="${LLM_HOME}/config"
 readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
 readonly NETWORK_YAML="${CONFIG_DIR}/network.yaml"
 readonly ACTIVE_CONFIG="${CONFIG_DIR}/active-profile"
+readonly API_KEY_FILE="${CONFIG_DIR}/api-key"
 readonly PREVIOUS_PROFILE_FILE="${CONFIG_DIR}/previous-profile"
 
 readonly BACKEND_LABEL="com.4lm.backend"
@@ -157,6 +158,16 @@ net_webui_port() {
 }
 
 backend_url() { echo "http://127.0.0.1:$(net_backend_port)"; }
+
+# curl against the backend. The API key travels as a curl config on stdin so
+# it never shows up in argv.
+backend_curl() {
+  if [[ -s "${API_KEY_FILE}" ]]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$(<"${API_KEY_FILE}")" | curl --config - "$@"
+  else
+    curl "$@"
+  fi
+}
 webui_url() { echo "http://127.0.0.1:$(net_webui_port)"; }
 
 # Primary LAN IP (first non-loopback IPv4 on en0, falling back to any en*)
@@ -323,7 +334,7 @@ service_start() {
     local start
     start="$(date +%s)"
     for _ in 1 2 3 4 5 6 7 8 9 10; do
-      if curl --max-time 1 --silent --fail "${url}" >/dev/null 2>&1; then
+      if backend_curl --max-time 1 --silent --fail "${url}" >/dev/null 2>&1; then
         ok "backend: ready"
         return 0
       fi
@@ -432,7 +443,7 @@ cmd_status() {
   if [[ "${be_loaded}" == "true" ]]; then
     local _url models_raw
     _url="$(backend_url)/v1/models"
-    models_raw="$(curl --max-time 1 --silent --fail "${_url}" 2>/dev/null || true)"
+    models_raw="$(backend_curl --max-time 1 --silent --fail "${_url}" 2>/dev/null || true)"
     if [[ -n "${models_raw}" ]]; then
       be_http='"ok"'
       model_ids_json="$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' <<<"${models_raw}" |
@@ -1215,7 +1226,7 @@ cmd_profile_set() {
     local url
     url="$(backend_url)/v1/models"
     while true; do
-      if curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+      if backend_curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
         break
       fi
       if ((SECONDS - _start >= BACKEND_POLL_SECS)); then
@@ -1265,7 +1276,7 @@ cmd_profile_set() {
     url="$(backend_url)/v1/models"
     local _start=$SECONDS _timed_out=0
     while true; do
-      if curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+      if backend_curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
         _timed_out=0
         break
       fi
@@ -1289,7 +1300,7 @@ cmd_profile_set() {
         _start=$SECONDS
         _timed_out=0
         while true; do
-          if curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+          if backend_curl --silent --max-time 1 "${url}" >/dev/null 2>&1; then
             _timed_out=0
             break
           fi
@@ -1335,6 +1346,13 @@ cmd_expose() {
 
   if [[ "${mode}" == "lan" && "${confirm}" != "true" ]]; then
     die "pass --confirm to expose on LAN"
+  fi
+  if [[ "${mode}" == "lan" ]]; then
+    [[ -s "${API_KEY_FILE}" ]] || die "API key missing: ${API_KEY_FILE} (run: just install)"
+    local backend
+    backend="$(profile_backend "${ACTIVE_CONFIG}")" || die "no valid active profile"
+    [[ "${backend}" == "omlx" ]] ||
+      die "backend ${backend} cannot enforce an API key; only omlx may bind to the LAN"
   fi
 
   # Write network.yaml in place.
@@ -1431,6 +1449,29 @@ cmd_doctor() {
 
   echo "${C_DIM}─── 4lm Doctor ───${C_RST}"
   local fail=0
+
+  # API key: present and private (the backend refuses to start without it).
+  if [[ -s "${API_KEY_FILE}" ]]; then
+    local key_mode
+    key_mode="$(stat -f %Lp "${API_KEY_FILE}")"
+    if [[ "${key_mode}" == "600" ]]; then
+      ok "api-key present (0600)"
+    else
+      warn "${API_KEY_FILE} has mode ${key_mode}, expected 600"
+      echo "    Fix: chmod 600 ${API_KEY_FILE}"
+      fail=1
+    fi
+  else
+    warn "api-key missing: ${API_KEY_FILE}"
+    echo "    Fix: just install"
+    fail=1
+  fi
+  local omlx_settings="${HOME}/.omlx/settings.json"
+  if [[ -f "${omlx_settings}" && "$(stat -f %Lp "${omlx_settings}")" != "600" ]]; then
+    warn "${omlx_settings} is not 0600 but may hold the API key"
+    echo "    Fix: chmod 600 ${omlx_settings}"
+    fail=1
+  fi
 
   # Plists installed. Backend is unconditional; webui is checked only when
   # webui_installed returns true (backend-only installs skip the check).
@@ -1570,7 +1611,7 @@ cmd_open() {
 # ---- OpenCode --------------------------------------------------------------
 cmd_opencode() {
   require_component opencode
-  if ! curl --max-time 1 --silent --fail "$(backend_url)/v1/models" >/dev/null 2>&1; then
+  if ! backend_curl --max-time 1 --silent --fail "$(backend_url)/v1/models" >/dev/null 2>&1; then
     warn "backend not responding at $(backend_url) — run: 4lm start backend"
   fi
   exec opencode "$@"

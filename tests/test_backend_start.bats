@@ -8,6 +8,7 @@ BACKEND_START="${REPO_ROOT}/bin/4lm-backend-start.sh"
 
 setup() {
   mkdir -p "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs"
+  printf 'test-key\n' >"${HOME}/.4lm/config/api-key" # always-on API key
   export OMLX_LOG="${BATS_TMPDIR}/omlx-calls"
   rm -f "${OMLX_LOG}"
 
@@ -48,17 +49,6 @@ YAML
   [ "$status" -eq 0 ]
   grep -q "serve" "${OLLAMA_LOG}"
   grep -q "OLLAMA_HOST=127.0.0.1:8000" "${OLLAMA_LOG}"
-}
-
-@test "ollama profile: LAN mode sets OLLAMA_HOST to 0.0.0.0" {
-  _write_ollama_profile
-  cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
-mode: lan
-backend_port: 8000
-YAML
-  run "${BACKEND_START}"
-  [ "$status" -eq 0 ]
-  grep -q "OLLAMA_HOST=0.0.0.0:8000" "${OLLAMA_LOG}"
 }
 
 @test "ollama profile: sysctl wired-limit block is skipped" {
@@ -107,17 +97,6 @@ YAML
   [ "$status" -eq 0 ]
   run ! grep -q -- "--config" "${MLXLM_LOG}"
   run ! grep -q -- "--repetition-penalty" "${MLXLM_LOG}"
-}
-
-@test "mlx_lm profile: LAN mode sets --host 0.0.0.0" {
-  _write_mlxlm_profile
-  cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
-mode: lan
-backend_port: 8000
-YAML
-  run "${BACKEND_START}"
-  [ "$status" -eq 0 ]
-  grep -q -- "--host 0.0.0.0" "${MLXLM_LOG}"
 }
 
 @test "mlx_lm profile: python3 absent from venv exits 127 with FATAL message" {

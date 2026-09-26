@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The backend API key is always on.** `install.sh` generates
+  `~/.4lm/config/api-key` (0600, never rewritten); the backend wrapper passes it
+  to omlx as `OMLX_API_KEY` and exits 78 without it. Open WebUI, the seeded
+  opencode config (`{file:…}`), `4lm` probes and the helpers send it as a
+  bearer token. `4lm doctor` checks the key file and `~/.omlx/settings.json`
+  are 0600.
+
 ### Changed
+- **BREAKING**: `4lm expose lan` refuses without a key file or when the active
+  backend is not omlx, and the ollama and `mlx_lm` wrappers exit 78 on
+  `mode: lan` — neither can enforce a key. An existing
+  `~/.config/opencode/opencode.jsonc` needs
+  `"apiKey": "{file:~/.4lm/config/api-key}"` under `provider.4lm.options`;
+  `install.sh` warns when it is missing.
 - **BREAKING**: the chat slot of the `default` and `mlx-knowledge` profiles
   serves `qwen3.8-27b` (`mlx-community/Qwen3.8-27B-4bit`) instead of
   `qwen3.6-35b`. **Run `make models` before switching**: the ~15 GB

@@ -175,8 +175,8 @@ SH
 @test "backend probes send the key via stdin config, not argv" {
   _seed_key
   _profile omlx
-  cp "${REPO_ROOT}/launchd/com.4lm.backend.plist" "${HOME}/.4lm/launchd/"
-  export LAUNCHCTL_PRINT_STATE="running"
+  mkdir -p "${HOME}/.config/opencode"
+  echo '{}' >"${HOME}/.config/opencode/opencode.jsonc"
   run "${REPO_ROOT}/bin/4lm" opencode --version
   grep -q "^config: header = \"Authorization: Bearer ${KEY}\"" "${CURL_LOG}"
   run ! grep -q "argv: .*${KEY}" "${CURL_LOG}"

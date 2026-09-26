@@ -10,6 +10,7 @@ readonly CONFIG_DIR="${LLM_HOME}/config"
 readonly LOG_DIR="${LLM_HOME}/logs"
 readonly NETWORK_YAML="${CONFIG_DIR}/network.yaml"
 readonly ACTIVE_CONFIG="${CONFIG_DIR}/active-profile"
+readonly API_KEY_FILE="${CONFIG_DIR}/api-key"
 
 mkdir -p "${LOG_DIR}"
 
@@ -67,8 +68,26 @@ case "${_be_val}" in
     ;;
 esac
 
+# Only omlx enforces the API key; the other backends must not leave loopback.
+if [[ "${BACKEND_TYPE}" != "omlx" && "${NET_MODE}" == "lan" ]]; then
+  echo "[$(date -Iseconds)] FATAL: backend ${BACKEND_TYPE} cannot enforce an API key; refusing mode: lan" >&2
+  echo "  Run: 4lm expose local" >&2
+  exit 78
+fi
+
 if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
   # ---- omlx ------------------------------------------------------------------
+  if [[ ! -s "${API_KEY_FILE}" ]]; then
+    echo "[$(date -Iseconds)] FATAL: API key missing: ${API_KEY_FILE}" >&2
+    echo "  Run: just install" >&2
+    exit 78
+  fi
+  # Env, not --api-key: keeps the key out of ps. omlx persists it to
+  # settings.json on its next save, so that file must stay private.
+  OMLX_API_KEY="$(<"${API_KEY_FILE}")"
+  export OMLX_API_KEY
+  [[ -f "${HOME}/.omlx/settings.json" ]] && chmod 600 "${HOME}/.omlx/settings.json"
+
   OMLX_BIN="$(command -v omlx || true)"
   if [[ -z "${OMLX_BIN}" ]]; then
     echo "[$(date -Iseconds)] FATAL: omlx not found in PATH" >&2

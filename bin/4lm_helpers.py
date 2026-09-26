@@ -318,6 +318,16 @@ def is_orphaned(worker_pid: str, log_entries: list[str], window_admissions: int)
     return any(worker_pid in line for line in log_entries) and window_admissions == 0
 
 
+def _backend_headers() -> dict[str, str]:
+    """Authorization header for the backend's /v1/* when the API key exists."""
+    key_file = Path.home() / ".4lm" / "config" / "api-key"
+    try:
+        key = key_file.read_text().strip()
+    except OSError:
+        return {}
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 def _is_embedding_model(model_id: str) -> bool:
     """Heuristic: model id contains 'embed' (case-insensitive)."""
     return "embed" in model_id.lower()
@@ -332,7 +342,7 @@ def _smoke_embedding(base_url: str, model_id: str, console: "Console") -> bool:
     req = urllib.request.Request(
         f"{base_url}/v1/embeddings",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **_backend_headers()},
         method="POST",
     )
     t0 = time.time()
@@ -375,7 +385,7 @@ def _smoke_one(base_url: str, model_id: str, console: "Console") -> bool:
     req = urllib.request.Request(
         f"{base_url}/v1/chat/completions",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **_backend_headers()},
         method="POST",
     )
     t0 = time.time()
@@ -416,7 +426,8 @@ def cmd_smoke(args: argparse.Namespace) -> int:
     base_url = args.base_url
 
     try:
-        with urllib.request.urlopen(f"{base_url}/v1/models", timeout=5) as resp:
+        req = urllib.request.Request(f"{base_url}/v1/models", headers=_backend_headers())
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
         models = data.get("data", [])
         if not models:
@@ -448,7 +459,8 @@ def cmd_diag(args: argparse.Namespace) -> int:
     url = f"http://127.0.0.1:{args.backend_port}/v1/models"
     t0 = time.time()
     try:
-        with urllib.request.urlopen(url, timeout=3) as resp:
+        req = urllib.request.Request(url, headers=_backend_headers())
+        with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read())
         ms = int((time.time() - t0) * 1000)
         model_count = len(data.get("data", []))

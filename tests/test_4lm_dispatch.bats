@@ -8,6 +8,7 @@ setup() {
   cp "${REPO_ROOT}/config/profiles/default.yaml" "${HOME}/.4lm/config/profiles/default.yaml"
   ln -sfn "${HOME}/.4lm/config/profiles/default.yaml" "${HOME}/.4lm/config/active-profile"
   cp "${REPO_ROOT}/config/network.example.yaml"     "${HOME}/.4lm/config/network.yaml"
+  printf 'test-key\n' >"${HOME}/.4lm/config/api-key" # always-on API key
   # Substituted plists in the launchd dir.
   for p in "${REPO_ROOT}"/launchd/*.plist; do
     sed "s|__HOME__|${HOME}|g" "$p" > "${HOME}/.4lm/launchd/$(basename "$p")"

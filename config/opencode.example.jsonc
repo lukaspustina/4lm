@@ -18,7 +18,8 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "Local LLM (4lm)",
       "options": {
-        "baseURL": "http://127.0.0.1:8000/v1"
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "{file:~/.4lm/config/api-key}"
       },
       "models": {
         // default / lean / max-100gb / mlx-coding profiles

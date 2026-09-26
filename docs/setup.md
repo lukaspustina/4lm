@@ -212,6 +212,24 @@ Default bind is `127.0.0.1`. To expose to your LAN:
 
 Without `--confirm` the command refuses. With `--confirm` it writes
 `mode: lan` to `~/.4lm/config/network.yaml` and restarts running services.
+It also refuses when `~/.4lm/config/api-key` is missing, or when the active
+profile's backend is not omlx — ollama and `mlx_lm` cannot enforce a key, and
+their wrappers exit 78 on `mode: lan`.
+
+**API key.** The key is always on, in both modes. The backend wrapper passes
+it to omlx as `OMLX_API_KEY`; Open WebUI and the seeded opencode config read
+the same file. omlx writes the key into `~/.omlx/settings.json` on its next
+settings save, so the wrapper keeps that file at 0600 and `4lm doctor`
+checks both. An `opencode.jsonc` from before 2026-09 lacks the key; add to
+`provider.4lm.options`:
+
+```jsonc
+"apiKey": "{file:~/.4lm/config/api-key}"
+```
+
+For remote clients, create a sub key per consumer in the omlx admin UI
+(`http://<host>:8000/admin`). Sub keys reach `/v1/*` only, not management
+endpoints, and can be revoked individually.
 
 Security hardening applied in all modes (not LAN-only):
 - `WEBUI_REGISTRATION_ENABLED=false` — no new accounts can register after setup

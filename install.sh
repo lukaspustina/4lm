@@ -11,7 +11,8 @@
 #   3. Installs scripts, profile YAMLs, plists (plists live in ~/.4lm/launchd/,
 #      NOT ~/Library/LaunchAgents/, so launchd never auto-loads them)
 #      With --backend-only: 4lm-webui-start.sh and the webui plist are skipped.
-#   4. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent
+#   4. Seeds ~/.4lm/config/network.yaml from network.example.yaml if absent,
+#      and generates the backend API key ~/.4lm/config/api-key (0600) if absent
 #   5. Symlinks ~/.local/bin/4lm → ~/.4lm/bin/4lm
 #   6. pipx install each pinned package from requirements.txt (python3.12)
 #      With --backend-only: the open-webui line is filtered out in-memory.
@@ -219,6 +220,18 @@ else
   info "network.yaml exists, not overwriting"
 fi
 
+# ---- 6b. Backend API key --------------------------------------------------
+# Always on: the backend wrapper passes it to
+# omlx, local clients read it from here. Generated once, never rewritten.
+API_KEY_FILE="${CONFIG_DIR}/api-key"
+if [[ ! -s "${API_KEY_FILE}" ]]; then
+  (umask 077 && openssl rand -hex 32 >"${API_KEY_FILE}")
+  ok "API key generated → ${API_KEY_FILE}"
+else
+  chmod 600 "${API_KEY_FILE}"
+  info "API key exists, not overwriting"
+fi
+
 # ---- 7. Install plists into ~/.4lm/launchd/ -------------------------------
 info "Installing launchd plists into ${LAUNCHD_DIR}/ (not ~/Library/LaunchAgents/)…"
 for plist_src in "${SOURCE_DIR}"/launchd/*.plist; do
@@ -413,6 +426,10 @@ if [[ "${BACKEND_ONLY}" -eq 0 ]]; then
     ok "opencode config seeded → ${OPENCODE_CONFIG}"
   else
     info "opencode config exists, not overwriting: ${OPENCODE_CONFIG}"
+    if ! grep -q '"apiKey"' "${OPENCODE_CONFIG}"; then
+      warn "${OPENCODE_CONFIG} has no apiKey; the backend rejects it. Add to provider.4lm.options:"
+      echo '      "apiKey": "{file:~/.4lm/config/api-key}"'
+    fi
   fi
 fi
 

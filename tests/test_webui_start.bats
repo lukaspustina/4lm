@@ -12,6 +12,7 @@ setup() {
   # Minimal network.yaml
   printf 'mode: local\nbackend_port: 8080\nwebui_port: 3000\n' \
     >"${LLM_HOME}/config/network.yaml"
+  printf 'test-key\n' >"${HOME}/.4lm/config/api-key" # always-on API key
   # Stub open-webui first on PATH
   export PATH="${BATS_TEST_DIRNAME}/helpers:${PATH}"
 }
