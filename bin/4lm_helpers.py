@@ -707,7 +707,9 @@ def cmd_hello(args: argparse.Namespace) -> int:
 # ---- bench -------------------------------------------------------------------
 # Drives omlx's admin benchmark API.
 # omlx measures cold TTFT, decode rate and peak memory; 4lm adds the warm TTFT
-# (omlx benches skip the prefix cache) and system memory pressure.
+# (omlx benches skip the prefix cache) and system memory pressure. Each omlx
+# bench unloads the model afterwards — load/unload cycles are an IOGPU panic
+# trigger (mlx #3346), so run it deliberately, not on a schedule.
 
 _BENCH_TERMINAL = {"completed", "error", "cancelled"}
 _BENCH_MAX_WAIT_S = 2 * 3600
@@ -799,10 +801,14 @@ def _bench_model(opener, args, model_id: str) -> dict:
     ctx = None
     if args.context:
         cstart = _bench_json(opener, f"{base}/admin/api/bench/context/start",
-                             {"model_id": model_id, "target_tokens": 131072})
+                             {"model_id": model_id, "target_tokens": 524288})
         cres = _bench_poll(opener, f"{base}/admin/api/bench/context/{cstart['bench_id']}/results",
                            args.poll_seconds)
         ctx = cres["result"]["measured_tokens"]
+
+    # Both omlx benches unload the model when they finish; a pinned model
+    # stays out until the next request, so load it back now.
+    _ttft_ms(base, model_id, "hi")
 
     peak = trial.get("peak_memory_bytes")
     return {
@@ -898,7 +904,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument("base_url", help="backend base URL (e.g. http://127.0.0.1:8000)")
     p_bench.add_argument("models", nargs="*", help="served model names (default: all but embed/rerank)")
     p_bench.add_argument("--context", action="store_true",
-                         help="also measure max_context_window (unloads the model afterwards)")
+                         help="also measure max_context_window (one more unload/reload cycle)")
     p_bench.add_argument("--json", action="store_true", help="emit JSON instead of a table")
     p_bench.add_argument("--prompt-length", type=int, default=65536, help="prompt tokens (omlx: fixed set)")
     p_bench.add_argument("--poll-seconds", type=float, default=5.0, help=argparse.SUPPRESS)

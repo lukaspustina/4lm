@@ -163,3 +163,15 @@ def test_memory_pressure_parses_free_percentage():
           "System-wide memory free percentage: 37%\n"
     with patch("subprocess.run", return_value=MagicMock(stdout=out, returncode=0)):
         assert helpers._memory_pressure() == {"free_percent": 37}
+
+
+def test_context_bench_asks_for_the_largest_target(omlx, capsys):
+    _run(_args(omlx, context=True), capsys)
+    starts = [c[2] for c in FakeOmlx.calls if c[:2] == ("POST", "/admin/api/bench/context/start")]
+    assert starts[0]["target_tokens"] == 524288
+
+
+def test_bench_reloads_the_model_last(omlx, capsys):
+    _run(_args(omlx, context=True), capsys)
+    posts = [c[1] for c in FakeOmlx.calls if c[0] == "POST"]
+    assert posts[-1] == "/v1/chat/completions"

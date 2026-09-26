@@ -51,7 +51,7 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 | OpenCode TUI | `4lm opencode` (alias `4lm code`) |
 | Login autostart | `4lm autostart enable\|disable\|status [backend\|webui\|all]` |
 | Sanity sweep | `4lm doctor` (prereqs + smoke-test); `4lm diag` (live clients, inflight work) |
-| Measure models | `4lm bench [model…] [--context] [--json]` (omlx admin bench API; `--context` unloads the model afterwards) |
+| Measure models | `4lm bench [model…] [--context] [--json]` (omlx admin bench API; each omlx bench unloads the model, 4lm reloads it at the end — run it deliberately, load/unload cycles are an IOGPU panic trigger) |
 | Update probes | `4lm outdated` (PyPI / brew / HF); `4lm upgrade [brew\|models\|python]` to apply |
 | Model picks | `4lm model recommend [<use-case>]` (uses `llmfit` + localmaxxing benchmarks) |
 | Run all checks | `just check` |
