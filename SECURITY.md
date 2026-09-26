@@ -3,20 +3,24 @@
 ## Threat model
 
 4lm is a **single-user, local-host tool**. The OpenAI-compatible
-backend on `:8000` ships with **no authentication**. When 4lm binds
-to `127.0.0.1` (the default), the threat surface is limited to other
-processes on the same Mac.
+backend on `:8000` requires an **API key in every mode**: `install.sh`
+generates `~/.4lm/config/api-key` (0600) and the backend wrapper refuses
+to start without it. Local clients (Open WebUI, opencode, `4lm` itself)
+read the same file.
 
-`4lm expose lan --confirm` switches the bind to `0.0.0.0` so other
-machines on the LAN can reach the backend. **At that point, anyone
-on the same network can call `/v1/*` without credentials.** Use this
-mode only on a network you trust, or put the host behind Tailscale
-or another VPN that provides authentication.
+`4lm expose lan --confirm` switches the bind to `0.0.0.0`. The key is
+then the only gate on `/v1/*` — there is no TLS, so it travels in clear
+text on the LAN. Only the omlx backend enforces a key; ollama and
+`mlx_lm` profiles refuse a LAN bind. Give each remote client its own
+omlx sub key so it can be revoked alone, and keep the main key (which
+also opens omlx's admin UI) on the host.
+
+omlx stores the key in plain text in `~/.omlx/settings.json`; 4lm keeps
+that file at 0600 and `4lm doctor` checks it.
 
 The WebUI hardening defaults shipped by 4lm — `DEFAULT_USER_ROLE=pending`,
-`ENABLE_SIGNUP=False`, persistent `WEBUI_SECRET_KEY` —
-mitigate WebUI account-takeover scenarios but **do not** add auth to
-the raw backend API.
+`ENABLE_SIGNUP=False`, persistent `WEBUI_SECRET_KEY` — mitigate WebUI
+account-takeover scenarios.
 
 ## Reporting a vulnerability
 
@@ -34,5 +38,6 @@ on severity.
   Mac running 4lm.
 - Issues in upstream projects (omlx, ollama, OpenWebUI, opencode) — please
   report those directly to the respective project.
-- Misuse of `4lm expose lan` on an untrusted network — the docs warn
-  about this and the `--confirm` gate makes it a deliberate choice.
+- Key interception on an untrusted network after `4lm expose lan` — the
+  backend speaks plain HTTP; the docs warn about this and the `--confirm`
+  gate makes it a deliberate choice.
