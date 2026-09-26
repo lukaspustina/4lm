@@ -18,7 +18,7 @@
 #   7. sudo tee /etc/newsyslog.d/4lm.conf for log rotation
 #      Two grep-guarded `sudo tee -a` appends: backend.log always; webui.log
 #      only when not --backend-only.
-#   8. Installs /etc/sudoers.d/4lm-stack and sets iogpu.wired_limit_mb=98304
+#   8. Removes the legacy /etc/sudoers.d/4lm-stack if present
 #   9. Seeds ~/.config/opencode/opencode.jsonc from the template if absent
 #      With --backend-only: skipped.
 #
@@ -390,37 +390,15 @@ if [[ "${BACKEND_ONLY}" -eq 0 ]]; then
   fi
 fi
 
-# ---- 11. Sudoers + wired memory limit -------------------------------------
-# Install the NOPASSWD rule for the wrapper, then set the limit now. The
-# wrapper invokes the same literal command (`sudo -n /usr/sbin/sysctl -w
-# iogpu.wired_limit_mb=98304`); any drift between this string and the
-# wrapper's call breaks passwordless sudo.
-SUDOERS_FILE="/etc/sudoers.d/4lm-stack"
-SUDOERS_CONTENT="${USER} ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304"
-
-if sudo grep -qF "${SUDOERS_CONTENT}" "${SUDOERS_FILE}" 2>/dev/null; then
-  ok "sudoers already configured at ${SUDOERS_FILE}"
-else
-  echo "Requires sudo: installing ${SUDOERS_FILE}"
-  TEMP_SUDOERS="$(mktemp)"
-  trap 'rm -f "${TEMP_SUDOERS}"' EXIT
-  printf '%s\n' "${SUDOERS_CONTENT}" >"${TEMP_SUDOERS}"
-  if ! visudo -c -q -f "${TEMP_SUDOERS}"; then
-    die "sudoers content failed visudo validation"
-  fi
-  sudo install -m 0440 -o root -g wheel "${TEMP_SUDOERS}" "${SUDOERS_FILE}"
-  rm -f "${TEMP_SUDOERS}"
-  trap - EXIT
-  ok "sudoers → ${SUDOERS_FILE}"
-fi
-
-CURRENT="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
-if [[ "${CURRENT}" -lt 98304 ]]; then
-  echo "Requires sudo: setting iogpu.wired_limit_mb=98304"
-  sudo /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304 >/dev/null
-  ok "iogpu.wired_limit_mb=98304 (was ${CURRENT})"
-else
-  ok "iogpu.wired_limit_mb=${CURRENT}"
+# ---- 11. Remove the legacy sudoers rule -----------------------------------
+# Up to 2026-09 4lm installed a NOPASSWD rule for `sysctl -w
+# iogpu.wired_limit_mb=98304`. 4lm no longer touches iogpu sysctls, so the rule
+# is removed on sight. LEGACY_SUDOERS_FILE is overrideable for the bats harness.
+LEGACY_SUDOERS_FILE="${LEGACY_SUDOERS_FILE:-/etc/sudoers.d/4lm-stack}"
+if [[ -e "${LEGACY_SUDOERS_FILE}" ]]; then
+  echo "Requires sudo: removing legacy ${LEGACY_SUDOERS_FILE}"
+  sudo rm -f "${LEGACY_SUDOERS_FILE}"
+  ok "removed ${LEGACY_SUDOERS_FILE}"
 fi
 
 # ---- 12. OpenCode config --------------------------------------------------

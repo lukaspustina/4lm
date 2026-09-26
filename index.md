@@ -56,9 +56,8 @@ closet does the inference; the Air on the couch does the typing.
 - **Never invalidates your knowledge base across profiles.** Every
   omlx profile serves the embedder as `qwen3-embedding` and the
   reranker as `qwen3-reranker`. Switch tiers without reindexing.
-- **Never lets you OOM silently.** `install.sh` enforces
-  `iogpu.wired_limit_mb=98304` via sudoers + sysctl. `4lm doctor`
-  smoke-tests inference; `4lm diag` shows what's actually running.
+- **Never lets you OOM silently.** `4lm doctor` smoke-tests
+  inference; `4lm diag` shows what's actually running.
 
 ## Profile lineup
 
@@ -107,7 +106,7 @@ API is the seam.
 
 ```sh
 make bootstrap   # Brewfile + Brewfile-tui (skipped if BACKEND_ONLY=1)
-make install     # ~/.4lm/, sudoers, sysctl, pipx deps, log rotation
+make install     # ~/.4lm/, pipx deps, log rotation
 make models      # ~140 GB from HuggingFace (idempotent)
 4lm start        # bootstrap launchd agents
 4lm opencode     # daily driver

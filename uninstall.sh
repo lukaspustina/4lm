@@ -7,6 +7,7 @@
 #   3. Removes ~/.4lm/ (configs, profiles, launchd plists, logs, openwebui-data)
 #   4. pipx uninstall each package listed in requirements.txt
 #   5. Removes /etc/newsyslog.d/4lm.conf (requires sudo)
+#   6. Removes the legacy /etc/sudoers.d/4lm-stack if present (requires sudo)
 #
 # DESTRUCTIVE. ~/.4lm/openwebui-data/ contains WebUI chat history, MCP
 # configs, and uploaded files. Back it up first if you want to keep any of it.
@@ -17,6 +18,8 @@ readonly SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LLM_HOME="${HOME}/.4lm"
 readonly BIN_DIR="${HOME}/.local/bin"
 readonly NEWSYSLOG_CONF="/etc/newsyslog.d/4lm.conf"
+# Overrideable for the bats harness.
+readonly LEGACY_SUDOERS_FILE="${LEGACY_SUDOERS_FILE:-/etc/sudoers.d/4lm-stack}"
 readonly BACKEND_LABEL="com.4lm.backend"
 readonly WEBUI_LABEL="com.4lm.webui"
 readonly LA_DIR="${HOME}/Library/LaunchAgents"
@@ -129,6 +132,13 @@ if [[ -f "${NEWSYSLOG_CONF}" ]]; then
   echo "Requires sudo: removing ${NEWSYSLOG_CONF}"
   sudo rm "${NEWSYSLOG_CONF}"
   ok "removed ${NEWSYSLOG_CONF}"
+fi
+
+# ---- 7. Remove legacy sudoers rule ----------------------------------------
+if [[ -e "${LEGACY_SUDOERS_FILE}" ]]; then
+  echo "Requires sudo: removing ${LEGACY_SUDOERS_FILE}"
+  sudo rm -f "${LEGACY_SUDOERS_FILE}"
+  ok "removed ${LEGACY_SUDOERS_FILE}"
 fi
 
 echo

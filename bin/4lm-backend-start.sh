@@ -171,16 +171,6 @@ elif [[ "${BACKEND_TYPE}" == "ollama" ]]; then
   exec "${OLLAMA_BIN}" serve
 
 elif [[ "${BACKEND_TYPE}" == "mlx_lm" ]]; then
-  # ---- Wired memory limit (best-effort) --------------------------------------
-  # Required for large MoE models on 128 GB Macs. Needs sudoers config (see docs/setup.md §Sudoers).
-  # Sudoers literal must match exactly: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
-  CURRENT_LIMIT="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
-  if [[ "${CURRENT_LIMIT}" -lt 98304 ]]; then
-    if ! sudo -n /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304 >/dev/null 2>&1; then
-      echo "[$(date -Iseconds)] WARN: wired_limit_mb not set — run \`4lm doctor\` for fix" >&2
-    fi
-  fi
-
   # ---- mlx_lm.server ---------------------------------------------------------
   # python3 lives in the omlx pipx venv (mlx_lm is co-installed there).
   MLX_LM_PY=""

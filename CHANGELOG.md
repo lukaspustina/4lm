@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed omlx short-circuited the check, so a pin bump never reached a
   machine that already had 4lm.
 
+### Removed
+- The `iogpu.wired_limit_mb` mechanism: `install.sh` no longer installs
+  `/etc/sudoers.d/4lm-stack` or runs `sysctl`, the `mlx_lm` wrapper no longer
+  calls `sudo`, and `4lm doctor` drops its wired-limit check. The hard-coded
+  `98304` equals the macOS default on 128 GB machines, so it raised nothing
+  there — and on larger machines it *lowered* the GPU working set until the
+  next reboot. `install.sh` and `uninstall.sh` remove a leftover sudoers file.
+
 ## [0.7.0] - 2026-05-17
 
 ### Added

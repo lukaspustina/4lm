@@ -26,9 +26,7 @@ The installer is idempotent and will:
 - Seed `~/.4lm/config/network.yaml` (mode: local) on first run
 - Symlink `~/.local/bin/4lm` → `~/.4lm/bin/4lm`
 - `pipx install` each pinned package from `requirements.txt` using `python3.12`
-- Write `/etc/sudoers.d/4lm-stack` (validated via `visudo -c`, mode 0440,
-  root:wheel-owned) so the backend wrapper can call sysctl without a TTY
-- Set `iogpu.wired_limit_mb=98304` via sudo if currently lower
+- Remove a legacy `/etc/sudoers.d/4lm-stack` left by installs before 2026-09
 - `sudo tee /etc/newsyslog.d/4lm.conf` for log rotation
 
 You'll see one or two sudo prompts during step 1. None on subsequent runs.
@@ -74,11 +72,6 @@ prints `WebUI artifacts found; not managed in backend-only mode.`
 Conversely, re-running `./install.sh` (no flag) over a backend-only
 install upgrades to full.
 
-> §Sudoers: the literal in `/etc/sudoers.d/4lm-stack` must match the
-> wrapper's invocation exactly:
-> `lukas ALL=(root) NOPASSWD: /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304`.
-> install.sh writes this verbatim. Don't hand-edit the file.
-
 ## Step 2 — Pre-download model weights
 
 `omlx` will pull on demand, but a 30+ GB model on residential fiber is
@@ -99,7 +92,7 @@ Cache lives at `~/.cache/huggingface/hub/` (~140 GB for the default profile).
 ```sh
 4lm start         # bootstrap and start backend + webui
 4lm status        # see service state
-4lm doctor        # prereq + smoke-test sweep (wired memory, sudoers, inference)
+4lm doctor        # prereq + smoke-test sweep (binaries, profile, inference)
 ```
 
 After reboot, services are stopped. Run `4lm start` to bring them back.
@@ -244,7 +237,7 @@ provides authentication.
 - **Orphaned workers** — worker PIDs that appear in the log but have
   received zero admitted requests in the current session.
 
-`4lm doctor` is the *static* sweep (prereqs, file paths, sudoers,
+`4lm doctor` is the *static* sweep (prereqs, file paths,
 binaries on PATH). `4lm diag` is the *runtime* sweep. Use `doctor`
 after install, `diag` when something feels off.
 
@@ -297,9 +290,9 @@ vision), three things grow inside the wired pool:
   slabs resident even after a request finishes.
 - **Loaded model weights** for all five slots, pinned per profile YAML.
 
-Once the workers + caches + macOS itself fill the 96 GB wired-pool cap
-(`iogpu.wired_limit_mb=98304`), Metal refuses the next allocation and
-the request fails fast.
+Once the workers + caches fill the GPU working set (the macOS default,
+`recommendedMaxWorkingSetSize` — 96 GB on a 128 GB machine), Metal
+refuses the next allocation and the request fails fast.
 
 First-aid:
 
@@ -323,11 +316,6 @@ If it recurs within minutes (not hours), tune one of:
      max_model_memory: "70%"
    ```
    Then `4lm profile set <active>` to apply.
-3. **Raise `iogpu.wired_limit_mb`** if you're willing to give MLX more
-   of the 128 GB. Going past ~104 GB (107520) starts crowding macOS
-   itself. The sudoers rule pins exactly `98304`, so if you change the
-   value, also update `/etc/sudoers.d/4lm-stack` and the wrapper's
-   call.
 
 If it recurs only after long sessions (every few hours): treat as
 normal cache-growth wear — `4lm restart backend` periodically, or
@@ -358,34 +346,10 @@ prints). If the issue recurs reproducibly on omlx, file upstream at
 
 ### `4lm doctor` exits non-zero
 
-`4lm doctor` runs prereq checks (sudoers literal, sysctl wired-memory
-limit, binaries on PATH, profile validity) and then smoke-tests
+`4lm doctor` runs prereq checks (binaries on PATH, profile validity) and then smoke-tests
 inference against `/v1/chat/completions` for each non-embedding model
 in the active profile. A non-zero exit means one of these failed —
 the output names which.
-
-For the wired-memory check specifically:
-
-```
-iogpu.wired_limit_mb=<x> < 98304 — see docs/setup.md §Sudoers
-```
-
-Set it interactively or re-run `just install` — install.sh writes the
-sudoers rule and sets the limit when its check fails. The setting
-persists until reboot, after which the backend wrapper re-applies it
-via the sudoers NOPASSWD entry on next start.
-
-### `sudo: a password is required` in backend.log
-
-Sudoers literal does not match the wrapper invocation. install.sh writes
-the matching pair, so this only happens if `/etc/sudoers.d/4lm-stack` was
-edited or removed. Wrapper invokes:
-
-```
-sudo -n /usr/sbin/sysctl -w iogpu.wired_limit_mb=98304
-```
-
-Re-run `just install` to restore the sudoers file.
 
 ### `newsyslog: cannot open` after install
 

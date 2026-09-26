@@ -33,8 +33,6 @@ readonly LA_DIR="${HOME}/Library/LaunchAgents"
 readonly WEBUI_MISSING_MSG="WebUI not installed (re-run ./install.sh to enable)"
 readonly OPENCODE_MISSING_MSG="OpenCode not installed (re-run ./install.sh to enable)"
 
-readonly REQUIRED_WIRED_LIMIT_MB=98304
-
 # Python helpers — venv interpreter (overridable for bats tests).
 readonly HELPERS_PYTHON="${LLM_HELPERS_PYTHON:-${LLM_HOME}/venv/bin/python}"
 # Use helpers from the same directory as this script (repo or installed).
@@ -1433,17 +1431,6 @@ cmd_doctor() {
 
   echo "${C_DIM}─── 4lm Doctor ───${C_RST}"
   local fail=0
-
-  # Wired memory
-  local wired
-  wired="$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
-  if [[ "${wired}" -ge "${REQUIRED_WIRED_LIMIT_MB}" ]]; then
-    ok "iogpu.wired_limit_mb=${wired}"
-  else
-    warn "iogpu.wired_limit_mb=${wired} < ${REQUIRED_WIRED_LIMIT_MB}"
-    echo "    Fix: see docs/setup.md §Sudoers"
-    fail=1
-  fi
 
   # Plists installed. Backend is unconditional; webui is checked only when
   # webui_installed returns true (backend-only installs skip the check).

@@ -74,9 +74,8 @@ closet does the inference; the Air on the couch does the typing.
   reranker as `qwen3-reranker`. Switch from `default` (65 GB) to
   `lean` (40 GB) to `max-100gb` (92 GB) — the same RAG index keeps
   working. Switch profiles like you switch branches.
-- **Never lets you OOM silently.** `install.sh` enforces
-  `iogpu.wired_limit_mb=98304` via sudoers + sysctl. `4lm doctor`
-  smoke-tests inference. `4lm diag` shows what's actually running
+- **Never lets you OOM silently.** `4lm doctor` smoke-tests
+  inference. `4lm diag` shows what's actually running
   when the fans spin up.
 
 ## What it actually does
@@ -98,7 +97,7 @@ closet does the inference; the Air on the couch does the typing.
   on first init only — after that the admin UI is source of truth.
   Toggles in the admin panel survive restarts; env-var changes do not.)
 - **Idempotent install / upgrade / uninstall.** Every step is a
-  no-op on re-run: sudoers, sysctl, newsyslog, pipx, opencode config.
+  no-op on re-run: newsyslog, pipx, opencode config.
   Re-running `--backend-only` over a full install does not strip the
   WebUI; re-running the full installer over `--backend-only` upgrades
   cleanly.
@@ -112,7 +111,7 @@ closet does the inference; the Air on the couch does the typing.
 just bootstrap   # Brewfile + Brewfile-tui (skipped if BACKEND_ONLY=1)
                  # core: shellcheck, shfmt, bats-core, jq, python@3.12,
                  # pipx, llmfit, ollama; tui extra: opencode
-just install     # ~/.4lm/, sudoers, sysctl, pipx-installed deps,
+just install     # ~/.4lm/, pipx-installed deps,
                  # log rotation, opencode config
 just models      # ~140 GB from HuggingFace (idempotent; same target updates)
 4lm start        # bootstrap launchd agents
@@ -160,7 +159,7 @@ knowledge bases stay valid across switches.
 vision and the reranker are evicted under pressure by omlx's LRU, and
 they account for exactly that ~10 GB difference. The coder is an MoE
 with ~3B active params, so KV cache and batched decoding fit
-comfortably in the remaining ~24 GB of the 96 GB wired-memory budget. The chat model is dense — all 27B parameters are
+comfortably in the remaining ~24 GB of the 96 GB GPU working set (the macOS default on a 128 GB machine). The chat model is dense — all 27B parameters are
 read per token, which costs throughput rather than memory.
 
 The everyday ladder is `lean` → `default` → `max-100gb`. `mlx-coding`
@@ -240,7 +239,7 @@ just models                        # download/update everything in config/profil
 
 # Removal
 4lm uninstall                      # bootout, remove ~/.local/bin/4lm; keep ~/.4lm/
-just uninstall                     # full: bootout, ~/.4lm/, sudoers, newsyslog, pipx packages
+just uninstall                     # full: bootout, ~/.4lm/, newsyslog, pipx packages
 ```
 
 Every command has `--help`.
@@ -263,7 +262,6 @@ Every command has `--help`.
 
 ~/.local/bin/4lm                   symlink to ~/.4lm/bin/4lm
 ~/.config/opencode/opencode.jsonc  seeded by install.sh from the repo template
-/etc/sudoers.d/4lm-stack           NOPASSWD for the backend's sysctl call
 /etc/newsyslog.d/4lm.conf          log rotation (10 MB, 7 generations, gzipped)
 ```
 
@@ -352,7 +350,7 @@ lifting. Go give them stars:
 
 ## Documentation
 
-- [`docs/setup.md`](docs/setup.md) — operator runbook (sudoers, troubleshooting, model pulls, LAN client wiring)
+- [`docs/setup.md`](docs/setup.md) — operator runbook (troubleshooting, model pulls, LAN client wiring)
 - [`docs/profile-schema.md`](docs/profile-schema.md) — YAML key reference for all backends
 - [`docs/autostart.md`](docs/autostart.md) — opt-in login autostart mechanics
 - [`specs/sdd/webui-tools-and-mcp.md`](specs/sdd/webui-tools-and-mcp.md) — active SDD for tool calling + MCP
