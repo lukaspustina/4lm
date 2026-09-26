@@ -63,7 +63,7 @@ setup() {
   echo "$output" | grep -q "error:"
   echo "$output" | grep -qi "unknown"
   # LAN mode was NOT written because parser aborted on the unknown arg
-  ! grep -q "^mode: lan" "${HOME}/.4lm/config/network.yaml"
+  run ! grep -q "^mode: lan" "${HOME}/.4lm/config/network.yaml"
 }
 
 # ---- profile list empty state ------------------------------------------------

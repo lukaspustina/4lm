@@ -105,8 +105,8 @@ YAML
   _write_mlxlm_profile
   run "${BACKEND_START}"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--config" "${MLXLM_LOG}"
-  ! grep -q -- "--repetition-penalty" "${MLXLM_LOG}"
+  run ! grep -q -- "--config" "${MLXLM_LOG}"
+  run ! grep -q -- "--repetition-penalty" "${MLXLM_LOG}"
 }
 
 @test "mlx_lm profile: LAN mode sets --host 0.0.0.0" {
@@ -200,11 +200,11 @@ YAML
   _write_omlx_profile
   run "${BACKEND_START}"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--max-process-memory" "${OMLX_LOG}"
-  ! grep -q -- "--max-model-memory" "${OMLX_LOG}"
-  ! grep -q -- "--hot-cache-max-size" "${OMLX_LOG}"
-  ! grep -q -- "--paged-ssd-cache-dir" "${OMLX_LOG}"
-  ! grep -q -- "--max-concurrent-requests" "${OMLX_LOG}"
+  run ! grep -q -- "--max-process-memory" "${OMLX_LOG}"
+  run ! grep -q -- "--max-model-memory" "${OMLX_LOG}"
+  run ! grep -q -- "--hot-cache-max-size" "${OMLX_LOG}"
+  run ! grep -q -- "--paged-ssd-cache-dir" "${OMLX_LOG}"
+  run ! grep -q -- "--max-concurrent-requests" "${OMLX_LOG}"
 }
 
 @test "omlx profile: paged_ssd_cache_dir tilde is expanded to absolute path" {
@@ -213,7 +213,7 @@ YAML
   [ "$status" -eq 0 ]
   grep -q -- "--paged-ssd-cache-dir ${HOME}/.4lm/cache/omlx" "${OMLX_LOG}"
   # Must not contain literal ~
-  ! grep -q -- "--paged-ssd-cache-dir ~" "${OMLX_LOG}"
+  run ! grep -q -- "--paged-ssd-cache-dir ~" "${OMLX_LOG}"
 }
 
 @test "omlx profile: paged_ssd_cache_dir with special chars is rejected" {

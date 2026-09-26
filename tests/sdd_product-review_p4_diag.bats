@@ -49,5 +49,5 @@ STUB
 
 @test "4lm diag output does not contain CPU or RSS column header" {
   run "${REPO_ROOT}/bin/4lm" diag
-  ! echo "$output" | grep -qi '%CPU\|CPU.*RSS\|RSS.*CPU'
+  run ! grep -qi '%CPU\|CPU.*RSS\|RSS.*CPU' <<<"$output"
 }
