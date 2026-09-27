@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Profile `max-170gb` for 256 GB machines shared with a VM or desktop:
+  Qwen3.8-Flash-Next (125B MoE, VLM) as the single main model with MTP, the 4B
+  reranker, no separate vision model (it does not serve `qwen3-vl-8b`), memory
+  guard 170 GiB, 262k context. `just models` now fetches its ~106 GB
+  checkpoint too; below 256 GB, remove the profile first.
 - **The backend API key is always on.** `install.sh` generates
   `~/.4lm/config/api-key` (0600, never rewritten); the backend wrapper passes it
   to omlx as `OMLX_API_KEY` and exits 78 without it. Open WebUI, the seeded

@@ -19,7 +19,7 @@ before changing the model set, the backend choice, or the activation model.
 ```
 bin/                       # 4lm, launchd wrapper scripts, and 4lm_helpers.py
 launchd/                   # plist templates with __HOME__ placeholder
-config/profiles/           # lean / default / max-100gb (Qwen3 stack via omlx) + mlx-coding / mlx-knowledge / ollama YAMLs
+config/profiles/           # lean / default / max-100gb / max-170gb (Qwen3 stack via omlx) + mlx-coding / mlx-knowledge / ollama YAMLs
 config/network.example.yaml
 config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
 docs/                      # setup runbook + profile schema reference
@@ -135,12 +135,15 @@ Full table with use-cases, fits-on, and memory math lives in
 | `lean` | omlx | ~40 GB |
 | `default` | omlx | ~62 GB |
 | `max-100gb` | omlx | ~92 GB |
+| `max-170gb` | omlx | ~108 GB |
 | `mlx-coding` | omlx | ~42 GB |
 | `mlx-knowledge` | omlx | ~20 GB |
 | `ollama` | ollama | ~22 GB |
 
 All omlx embedders share `served_model_name: qwen3-embedding`, all omlx
-rerankers share `qwen3-reranker`, vision is `qwen3-vl-8b`. **Switching
+rerankers share `qwen3-reranker`, vision is `qwen3-vl-8b` — except
+`max-170gb`, which serves no separate vision model (its main model is a VLM)
+and says so in its header. **Switching
 between omlx profiles never requires reindexing knowledge bases — do
 not change these served-model names without an explicit migration
 plan.** Each YAML carries an extensive header comment with slot-by-slot

@@ -69,6 +69,7 @@ knowledge bases stay valid across switches.
 | `lean`          | omlx    | Qwen3-Coder-30B-A3B     | Qwen3.6-35B-A3B | 8B    | 0.6B   | —      | ~40 GB | 64 GB+  |
 | `default`       | omlx    | Qwen3-Coder-Next (80B)  | Qwen3.8-27B     | 8B    | 0.6B   | VL-8B  | ~62 GB | 96 GB+  |
 | `max-100gb`     | omlx    | Qwen3-Coder-Next (80B)  | Qwen3-Next-80B  | 8B    | 4B     | VL-8B  | ~92 GB | 128 GB  |
+| `max-170gb`     | omlx    | Qwen3.8-Flash-Next (125B, one model for code, chat, vision) | ← | 8B | 4B | ← | ~108 GB | 256 GB |
 | `mlx-coding`    | omlx    | Qwen3-Coder-Next (80B)  | —               | —     | —      | —      | ~42 GB | 64 GB+  |
 | `mlx-knowledge` | omlx    | —                       | Qwen3.8-27B     | 8B    | 0.6B   | —      | ~20 GB | 36 GB+  |
 | `ollama`        | ollama  | qwen3-coder-next:q4_K_M | —               | —     | —      | —      | ~22 GB | 36 GB+  |

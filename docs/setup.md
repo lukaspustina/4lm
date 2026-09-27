@@ -178,6 +178,7 @@ rationale, memory math, when-to-use, and assumptions-to-validate.
 | Default daily driver, 96 GB+ Mac | `default` |
 | 64 GB Mac, or want headroom on a bigger one | `lean` |
 | 128 GB Mac, willing to spend it on bigger chat + reranker | `max-100gb` |
+| 256 GB Mac shared with a VM or desktop work | `max-170gb` |
 | Long agentic coding session (max KV-cache headroom) | `mlx-coding` |
 | Text-only knowledge synthesis / vault RAG | `mlx-knowledge` |
 | GGUF smoke test (confirm Ollama still works) | `ollama` |
