@@ -753,7 +753,7 @@ def _ttft_ms(base_url: str, model_id: str, prompt: str) -> float:
     """Time to the first generated token of a streamed 1-token completion.
 
     omlx opens the stream with a keepalive and a bare role chunk before the
-    prefill finishes; only a delta carrying text counts as the first token.
+    prefill finishes; only a delta carrying text, or the finish chunk, counts.
     """
     import time
     import urllib.request
@@ -775,8 +775,13 @@ def _ttft_ms(base_url: str, model_id: str, prompt: str) -> float:
             if not line.startswith(b"data:") or line.strip() == b"data: [DONE]":
                 continue
             chunk = json.loads(line[5:])
-            delta = (chunk.get("choices") or [{}])[0].get("delta", {})
-            if any(delta.get(k) for k in ("content", "reasoning_content", "reasoning")):
+            choice = (chunk.get("choices") or [{}])[0]
+            delta = choice.get("delta", {})
+            # A model whose single token is a text-less special token (a
+            # thinking marker, say) goes straight to finish_reason; that chunk marks
+            # the first token just as well.
+            if choice.get("finish_reason") or any(
+                    delta.get(k) for k in ("content", "reasoning_content", "reasoning")):
                 ms = (time.time() - t0) * 1000
                 resp.read()
                 return round(ms, 1)

@@ -21,6 +21,7 @@ MODELS = ["coder", "qwen3-embedding", "qwen3-reranker"]
 
 class FakeOmlx(BaseHTTPRequestHandler):
     calls: list = []
+    swallow_token = False
 
     def log_message(self, *a):
         pass
@@ -80,7 +81,11 @@ class FakeOmlx(BaseHTTPRequestHandler):
             self.wfile.write(b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n')
             self.wfile.flush()
             time.sleep(0.2)
-            self.wfile.write(b'data: {"choices":[{"delta":{"reasoning_content":"x"}}]}\n\ndata: [DONE]\n\n')
+            if FakeOmlx.swallow_token:
+                # Some models emit their only token as a special token with no text.
+                self.wfile.write(b'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')
+            else:
+                self.wfile.write(b'data: {"choices":[{"delta":{"reasoning_content":"x"}}]}\n\ndata: [DONE]\n\n')
             return
         return self._json(404, {})
 
@@ -92,6 +97,7 @@ def omlx(tmp_path, monkeypatch):
     cfg.mkdir(parents=True)
     (cfg / "api-key").write_text(KEY + "\n")
     FakeOmlx.calls = []
+    FakeOmlx.swallow_token = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), FakeOmlx)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
@@ -175,3 +181,10 @@ def test_bench_reloads_the_model_last(omlx, capsys):
     _run(_args(omlx, context=True), capsys)
     posts = [c[1] for c in FakeOmlx.calls if c[0] == "POST"]
     assert posts[-1] == "/v1/chat/completions"
+
+
+def test_warm_ttft_counts_a_bare_finish_chunk(omlx, capsys):
+    FakeOmlx.swallow_token = True
+    rc, out = _run(_args(omlx), capsys)
+    assert rc == 0
+    assert json.loads(out)["models"][0]["warm_ttft_ms"] >= 200
