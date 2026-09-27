@@ -114,11 +114,18 @@ ci-venv:
 #
 # Network verbs. Never reachable from a gate.
 
-# Download or update every model named in config/profiles/ (backend-aware).
-models:
+# Download or update the models named in config/profiles/ (backend-aware);
+# `just models <profile>` limits it to one profile.
+models profile="":
     #!/usr/bin/env bash
     set -euo pipefail
-    for yaml in config/profiles/*.yaml; do
+    yamls=(config/profiles/*.yaml)
+    if [ -n "{{profile}}" ]; then
+      [[ "{{profile}}" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || { echo "invalid profile name: {{profile}}" >&2; exit 1; }
+      [ -f "config/profiles/{{profile}}.yaml" ] || { echo "profile not found: {{profile}}" >&2; exit 1; }
+      yamls=("config/profiles/{{profile}}.yaml")
+    fi
+    for yaml in "${yamls[@]}"; do
       backend=$(awk '/^backend:/{print $2}' "$yaml")
       backend=${backend:-mlx}
       while IFS= read -r model; do

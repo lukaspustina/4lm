@@ -80,6 +80,7 @@ in one shot:
 
 ```sh
 just models           # download/update every model in config/profiles/
+just models lean      # … or only one profile's models
 just models-list      # see what's cached
 just models-clean     # prune orphaned revisions
 just models-rm MODEL=<repo>   # remove one specific model

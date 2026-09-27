@@ -128,9 +128,10 @@ just models      # ~140 GB from HuggingFace (idempotent; same target updates)
 > of ~140 GB. `4lm doctor` will warn you if the active profile doesn't
 > fit your hardware.
 >
-> **Below 256 GB, drop `max-170gb` before `just models`.** The download
-> fetches the models of every installed profile, and `max-170gb` adds a
-> ~106 GB checkpoint: `rm ~/.4lm/config/profiles/max-170gb.yaml`.
+> **Fetch only the profile you run.** `just models` without an argument
+> downloads every profile's models, and `max-170gb` alone adds a ~106 GB
+> checkpoint. `just models lean` (or `4lm model download --profile lean`)
+> limits it to one profile.
 
 After a reboot: `4lm start`. There's no autostart and that's a feature.
 
@@ -226,7 +227,7 @@ hosts on the LAN run their own clients against the backend's
 4lm profile validate [--all]
 
 # Models
-just models                        # download/update everything in config/profiles/
+just models [profile]              # download/update config/profiles/ (all, or one)
 4lm model list                     # what's loaded vs cached
 4lm model recommend [<use-case>]   # top picks via llmfit + localmaxxing benchmarks
 

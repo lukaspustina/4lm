@@ -1932,6 +1932,14 @@ _hf_download_with_progress() {
 }
 
 cmd_models_download() {
+  local only_profile=""
+  if [[ "${1:-}" == "--profile" ]]; then
+    [[ -n "${2:-}" ]] || die "Usage: 4lm model download --profile <name>"
+    [[ "$2" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || die "invalid profile name: $2"
+    [[ -f "${PROFILES_DIR}/$2.yaml" ]] || die "profile not found: $2 (see: 4lm profile list)"
+    only_profile="$2"
+    shift 2
+  fi
   if (($# > 0)); then
     local repo
     for repo in "$@"; do
@@ -1958,6 +1966,7 @@ cmd_models_download() {
   trap 'warn "interrupted — re-run \`4lm model download\` to resume (hf + ollama caches are honored)"; exit 130' INT TERM
   for profile_yaml in "${PROFILES_DIR}"/*.yaml; do
     [[ -f "${profile_yaml}" ]] || continue
+    [[ -z "${only_profile}" || "${profile_yaml}" == "${PROFILES_DIR}/${only_profile}.yaml" ]] || continue
     backend="$(profile_backend "${profile_yaml}" 2>/dev/null || true)"
     while IFS='|' read -r _served model_path _od; do
       [[ -z "${model_path}" ]] && continue
@@ -2299,6 +2308,8 @@ ${C_DIM}Clients:${C_RST}
 ${C_DIM}Models:${C_RST}
   4lm model [list]                   List models from all profiles with cache status
   4lm model download [repo...]       Download missing models (all profiles), or specific repo(s)
+  4lm model download --profile <name>
+                                     Download only the models of one installed profile
   4lm model prune                    Prune stale HuggingFace snapshot revisions (keeps current)
   4lm model purge [--confirm]        Remove ALL cached models (HF + ollama)
   4lm model cleanup [--confirm]      Remove cached repos (HF + ollama) not referenced in any profile

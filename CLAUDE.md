@@ -42,7 +42,7 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 | Bootstrap dev tools | `just bootstrap` (Brewfile + Brewfile-tui + `pipx ensurepath`; `BACKEND_ONLY=1` skips TUI) |
 | Install / re-install | `just install` (or `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
 | Full uninstall | `just uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
-| Pre-download models | `just models` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download` |
+| Pre-download models | `just models [profile]` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download [--profile <name>]` |
 | Start everything | `4lm start` |
 | Stop everything | `4lm stop` |
 | Status | `4lm` (alias for `4lm status`; `--json` for machine-readable) |
