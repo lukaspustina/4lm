@@ -29,7 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard (omlx unloads the model afterwards); `--json` for tables in `docs/`.
 
 ### Changed
-- omlx pinned to v0.7.0rc1 (`35be079d`): loads the current
+- omlx pinned to main `f0d8428a` (after v0.7.0rc1, before 0.7.0 final): about
+  10–14 % faster single-stream decode than rc1 in our measurements, and the
+  memory-guard fix for vision engines. v0.7.0rc1 (`35be079d`) loads the current
   model generation, adds M5 prefill kernels, and refuses a non-loopback bind
   without an API key. With a key configured, loopback clients need it too.
 - open-webui 0.11.4, huggingface_hub 2.0.0, pytest 9.1.1. Checked against
