@@ -935,10 +935,12 @@ validate_profile() {
       in_block && /^[[:space:]]+[a-z_]+:/ {
         key = $1; sub(":$", "", key); val = $0
         sub("^[[:space:]]+[a-z_]+:[[:space:]]*", "", val)
-        if (key !~ /^(memory_guard_gb|hot_cache_max_size|paged_ssd_cache_dir|max_concurrent_requests)$/) {
+        if (key !~ /^(memory_guard_gb|hot_cache_max_size|paged_ssd_cache_dir|paged_ssd_cache_max_size|max_concurrent_requests)$/) {
           print "unknown omlx: key '"'"'" key "'"'"'"
         } else if (key == "memory_guard_gb" && (val !~ /^[0-9]+(\.[0-9]+)?$/ || val + 0 <= 0)) {
           print "omlx: memory_guard_gb must be a positive number of GB"
+        } else if (key == "paged_ssd_cache_max_size" && val !~ /^([0-9]+(\.[0-9]+)?(MB|GB|TB)|auto)$/) {
+          print "omlx: paged_ssd_cache_max_size must be a size like 50GB, or auto"
         }
       }
     ' "${yaml_path}")

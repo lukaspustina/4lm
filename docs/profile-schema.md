@@ -25,6 +25,7 @@ fallback in the profile YAML.
 | `memory_guard_gb` | number > 0 | Passed as `--memory-guard-gb`: omlx's process memory ceiling in GB. Soft stop (admission pause, LRU eviction) at 85 %, in-flight abort at 95 %. Absent = omlx's dynamic `balanced` tier |
 | `hot_cache_max_size` | string | Passed as `--hot-cache-max-size` |
 | `paged_ssd_cache_dir` | string | Passed as `--paged-ssd-cache-dir`; tilde-expanded; validated |
+| `paged_ssd_cache_max_size` | size \| `auto` | Passed as `--paged-ssd-cache-max-size` (e.g. `50GB`). omlx's default `auto` claims half the free disk; on a host that also swaps, cap it — free disk is macOS's only swap headroom |
 | `max_concurrent_requests` | int | Passed as `--max-concurrent-requests` |
 
 **Per-model fields** (in `models:` list):

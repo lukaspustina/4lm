@@ -108,3 +108,24 @@ _render() {
     [[ "$output" == *"mtp"* ]] || false
   done
 }
+
+@test "paged_ssd_cache_max_size is forwarded as --paged-ssd-cache-max-size" {
+  f="$(_yaml 'paged_ssd_cache_max_size: 50GB' '')"
+  ln -sfn "$f" "${HOME}/.4lm/config/active-profile"
+  mkdir -p "${HOME}/.4lm/runtime/$(basename "$f" .yaml)/models"
+  run "${REPO_ROOT}/bin/4lm-backend-start.sh"
+  [ "$status" -eq 0 ]
+  grep -q -- "--paged-ssd-cache-max-size 50GB" "${OMLX_LOG}"
+}
+
+@test "paged_ssd_cache_max_size accepts sizes and auto, rejects the rest" {
+  for v in 50GB 512MB 1.5TB auto; do
+    run _validate "$(_yaml "paged_ssd_cache_max_size: $v" '')"
+    [ "$status" -eq 0 ]
+  done
+  for v in 50 50gb fifty -1GB; do
+    run _validate "$(_yaml "paged_ssd_cache_max_size: $v" '')"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"paged_ssd_cache_max_size"* ]] || false
+  done
+}

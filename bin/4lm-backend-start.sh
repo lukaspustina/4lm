@@ -100,12 +100,14 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
   _OMLX_MEMORY_GUARD_GB=""
   _OMLX_HOT_CACHE=""
   _OMLX_SSD_CACHE_DIR=""
+  _OMLX_SSD_CACHE_MAX=""
   _OMLX_MAX_CONCUR=""
   while IFS='|' read -r _omlx_key _omlx_val; do
     case "${_omlx_key}" in
       memory_guard_gb) _OMLX_MEMORY_GUARD_GB="${_omlx_val}" ;;
       hot_cache_max_size) _OMLX_HOT_CACHE="${_omlx_val}" ;;
       paged_ssd_cache_dir) _OMLX_SSD_CACHE_DIR="${_omlx_val}" ;;
+      paged_ssd_cache_max_size) _OMLX_SSD_CACHE_MAX="${_omlx_val}" ;;
       max_concurrent_requests) _OMLX_MAX_CONCUR="${_omlx_val}" ;;
     esac
   done < <(awk '
@@ -119,6 +121,7 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
     in_block && /^[[:space:]]+memory_guard_gb:/        { extract($0, "memory_guard_gb") }
     in_block && /^[[:space:]]+hot_cache_max_size:/     { extract($0, "hot_cache_max_size") }
     in_block && /^[[:space:]]+paged_ssd_cache_dir:/    { extract($0, "paged_ssd_cache_dir") }
+    in_block && /^[[:space:]]+paged_ssd_cache_max_size:/ { extract($0, "paged_ssd_cache_max_size") }
     in_block && /^[[:space:]]+max_concurrent_requests:/ { extract($0, "max_concurrent_requests") }
   ' "${ACTIVE_CONFIG}")
 
@@ -166,6 +169,7 @@ if [[ "${BACKEND_TYPE}" == "omlx" ]]; then
   [[ -n "${_OMLX_MEMORY_GUARD_GB}" ]] && OMLX_ARGS+=(--memory-guard-gb "${_OMLX_MEMORY_GUARD_GB}")
   [[ -n "${_OMLX_HOT_CACHE}" ]] && OMLX_ARGS+=(--hot-cache-max-size "${_OMLX_HOT_CACHE}")
   [[ -n "${_OMLX_SSD_CACHE_DIR}" ]] && OMLX_ARGS+=(--paged-ssd-cache-dir "${_OMLX_SSD_CACHE_DIR}")
+  [[ -n "${_OMLX_SSD_CACHE_MAX}" ]] && OMLX_ARGS+=(--paged-ssd-cache-max-size "${_OMLX_SSD_CACHE_MAX}")
   [[ -n "${_OMLX_MAX_CONCUR}" ]] && OMLX_ARGS+=(--max-concurrent-requests "${_OMLX_MAX_CONCUR}")
 
   exec "${OMLX_BIN}" "${OMLX_ARGS[@]}"

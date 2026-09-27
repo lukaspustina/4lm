@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Profile field `omlx.memory_guard_gb`, forwarded as `--memory-guard-gb`
   (omlx's process memory ceiling), and per-model `max_context_window`,
   rendered into `~/.omlx/model_settings.json`.
+- Profile field `omlx.paged_ssd_cache_max_size`, forwarded as
+  `--paged-ssd-cache-max-size`; omlx's `auto` default takes half the free disk.
+- `docs/setup.md` gains "Running a large model on a shared machine": jetsam,
+  budgets, and what not to do while a large set is resident.
 - Per-model `mtp: true` renders omlx's `mtp_enabled` (multi-token-prediction
   speculative decoding, adaptive depth) for checkpoints that ship an MTP head.
 - `4lm bench`: cold and warm TTFT, prefill and decode rate, and peak memory

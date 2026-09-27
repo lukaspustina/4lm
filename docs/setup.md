@@ -202,6 +202,32 @@ Profile schema reference: [`profile-schema.md`](profile-schema.md). To
 customise: edit `~/.4lm/config/profiles/<name>.yaml` directly —
 `install.sh` won't overwrite a profile that already exists.
 
+## Running a large model on a shared machine
+
+When the resident model set takes most of the RAM and the Mac is also a
+desktop or runs a VM, macOS — not omlx — sets the ceiling. Under memory
+pressure its jetsam mechanism SIGKILLs the **largest** process, whatever its
+priority, and omlx's memory guard only counts Metal allocations, not page
+cache, hot cache or Python heap. In practice the
+ceiling sits well below RAM, and well below the omlx guard.
+
+- Budget everything omlx keeps resident (all pinned models plus any
+  `hot_cache_max_size`) well below RAM minus VM limit minus ~20 GiB for macOS
+  and the desktop.
+- Pin the models and give them no TTL. Loading and unloading ~100 GB models
+  is where omlx takes its emergency-reclaim path and where IOGPU panics have
+  been reported.
+- Don't pull large checkpoints (`hf download`) while a big set is resident:
+  the download fills page cache and eats the free disk that macOS needs to
+  grow swap.
+- Cap omlx's SSD KV cache with `paged_ssd_cache_max_size` — its `auto` default
+  claims half the free disk.
+- Exclude `~/.cache/huggingface` and `~/.omlx` from Time Machine
+  (`tmutil addexclusion`) and Spotlight, so backups don't read hundreds of GB
+  through the page cache.
+- Leave `iogpu.wired_limit_mb` at its default. Raising it adds no memory; it
+  only lets the GPU wire more of what macOS itself needs.
+
 ## Network exposure
 
 Default bind is `127.0.0.1`. To expose to your LAN:
