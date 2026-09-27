@@ -88,3 +88,23 @@ _render() {
     [[ "$output" == *"max_context_window"* ]] || false
   done
 }
+
+@test "mtp: true is rendered as mtp_enabled" {
+  out="${BATS_TMPDIR}/ms-${BATS_TEST_NAME}.json"
+  _render "$(_yaml '' 'mtp: true')" "${out}"
+  [ "$("${REAL_JQ}" '.models."test-model".mtp_enabled' "${out}")" = "true" ]
+}
+
+@test "absent or false mtp is not rendered" {
+  out="${BATS_TMPDIR}/ms-${BATS_TEST_NAME}.json"
+  _render "$(_yaml '' 'mtp: false')" "${out}"
+  [ "$("${REAL_JQ}" '.models."test-model" | has("mtp_enabled")' "${out}")" = "false" ]
+}
+
+@test "mtp rejects non-boolean values" {
+  for v in yes 1 on; do
+    run _validate "$(_yaml '' "mtp: $v")"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"mtp"* ]] || false
+  done
+}

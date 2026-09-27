@@ -37,6 +37,7 @@ fallback in the profile YAML.
 | `pin` | bool | no | Keep model in memory (default: `false`) |
 | `ttl` | int \| null | no | Unload after N seconds idle; `null` = never unload |
 | `max_context_window` | int > 0 | no | Longest prompt omlx admits for this model, in tokens; longer requests are rejected up front. Measure it with omlx's context benchmark |
+| `mtp` | bool | no | Speculative decoding with the checkpoint's own multi-token-prediction head (omlx `mtp_enabled`, adaptive depth). Needs an `-mtp` checkpoint. Gains are single-stream; a fixed draft depth (omlx `mtp_fixed_depth`) measured slower than adaptive and is not exposed |
 | `chat_template_kwargs` | dict | no | Passed to `~/.omlx/settings.json`; empty `{}` is omitted |
 | `sampling` | dict | no | Per-model sampling defaults; empty `{}` is omitted |
 
