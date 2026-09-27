@@ -21,33 +21,42 @@ SH
   # `pipx list --short` returns the lines requirements.txt expects, so the
   # idempotency check sees both pkgs as already-installed.
   #
-  # omlx's line is marker-aware (SDD bump-omlx, Requirement 10): when
-  # OMLX_INSTALLED_MARKER is set and the file exists, its contents become
-  # the reported version — empty contents mean "not installed" (no omlx
-  # line at all). Otherwise fall back to the hardcoded 0.7.0rc1 literal, so
-  # the pre-existing "runs twice" test (which never seeds the marker)
-  # keeps working unmodified.
+  # omlx is commit-aware: install.sh compares the pinned OMLX_GIT_REF with the
+  # commit pipx recorded in the package's direct_url.json. The stub keeps that
+  # commit in OMLX_INSTALLED_MARKER (empty file = not installed) and renders it
+  # into a fake venv tree that `pipx environment --value PIPX_LOCAL_VENVS`
+  # points at. Without a marker, omlx counts as installed at the pinned ref, so
+  # the "runs twice" test sees a settled install.
   #
-  # omlx `install` invocations are logged to OMLX_INSTALL_LOG and, when
-  # both OMLX_INSTALLED_MARKER and OMLX_INSTALL_RESULT_VERSION are set,
-  # simulate a successful install by overwriting the marker file.
+  # omlx `install` invocations are logged to OMLX_INSTALL_LOG; with
+  # OMLX_INSTALL_RESULT_COMMIT set, a successful install rewrites the marker.
   cat > "${STUB_BIN}/pipx" <<'SH'
 #!/usr/bin/env bash
+venvs="${BATS_TMPDIR}/venvs-${BATS_TEST_NAME// /_}"
+ref="$(grep -E '^readonly OMLX_GIT_REF=' "${REPO_ROOT}/install.sh" | cut -d'"' -f2)"
+commit="${ref}"
+if [[ -n "${OMLX_INSTALLED_MARKER:-}" && -f "${OMLX_INSTALLED_MARKER}" ]]; then
+  commit="$(cat "${OMLX_INSTALLED_MARKER}")"
+fi
 case "$1" in
   list)
-    if [[ -n "${OMLX_INSTALLED_MARKER:-}" && -f "${OMLX_INSTALLED_MARKER}" ]]; then
-      omlx_version="$(cat "${OMLX_INSTALLED_MARKER}")"
-      [[ -n "${omlx_version}" ]] && echo "omlx ${omlx_version}"
-    else
-      echo "omlx 0.7.0rc1"
-    fi
+    [[ -n "${commit}" ]] && echo "omlx 0.7.0rc1"
     echo "open-webui 0.6.43"
+    ;;
+  environment)
+    d="${venvs}/omlx/lib/python3.12/site-packages/omlx-0.7.0rc1.dist-info"
+    rm -rf "${venvs}"
+    if [[ -n "${commit}" && "${commit}" != "none" ]]; then
+      mkdir -p "${d}"
+      printf '{"url": "https://github.com/jundot/omlx.git", "vcs_info": {"vcs": "git", "commit_id": "%s"}}\n' "${commit}" > "${d}/direct_url.json"
+    fi
+    echo "${venvs}"
     ;;
   install)
     if [[ "$*" == *"omlx.git@"* ]]; then
       echo "$*" >> "${OMLX_INSTALL_LOG:-/dev/null}"
-      if [[ -n "${OMLX_INSTALLED_MARKER:-}" && -n "${OMLX_INSTALL_RESULT_VERSION:-}" ]]; then
-        echo "${OMLX_INSTALL_RESULT_VERSION}" > "${OMLX_INSTALLED_MARKER}"
+      if [[ -n "${OMLX_INSTALLED_MARKER:-}" && -n "${OMLX_INSTALL_RESULT_COMMIT:-}" ]]; then
+        echo "${OMLX_INSTALL_RESULT_COMMIT}" > "${OMLX_INSTALLED_MARKER}"
       fi
     fi
     ;;
@@ -96,93 +105,68 @@ SH
 
 @test "install.sh installs omlx when absent" {
   git_ref=$(grep -E '^readonly OMLX_GIT_REF=' "${REPO_ROOT}/install.sh" | cut -d'"' -f2)
-  marker="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
-  : >"${marker}"
-  log="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
-  : >"${log}"
-  export OMLX_INSTALLED_MARKER="${marker}"
-  export OMLX_INSTALL_LOG="${log}"
+  export OMLX_INSTALLED_MARKER="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
+  : >"${OMLX_INSTALLED_MARKER}"
+  export OMLX_INSTALL_LOG="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
+  : >"${OMLX_INSTALL_LOG}"
 
   run "${REPO_ROOT}/install.sh"
   [ "$status" -eq 0 ]
-
-  run grep -c 'omlx.git@' "${log}"
-  [ "${output}" = "1" ]
-
-  run grep -c -- "${git_ref}" "${log}"
-  [ "${output}" = "1" ]
-
-  run grep -c -- '--force' "${log}"
-  [ "${output}" = "0" ]
+  [ "$(grep -c "omlx.git@${git_ref}" "${OMLX_INSTALL_LOG}")" = "1" ]
+  [ "$(grep -c -- '--force' "${OMLX_INSTALL_LOG}")" = "0" ]
 }
 
-@test "install.sh reports omlx already installed at expected version" {
-  marker="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
-  echo "0.7.0rc1" >"${marker}"
-  log="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
-  : >"${log}"
-  export OMLX_INSTALLED_MARKER="${marker}"
-  export OMLX_INSTALL_LOG="${log}"
-
-  run "${REPO_ROOT}/install.sh"
-  [ "$status" -eq 0 ]
-  install_output="${output}"
-
-  run grep -c 'omlx.git@' "${log}"
-  [ "${output}" = "0" ]
-
-  [[ "${install_output}" == *"0.7.0rc1"* ]]
-  [[ "${install_output}" == *"already installed"* ]]
-}
-
-@test "install.sh force-reinstalls omlx when version mismatches" {
+@test "install.sh leaves omlx alone when the installed commit is the pin" {
   git_ref=$(grep -E '^readonly OMLX_GIT_REF=' "${REPO_ROOT}/install.sh" | cut -d'"' -f2)
-  marker="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
-  echo "0.3.8" >"${marker}"
-  log="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
-  : >"${log}"
-  export OMLX_INSTALLED_MARKER="${marker}"
-  export OMLX_INSTALL_LOG="${log}"
+  export OMLX_INSTALLED_MARKER="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
+  echo "${git_ref}" >"${OMLX_INSTALLED_MARKER}"
+  export OMLX_INSTALL_LOG="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
+  : >"${OMLX_INSTALL_LOG}"
 
   run "${REPO_ROOT}/install.sh"
   [ "$status" -eq 0 ]
-  install_output="${output}"
-
-  run grep -c -- '--force' "${log}"
-  [ "${output}" = "1" ]
-
-  run grep -c -- "${git_ref}" "${log}"
-  [ "${output}" = "1" ]
-
-  [[ "${install_output}" == *"0.3.8"* ]]
-  [[ "${install_output}" == *"0.7.0rc1"* ]]
+  [ "$(grep -c 'omlx.git@' "${OMLX_INSTALL_LOG}")" = "0" ]
+  [[ "${output}" == *"omlx already installed"*"${git_ref:0:8}"* ]] || false
 }
 
-@test "install.sh converges omlx to expected version across two runs" {
-  marker="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
-  echo "0.3.8" >"${marker}"
-  log="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
-  : >"${log}"
-  export OMLX_INSTALLED_MARKER="${marker}"
-  export OMLX_INSTALL_LOG="${log}"
-  export OMLX_INSTALL_RESULT_VERSION="0.7.0rc1"
+@test "install.sh force-reinstalls omlx at another commit with the same version" {
+  git_ref=$(grep -E '^readonly OMLX_GIT_REF=' "${REPO_ROOT}/install.sh" | cut -d'"' -f2)
+  export OMLX_INSTALLED_MARKER="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
+  echo "0123456789abcdef0123456789abcdef01234567" >"${OMLX_INSTALLED_MARKER}"
+  export OMLX_INSTALL_LOG="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
+  : >"${OMLX_INSTALL_LOG}"
 
   run "${REPO_ROOT}/install.sh"
   [ "$status" -eq 0 ]
+  [ "$(grep -c -- "--force.*omlx.git@${git_ref}" "${OMLX_INSTALL_LOG}")" = "1" ]
+  [[ "${output}" == *"01234567"*"${git_ref:0:8}"* ]] || false
+}
 
-  run grep -c 'omlx.git@' "${log}"
-  [ "${output}" = "1" ]
-
-  run grep -c -- '--force' "${log}"
-  [ "${output}" = "1" ]
-
-  [ "$(cat "${marker}")" = "0.7.0rc1" ]
-
-  : >"${log}"
+@test "install.sh force-reinstalls omlx whose commit it cannot read" {
+  export OMLX_INSTALLED_MARKER="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
+  echo "none" >"${OMLX_INSTALLED_MARKER}"
+  export OMLX_INSTALL_LOG="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
+  : >"${OMLX_INSTALL_LOG}"
 
   run "${REPO_ROOT}/install.sh"
   [ "$status" -eq 0 ]
+  [ "$(grep -c -- '--force' "${OMLX_INSTALL_LOG}")" = "1" ]
+}
 
-  run grep -c 'omlx.git@' "${log}"
-  [ "${output}" = "0" ]
+@test "install.sh converges omlx to the pinned commit across two runs" {
+  git_ref=$(grep -E '^readonly OMLX_GIT_REF=' "${REPO_ROOT}/install.sh" | cut -d'"' -f2)
+  export OMLX_INSTALLED_MARKER="${BATS_TMPDIR}/omlx-marker-${BATS_TEST_NAME}"
+  echo "0123456789abcdef0123456789abcdef01234567" >"${OMLX_INSTALLED_MARKER}"
+  export OMLX_INSTALL_LOG="${BATS_TMPDIR}/omlx-install-log-${BATS_TEST_NAME}"
+  : >"${OMLX_INSTALL_LOG}"
+  export OMLX_INSTALL_RESULT_COMMIT="${git_ref}"
+
+  run "${REPO_ROOT}/install.sh"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'omlx.git@' "${OMLX_INSTALL_LOG}")" = "1" ]
+
+  : >"${OMLX_INSTALL_LOG}"
+  run "${REPO_ROOT}/install.sh"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'omlx.git@' "${OMLX_INSTALL_LOG}")" = "0" ]
 }

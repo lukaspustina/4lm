@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine that already had 4lm.
 
 ### Fixed
+- The omlx pin is enforced by commit instead of by version string. Commits
+  between releases report the same version, so moving `OMLX_GIT_REF` to such a
+  commit was a silent no-op on machines that already had omlx.
+  `OMLX_EXPECTED_VERSION` is gone.
 - omlx v0.7.0rc1 served every model in the HuggingFace cache next to the
   profile's staged set, so a client could load any downloaded checkpoint.
   The backend now runs with `--no-hf-cache`.

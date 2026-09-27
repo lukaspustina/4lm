@@ -316,26 +316,40 @@ while IFS= read -r line; do
 done <"${SOURCE_DIR}/requirements.txt"
 
 # ---- 9b. Install omlx from GitHub (not on PyPI) ----------------------------
-# omlx has no PyPI release; install directly from source.
-# Pinned to a specific commit for reproducibility; bump deliberately.
-# The pin is enforced, not just recorded: pipx does not retain the git ref
-# (package_or_url is truncated after install), so OMLX_EXPECTED_VERSION is
-# the marker standing in for the SHA. A deviating version is force-reinstalled.
-# §9a's one-line grep idiom is not reused here because it cannot distinguish
-# "absent" (install) from "wrong version" (install --force).
-readonly OMLX_EXPECTED_VERSION="0.7.0rc1"
+# omlx has no PyPI release; install directly from source, pinned to a commit.
+# The pin is enforced by commit, not by version: pipx does not keep the git
+# ref, and commits between releases report the same version string (main after
+# 0.7.0rc1 still says 0.7.0rc1). pip records the resolved commit in the
+# package's direct_url.json; anything else — another commit, or no record —
+# is force-reinstalled.
 readonly OMLX_GIT_REF="35be079d8a86a44dc2c6d485fbfbf43754e66298" # v0.7.0rc1, 2026-09-25
+
+# The commit pip recorded for the installed omlx, or nothing.
+omlx_installed_commit() {
+  local venvs f
+  venvs="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)" || return 0
+  for f in "${venvs}"/omlx/lib/python*/site-packages/omlx-*.dist-info/direct_url.json; do
+    [[ -f "${f}" ]] || continue
+    grep -o '"commit_id": *"[0-9a-f]*"' "${f}" | grep -o '[0-9a-f]\{40\}' || true
+    return 0
+  done
+  return 0
+}
+
 # `|| true`: no omlx line makes grep exit 1, which set -euo pipefail would
 # treat as fatal — but "absent" is a normal state, handled by the branch below.
-omlx_installed="$(pipx list --short 2>/dev/null | grep "^omlx " | awk '{print $2}' || true)"
-if [[ -z "${omlx_installed}" ]]; then
+omlx_listed="$(pipx list --short 2>/dev/null | grep "^omlx " || true)"
+if [[ -z "${omlx_listed}" ]]; then
   info "pipx install --python ${PIPX_PYTHON} git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
   pipx install --python "${PIPX_PYTHON}" "git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
-elif [[ "${omlx_installed}" == "${OMLX_EXPECTED_VERSION}" ]]; then
-  ok "omlx already installed (${omlx_installed})"
 else
-  info "omlx ${omlx_installed} != pinned ${OMLX_EXPECTED_VERSION} — reinstalling at ${OMLX_GIT_REF}"
-  pipx install --python "${PIPX_PYTHON}" --force "git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
+  omlx_commit="$(omlx_installed_commit)"
+  if [[ "${omlx_commit}" == "${OMLX_GIT_REF}" ]]; then
+    ok "omlx already installed (${OMLX_GIT_REF:0:8})"
+  else
+    info "omlx at ${omlx_commit:-unknown commit} != pinned ${OMLX_GIT_REF:0:8} — reinstalling"
+    pipx install --python "${PIPX_PYTHON}" --force "git+https://github.com/jundot/omlx.git@${OMLX_GIT_REF}"
+  fi
 fi
 
 # ---- 9c. Inject extras into huggingface-hub venv ----------------------------

@@ -421,16 +421,11 @@ The `requirements.txt` pin is intentional. To change a version, edit
 the installer detects existing pipx installs and reinstalls with `--force`
 when the pinned version differs. Don't `pip install --upgrade` out-of-band.
 
-omlx is pinned the same way but in `install.sh` itself (`OMLX_GIT_REF` plus
-`OMLX_EXPECTED_VERSION`, since it ships from git rather than PyPI). Re-running
-the installer replaces a deviating omlx version with the pinned one.
-
-Bump both together. The comparison is on the version string, not the ref — pipx
-does not retain the git SHA — so moving `OMLX_GIT_REF` to a commit that reports
-the same version is a silent no-op on machines that already have omlx. Read the
-target commit's `omlx/_version.py` and set `OMLX_EXPECTED_VERSION` to that exact
-value; commits between releases report dev suffixes (`0.3.9.dev1`), not clean
-tags.
+omlx is pinned in `install.sh` itself (`OMLX_GIT_REF`, since it ships from git
+rather than PyPI). Re-running the installer replaces a deviating omlx version with the pinned one:
+it compares the commit pip recorded for the installed omlx with the pin, so
+moving the pin is all a bump takes — even between commits that report the same
+version.
 
 ### `4lm logs backend` shows no file
 

@@ -203,18 +203,13 @@ both the `served_model_name` and the `model_path` — they diverge in spelling
 
 ## omlx pin
 
-omlx ships from git, not PyPI, and pipx does **not** retain the ref it was
-installed from (`package_or_url` is truncated to the bare repo URL). The pin is
-therefore two constants in `install.sh` §9b: `OMLX_GIT_REF` and
-`OMLX_EXPECTED_VERSION`. The installer compares the installed package version
-against the latter and force-reinstalls on any mismatch.
-
-**Bump both together.** Moving `OMLX_GIT_REF` alone is a silent no-op on every
-machine that already has omlx — the comparison never sees the ref. Read the
-target commit's `omlx/_version.py` and set `OMLX_EXPECTED_VERSION` to that exact
-string; commits between releases report dev suffixes (`0.3.9.dev1`), only tag
-commits report clean versions (`0.6.0`). Comparison is exact string equality —
-no pre-release normalization.
+omlx ships from git, not PyPI. The pin is one constant, `OMLX_GIT_REF` in
+`install.sh` §9b, and it is enforced **by commit**: pip records the resolved
+commit in the installed package's `direct_url.json` (`vcs_info.commit_id`), and
+the installer force-reinstalls whenever that differs from the pin or is
+missing. The version string cannot carry the pin — pipx drops the ref, and
+commits between releases report the same version (main after `0.7.0rc1` still
+says `0.7.0rc1`). The tests stub `jq`, so §9b reads the JSON with `grep`.
 
 ## omlx path probe
 
