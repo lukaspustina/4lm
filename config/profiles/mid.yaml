@@ -1,0 +1,81 @@
+# mid: Qwen3 coder + chat stack via omlx for 128 GB machines.
+#      256 GB → `default`, 64 GB → `lean`.
+# =================================================================
+# Purpose
+# -------
+# A coder/chat pair that fits 128 GB with room for a desktop: the 80B
+# agentic coder for build work, the dense 27B for planning, chat and images,
+# plus the shared embedder and reranker for RAG.
+#
+# Memory budget (128 GB machine; macOS default GPU working set ~96–111 GiB)
+# -------------------------------------------------------------------------
+# Qwen3-Coder-Next 4-bit:                  ~42 GiB
+# Qwen3.8-27B 4-bit:                       ~15 GiB
+# Embedder + 0.6B reranker:                ~5 GiB
+# Resident, all pinned:                    ~62 GiB
+# Memory guard ceiling (memory_guard_gb):  90 GiB — soft stop at ~77,
+#                                          in-flight abort at ~86
+#
+# DERIVED, NOT MEASURED: the guard and both context caps follow from the
+# working set and the model sizes above. Check them on the machine with
+# `4lm bench --context` and adjust `max_context_window` to what it reports.
+#
+# Why each slot
+# -------------
+# coder  — mlx-community/Qwen3-Coder-Next-4bit (80B / A3B MoE, ~42 GB)
+#          Agentic coding and tool use; long-horizon recovery.
+#
+# chat   — mlx-community/Qwen3.8-27B-4bit (dense 27B VLM, ~15 GB, 262k)
+#          Planning, chat and images — there is no separate vision model.
+#          `reasoning_effort: medium` overrides the template's `xhigh`
+#          default (much faster answers; `low` risks mixed-language prose on
+#          this model family). `top_k: 20` is the model card's value.
+#
+# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~4 GB)
+#          Same served name as every omlx profile: knowledge bases stay valid.
+#
+# rerank — mlx-community/Qwen3-Reranker-0.6B-mxfp8 (~0.7 GB)
+#          The 4B is better (MTEB-R 69.8 vs 65.8) but costs ~3 GB more; swap it
+#          in if RAG ranking matters more than KV headroom.
+#
+# vision — none. Images go to `qwen3.8-27b`; this profile does NOT serve
+#          `qwen3-vl-8b`.
+#
+# Everything is pinned with no TTL: repeated load/unload of large models is a
+# documented trigger of IOGPU kernel panics.
+#
+# Last reviewed: 2026-09-29
+backend: omlx
+
+omlx:
+  memory_guard_gb: 90
+  paged_ssd_cache_max_size: 30GB
+
+models:
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    model_type: lm
+    max_context_window: 131072
+    pin: true
+    ttl: null
+
+  - model_path: mlx-community/Qwen3.8-27B-4bit
+    served_model_name: qwen3.8-27b
+    model_type: vlm
+    reasoning_effort: medium
+    top_k: 20
+    max_context_window: 131072
+    pin: true
+    ttl: null
+
+  - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
+    served_model_name: qwen3-embedding
+    model_type: lm
+    pin: true
+    ttl: null
+
+  - model_path: mlx-community/Qwen3-Reranker-0.6B-mxfp8
+    served_model_name: qwen3-reranker
+    model_type: lm
+    pin: true
+    ttl: null

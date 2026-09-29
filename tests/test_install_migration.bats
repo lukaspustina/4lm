@@ -52,6 +52,7 @@ setup() {
   [ ! -e "${HOME}/.4lm/config/mlx-active" ]
   [ ! -e "${HOME}/.4lm/config/active-profile" ]
 
+  export SYSCTL_MEMSIZE=274877906944 # 256 GB → the installer picks default
   run "${INSTALL}"
   [ "$status" -eq 0 ]
 

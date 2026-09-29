@@ -19,7 +19,7 @@ before changing the model set, the backend choice, or the activation model.
 ```
 bin/                       # 4lm, launchd wrapper scripts, and 4lm_helpers.py
 launchd/                   # plist templates with __HOME__ placeholder
-config/profiles/           # lean / default / max-100gb / max-170gb (Qwen3 stack via omlx) + mlx-coding / mlx-knowledge / ollama YAMLs
+config/profiles/           # lean (64 GB) / mid (128 GB) / default (256 GB) via omlx + ollama smoke-test YAML
 config/network.example.yaml
 config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
 docs/                      # setup runbook + profile schema reference
@@ -130,20 +130,21 @@ before kickstarting, so YAML edits propagate without a full stop/start.
 Full table with use-cases, fits-on, and memory math lives in
 [`README.md`](README.md). Contributor-relevant constraints:
 
-| Profile | Backend | Steady |
-|---|---|---|
-| `lean` | omlx | ~40 GB |
-| `default` | omlx | ~62 GB |
-| `max-100gb` | omlx | ~92 GB |
-| `max-170gb` | omlx | ~108 GB |
-| `mlx-coding` | omlx | ~42 GB |
-| `mlx-knowledge` | omlx | ~20 GB |
-| `ollama` | ollama | ~22 GB |
+| Profile | Backend | Resident | Fits on |
+|---|---|---|---|
+| `lean` | omlx | ~40 GB | 64 GB |
+| `mid` | omlx | ~62 GB | 128 GB |
+| `default` | omlx | ~108 GB | 256 GB |
+| `ollama` | ollama | ~22 GB | 36 GB+ |
+
+Every omlx profile pins all models with no TTL and sets `memory_guard_gb` and a
+`max_context_window` on every generative model — `tests/test_profiles_consolidated.bats`
+enforces it. `install.sh` picks the profile by RAM on first install.
 
 All omlx embedders share `served_model_name: qwen3-embedding`, all omlx
-rerankers share `qwen3-reranker`, vision is `qwen3-vl-8b` — except
-`max-170gb`, which serves no separate vision model (its main model is a VLM)
-and says so in its header. **Switching
+rerankers share `qwen3-reranker`. No profile serves a separate vision model:
+the VLM chat/main model reads images (`qwen3.8-27b` in `mid`,
+`qwen3.8-flash-next` in `default`; `lean` has none). **Switching
 between omlx profiles never requires reindexing knowledge bases — do
 not change these served-model names without an explicit migration
 plan.** Each YAML carries an extensive header comment with slot-by-slot

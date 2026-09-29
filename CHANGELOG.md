@@ -40,6 +40,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard (omlx unloads the model afterwards); `--json` for tables in `docs/`.
 
 ### Changed
+- **BREAKING — one profile per memory class.** The repo ships `default` (256 GB),
+  `mid` (128 GB), `lean` (64 GB) and `ollama`. `max-100gb`, `max-170gb`,
+  `mlx-coding`, `mlx-knowledge` and `ornith-vs-qwen` are gone; `default` is the
+  former `max-170gb` plus `reasoning_effort: medium` and `top_k: 20`, `mid` the
+  former `default` without `qwen3-vl-8b` (Qwen3.8-27B reads images), `lean` the
+  former `lean`. Every omlx profile now pins all models, sets a memory guard and
+  caps the context. No profile serves `qwen3-vl-8b` any more.
+  **Existing installs keep their old `default.yaml`** (profiles are never
+  overwritten) — adopt the new one with the `cp` the installer prints, and
+  remove the dropped profiles from `~/.4lm/config/profiles/`.
+- `install.sh` activates the profile matching the machine's RAM on first
+  install (≥ 250 GB `default`, ≥ 120 GB `mid`, else `lean`); `4lm doctor`'s RAM
+  check knows the new names.
 - omlx pinned to main `f0d8428a` (after v0.7.0rc1, before 0.7.0 final): about
   10–14 % faster single-stream decode than rc1 in our measurements, and the
   memory-guard fix for vision engines. v0.7.0rc1 (`35be079d`) loads the current

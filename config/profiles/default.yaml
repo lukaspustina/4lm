@@ -1,122 +1,86 @@
-# default: full Qwen3 stack via omlx — daily-driver profile
+# default: Qwen3.8-Flash-Next via omlx — the 256 GB profile, for machines that
+#          also run other heavy workloads (a VM, a desktop session).
+#          128 GB → `mid`, 64 GB → `lean`.
 # =================================================================
 # Purpose
 # -------
-# Everyday balanced profile: strong coder + fast chat + full RAG
-# pipeline + on-demand vision. The intended "set and forget" daily
-# default for coding sessions interleaved with chat / research / RAG.
+# One strong generalist instead of a coder/chat pair: Qwen3.8-Flash-Next
+# (125B MoE, 6B active) codes, chats, calls tools and reads images, with a
+# 262k native context. Multi-token-prediction speculative decoding is on.
+# Embedder and reranker stay resident for RAG. There is no separate vision
+# model — the main model is a VLM.
 #
-# Memory budget (110 GB usable VRAM on M5 Max 128 GB)
-# ---------------------------------------------------
-# Resident if all loaded:                  ~72 GB
-# Steady state (coder + chat + embed):     ~62 GB
-# KV-cache headroom in steady state:       ~38 GB — comfortable for
-#                                          long contexts on coder
-#                                          AND chat simultaneously.
-# Vision evicts under pressure via omlx LRU; reranker / embedder
-# barely register.
+# Memory budget (256 GB machine)
+# ------------------------------
+# Main model (oQ4e + MTP head):            ~100 GiB
+# Embedder + reranker:                     ~8 GiB
+# Resident, all pinned:                    ~108 GiB
+# Memory guard ceiling (memory_guard_gb):  170 GiB — soft stop at ~145,
+#                                          in-flight abort at ~162
+#
+# The ceiling is set by macOS, not by omlx: under memory pressure jetsam
+# SIGKILLs the largest process, and omlx's guard only counts Metal
+# allocations. On a 256 GB machine shared with other workloads, ~188 GiB
+# resident has been killed while ~175 GiB survived. 170 keeps the guard's hard
+# stop below that band. On a dedicated inference box, raise it.
 #
 # Why each slot
 # -------------
-# coder  — mlx-community/Qwen3-Coder-Next-4bit (80B / A3B MoE, ~42 GB)
-#          Why: agentic-recovery champion. Long-horizon reasoning,
-#          complex tool usage, recovery from execution failures. The
-#          project's coding-quality identity. pin: true because we
-#          want it always-resident — it dominates daily use.
+# main   — Jundot/Qwen3.8-Flash-Next-oQ4e-mtp (~106 GB on disk)
+#          omlx's own mixed-precision oQ4e quant with the MTP head; `mtp:
+#          true` adds ~1.5 GiB and lifts single-stream decode by roughly
+#          a third. Keep MTP adaptive — a fixed draft depth measured slower
+#          than no MTP. `reasoning_effort: medium` overrides the template's
+#          `xhigh` default: coding answers come ~4× faster, and `low` made
+#          non-English prose slip into other scripts in most answers while
+#          `medium` did not. A request that sends its own value still wins.
+#          `top_k: 20` is the model card's value; omlx's global default is off.
 #
-# chat   — mlx-community/Qwen3.8-27B-4bit (15.27 GB resident, dense 27B)
-#          Why: stronger reasoning than the Qwen3.6-35B-A3B it
-#          replaces, with a 262K native context. Same Qwen3 family
-#          as the coder → coherent tool-call syntax.
-#          The trade is throughput: this is a DENSE 27B (all
-#          parameters active), not a 3B-active MoE. Measured on this
-#          machine: ~27 tok/s (3452 tokens in 128 s), against the
-#          MoE's ~105 tps. Choose lean if you want the fast one.
-#          CAVEAT — the model's chat template defaults
-#          reasoning_effort to 'xhigh'. An unconfigured complex
-#          prompt ran past 600 s here without finishing; the same
-#          prompt with chat_template_kwargs {reasoning_effort: low}
-#          in the REQUEST BODY finished in ~2 minutes. The same key
-#          in ~/.omlx/model_settings.json does NOT take effect
-#          (measured), so this cannot be set from the profile —
-#          clients must send it per request.
+# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~4 GB)
+#          Same served name as every other omlx profile: knowledge bases
+#          stay valid across profile switches.
 #
-# embed  — mlx-community/Qwen3-Embedding-8B-4bit-DWQ (~5 GB)
-#          Why: MTEB-multilingual leader (70.58 mean). German +
-#          English strong, 32K context for long RAG chunks.
-#          STANDARDISED across lean / default / mlx-knowledge /
-#          max-100gb so knowledge bases stay valid across profile
-#          switches. Changing this is a heavy migration (reindex).
+# rerank — mlx-community/Qwen3-Reranker-4B-mxfp8 (~4 GB resident)
+#          The 4B over the 0.6B: MTEB-R 69.8 vs 65.8 for ~3 GB more. Same
+#          served name, no reindex.
 #
-# rerank — mlx-community/Qwen3-Reranker-0.6B-mxfp8 (~0.7 GB)
-#          Why: hybrid-search re-ranking at trivial memory cost.
-#          Wired via OpenWebUI's "external" engine pointing at
-#          omlx's POST /v1/rerank (Cohere/Jina-compatible). The
-#          4B variant (max-100gb) is meaningfully better but the
-#          0.6B is "sufficient for 90% of RAG workloads" per the
-#          research review.
+# vision — none. Images go to `qwen3.8-flash-next`. This profile does NOT
+#          serve `qwen3-vl-8b`, so clients hard-wired to that name need
+#          reconfiguring before switching to it.
 #
-# vision — lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit (~9 GB)
-#          Why: OCR, screenshot reading, chart analysis. 8B is the
-#          right size for occasional use — the 32B variant (~22 GB)
-#          is power-user territory. ttl: 600 so it unloads when idle.
-#          model_type: vlm so omlx routes image inputs correctly.
+# max_context_window 262144 is the model's native window, measured as
+# admissible under this profile's memory guard with `4lm bench --context`.
 #
-# When to use
-# -----------
-# Default for daily work. Coding, chat, RAG, occasional vision.
+# Everything is pinned with no TTL: loading and unloading ~100 GB models is
+# where omlx takes its emergency-reclaim path and IOGPU panics have been
+# reported.
 #
-# When NOT to use
-# ---------------
-# - You need ~70 GB free RAM for other apps → switch to lean
-# - You want the strongest possible chat (Qwen3-Next-80B) → max-100gb
-# - Marathon agentic coding session needing max KV headroom → mlx-coding
-# - Heavy vault synthesis without coder noise → mlx-knowledge
-#
-# Assumptions to validate on review
-# ---------------------------------
-# - Qwen3-Coder-Next remains the strongest open-weight agentic coder.
-#   When Qwen3.7-Coder / Qwen4-Coder lands, re-benchmark.
-# - 4-bit quants are the right quality/speed point. 6-bit variants
-#   exist but the memory cost is real (~55 GB for the coder alone).
-# - Qwen3.8-27B German fluency is acceptable. If German polish
-#   becomes a daily pain point, consider a Gemma 3 27B hot-swap
-#   profile (NOT a regression to Gemma 4 — that's the bug we fixed).
-# - Vision usage justifies the +9 GB slot. If you rarely use OCR or
-#   image analysis, consider dropping vision from default.
-# - 8B embedder still leads MTEB-multilingual.
-#
-# Last reviewed: 2026-08-17
-
+# Last reviewed: 2026-09-29
 backend: omlx
 
+omlx:
+  memory_guard_gb: 170
+  paged_ssd_cache_max_size: 50GB
+
 models:
-  - model_path: mlx-community/Qwen3-Coder-Next-4bit
-    served_model_name: qwen3-coder-next
-    model_type: lm
+  - model_path: Jundot/Qwen3.8-Flash-Next-oQ4e-mtp
+    served_model_name: qwen3.8-flash-next
+    model_type: vlm
+    mtp: true
+    reasoning_effort: medium
+    top_k: 20
+    max_context_window: 262144
     pin: true
     ttl: null
-
-  - model_path: mlx-community/Qwen3.8-27B-4bit
-    served_model_name: qwen3.8-27b
-    model_type: vlm
-    pin: false
-    ttl: 600
 
   - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
     served_model_name: qwen3-embedding
     model_type: lm
-    pin: false
-    ttl: 600
+    pin: true
+    ttl: null
 
-  - model_path: mlx-community/Qwen3-Reranker-0.6B-mxfp8
+  - model_path: mlx-community/Qwen3-Reranker-4B-mxfp8
     served_model_name: qwen3-reranker
     model_type: lm
-    pin: false
-    ttl: 600
-
-  - model_path: lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit
-    served_model_name: qwen3-vl-8b
-    model_type: vlm
-    pin: false
-    ttl: 600
+    pin: true
+    ttl: null

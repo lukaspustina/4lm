@@ -5,7 +5,7 @@
 # Periodic regression check that the ollama backend still works after
 # the project's move to omlx as the primary inference runtime. Activate
 # this profile occasionally, confirm the model loads and `/v1/models`
-# responds, then switch back to default / lean / max-100gb.
+# responds, then switch back to lean / mid / default.
 #
 # NOT a daily-use profile. NOT a benchmark suite.
 #
@@ -33,7 +33,7 @@
 #
 # When NOT to use
 # ---------------
-# - Daily coding / chat / RAG → use lean / default / max-100gb
+# - Daily coding / chat / RAG → use lean / mid / default
 # - No embedder, no reranker, no vision. OpenWebUI RAG falls back to
 #   its bundled sentence-transformers if you upload files while this
 #   profile is active.

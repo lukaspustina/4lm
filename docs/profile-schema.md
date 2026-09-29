@@ -59,7 +59,7 @@ models:
     ttl: null
 ```
 
-See `config/profiles/mlx-coding.yaml` for a complete example.
+See `config/profiles/lean.yaml` for a complete example.
 
 ### `backend: mlx_lm`
 

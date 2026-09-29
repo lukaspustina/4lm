@@ -105,8 +105,8 @@ export CODE_INTERPRETER_ENGINE="pyodide"
 
 # ---- RAG embeddings via omlx /v1/embeddings -------------------------------
 # Requires the active profile to expose an embedding model under the
-# served_model_name below (the lean / default / max-100gb profiles all
-# load mlx-community/Qwen3-Embedding-8B-4bit-DWQ — MTEB-multilingual
+# served_model_name below (every omlx profile loads
+# mlx-community/Qwen3-Embedding-8B-4bit-DWQ — MTEB-multilingual
 # leader, 32k ctx). If you switch to a profile without an embedding
 # model, file uploads / RAG fall back to OpenWebUI's bundled
 # sentence-transformers.
@@ -117,8 +117,8 @@ export RAG_EMBEDDING_MODEL="qwen3-embedding"
 
 # ---- RAG reranking via omlx /v1/rerank ------------------------------------
 # Hybrid search posts retrieved documents to the active profile's
-# reranker (served_model_name=qwen3-reranker; lean/default load the
-# 0.6B variant, max-100gb the 4B). omlx exposes POST /v1/rerank in
+# reranker (served_model_name=qwen3-reranker; lean/mid load the
+# 0.6B variant, default the 4B). omlx exposes POST /v1/rerank in
 # Cohere/Jina-compatible shape; OpenWebUI's "external" reranker engine
 # speaks that contract directly. URL is the FULL endpoint, not a base.
 export ENABLE_RAG_HYBRID_SEARCH="True"

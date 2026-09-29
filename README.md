@@ -73,8 +73,8 @@ closet does the inference; the Air on the couch does the typing.
   Bad YAML never kills the stack.
 - **Never invalidates your knowledge base across profiles.** Every
   omlx profile serves the embedder as `qwen3-embedding` and the
-  reranker as `qwen3-reranker`. Switch from `default` (65 GB) to
-  `lean` (40 GB) to `max-100gb` (92 GB) — the same RAG index keeps
+  reranker as `qwen3-reranker`. Switch between `lean`, `mid` and
+  `default` — the same RAG index keeps
   working. Switch profiles like you switch branches.
 - **Never lets you OOM silently.** `4lm doctor` smoke-tests
   inference. `4lm diag` shows what's actually running
@@ -117,19 +117,17 @@ just bootstrap   # Brewfile + Brewfile-tui (skipped if BACKEND_ONLY=1)
                  # pipx, llmfit, ollama; tui extra: opencode
 just install     # ~/.4lm/, pipx-installed deps,
                  # log rotation, opencode config
-just models      # ~140 GB from HuggingFace (idempotent; same target updates)
+just models lean # one profile: ~40 GB lean, ~63 GB mid, ~119 GB default (idempotent)
 4lm start        # bootstrap launchd agents
 4lm opencode     # daily driver (alias: 4lm code)
 ```
 
-> **64 GB Macs: switch to the `lean` profile first** —
-> `4lm profile set lean` before `just models`. The `default` profile
-> wants 96 GB+ steady; `lean` fits in 40 GB and downloads ~80 GB instead
-> of ~140 GB. `4lm doctor` will warn you if the active profile doesn't
-> fit your hardware.
+> **The installer picks the profile for your RAM** (`lean` below 128 GB,
+> `mid` at 128 GB, `default` at 256 GB). `4lm doctor` warns if the active
+> profile doesn't fit your hardware.
 >
 > **Fetch only the profile you run.** `just models` without an argument
-> downloads every profile's models, and `max-170gb` alone adds a ~106 GB
+> downloads every profile's models, and `default` alone adds a ~106 GB
 > checkpoint. `just models lean` (or `4lm model download --profile lean`)
 > limits it to one profile.
 
@@ -149,35 +147,30 @@ the LAN.
 
 ## Profile lineup
 
-Six profiles. The three Qwen3-stack tiers share an 8B embedder so
-knowledge bases stay valid across switches.
+One profile per memory class, plus the Ollama smoke test. `install.sh` picks the
+one that fits the machine on first install. All omlx profiles share the 8B
+embedder and the reranker's served name, so knowledge bases stay valid across
+switches, and all of them pin every model with a memory guard and a context cap.
 
-| Profile         | Backend | Coder                   | Chat            | Embed | Rerank | Vision | Steady | Fits on |
-|-----------------|---------|-------------------------|-----------------|-------|--------|--------|--------|---------|
-| `lean`          | omlx    | Qwen3-Coder-30B-A3B     | Qwen3.6-35B-A3B | 8B    | 0.6B   | —      | ~40 GB | 64 GB+  |
-| `default`       | omlx    | Qwen3-Coder-Next (80B)  | Qwen3.8-27B     | 8B    | 0.6B   | VL-8B  | ~62 GB | 96 GB+  |
-| `max-100gb`     | omlx    | Qwen3-Coder-Next (80B)  | Qwen3-Next-80B  | 8B    | 4B     | VL-8B  | ~92 GB | 128 GB  |
-| `max-170gb`     | omlx    | Qwen3.8-Flash-Next (125B, one model for code, chat, vision) | ← | 8B | 4B | ← | ~108 GB | 256 GB |
-| `mlx-coding`    | omlx    | Qwen3-Coder-Next (80B)  | —               | —     | —      | —      | ~42 GB | 64 GB+  |
-| `mlx-knowledge` | omlx    | —                       | Qwen3.8-27B     | 8B    | 0.6B   | —      | ~20 GB | 36 GB+  |
-| `ollama`        | ollama  | qwen3-coder-next:q4_K_M | —               | —     | —      | —      | ~22 GB | 36 GB+  |
+| Profile   | Backend | Code                                | Chat / vision            | Embed | Rerank | Resident | Fits on |
+|-----------|---------|-------------------------------------|--------------------------|-------|--------|----------|---------|
+| `lean`    | omlx    | Qwen3-Coder-30B-A3B                 | Qwen3.6-35B-A3B (no vision) | 8B | 0.6B | ~40 GB   | 64 GB   |
+| `mid`     | omlx    | Qwen3-Coder-Next (80B)              | Qwen3.8-27B (VLM)        | 8B    | 0.6B   | ~62 GB   | 128 GB  |
+| `default` | omlx    | Qwen3.8-Flash-Next (125B MoE, VLM, MTP) — one model for code, chat and images | ← | 8B | 4B | ~108 GB | 256 GB |
+| `ollama`  | ollama  | qwen3-coder-next:q4_K_M             | —                        | —     | —      | ~22 GB   | 36 GB+  |
 
-**Memory math for `default` on a 128 GB Mac.** Qwen3-Coder-Next 80B
-(~42 GB 4-bit) + Qwen3.8-27B (~15.27 GB) + Qwen3-Embedding-8B
-(~5 GB) + Qwen3-Reranker-0.6B (~0.7 GB) + Qwen3-VL-8B (~9 GB) ≈
-72 GB with everything resident. The table's ~62 GB is the steady state:
-vision and the reranker are evicted under pressure by omlx's LRU, and
-they account for exactly that ~10 GB difference. The coder is an MoE
-with ~3B active params, so KV cache and batched decoding fit
-comfortably in the remaining ~24 GB of the 96 GB GPU working set (the macOS default on a 128 GB machine). The chat model is dense — all 27B parameters are
-read per token, which costs throughput rather than memory.
+No profile serves a separate vision model any more: the chat model of `mid`
+and the main model of `default` read images themselves.
 
-The everyday ladder is `lean` → `default` → `max-100gb`; `max-170gb` is the
-256 GB tier, one MoE generalist with MTP instead of a coder/chat pair. `mlx-coding`
-strips everything except the 80B coder so long agentic sessions get
-maximum KV-cache headroom. `mlx-knowledge` is the text-only vault-
-synthesis tier. `ollama` is the GGUF smoke test — switch to it
-occasionally to confirm Ollama still works, then switch back.
+`default` sets its memory guard below the point where macOS's jetsam starts
+killing the largest process on a 256 GB machine shared with other workloads, and
+defaults the chat template to `reasoning_effort: medium` — faster answers than
+the template's `xhigh`, without the mixed-language prose `low` produces. The
+guard and context caps of `mid` and `lean` are derived from the machine's GPU
+working set, not measured; verify them with `4lm bench --context`.
+
+`ollama` is the GGUF smoke test — switch to it occasionally to confirm Ollama
+still works, then switch back.
 
 Each profile YAML carries an extensive header comment documenting
 slot-by-slot rationale, memory math, when-to-use, and
@@ -267,8 +260,7 @@ Every command has `--help`.
 │   ├── network.yaml       bind mode + ports (single config channel)
 │   ├── api-key            backend API key, mode 0600, generated by install.sh
 │   ├── webui_secret_key   mode 0600, generated on first lan-mode start
-│   └── profiles/          lean / default / max-100gb / max-170gb / mlx-coding /
-│                          mlx-knowledge / ollama YAMLs
+│   └── profiles/          lean / mid / default / ollama YAMLs
 ├── logs/                  backend.log, webui.log (merged stdout+stderr)
 └── openwebui-data/        Open WebUI db, settings, RAG index
 

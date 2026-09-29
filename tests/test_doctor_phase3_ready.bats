@@ -6,7 +6,7 @@ load helpers/setup
 
 setup() {
   mkdir -p "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/launchd" "${HOME}/.4lm/logs"
-  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
+  cp "${REPO_ROOT}/config/profiles/lean.yaml" "${HOME}/.4lm/config/profiles/lean.yaml"
   cp "${REPO_ROOT}/config/network.example.yaml" "${HOME}/.4lm/config/network.yaml"
   # Create placeholder plist files so doctor doesn't fail on missing plists
   touch "${HOME}/.4lm/launchd/com.4lm.backend.plist"
@@ -62,7 +62,7 @@ YAML
   # Use sleep 1 to guarantee a different epoch second for the log timestamp.
   sleep 1
   # Write a rollback log entry with a current timestamp (newer than the symlink)
-  printf '%s\tmlx-coding\tomlx-test\tpoll_timeout\n' "$(date -Iseconds)" \
+  printf '%s\tlean\tomlx-test\tpoll_timeout\n' "$(date -Iseconds)" \
     > "${HOME}/.4lm/logs/profile-rollback.log"
   run "${REPO_ROOT}/bin/4lm" doctor phase3-ready
   [ "$status" -eq 1 ]

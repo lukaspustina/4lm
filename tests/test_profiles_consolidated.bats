@@ -42,7 +42,7 @@ P="${BATS_TEST_DIRNAME}/../config/profiles"
 }
 
 @test "no profile serves qwen3-vl-8b any more" {
-  run grep -l 'qwen3-vl-8b' "${P}"/*.yaml
+  run grep -lE 'served_model_name:[[:space:]]*qwen3-vl-8b' "${P}"/*.yaml
   [ "$status" -ne 0 ]
 }
 
@@ -102,8 +102,17 @@ SH
 # ---- doctor's RAM table ------------------------------------------------------------
 
 @test "doctor knows the minimum RAM of each profile" {
-  run bash -c "source '${REPO_ROOT}/bin/4lm'; declare -f _doctor_check_ram"
-  [[ "$output" == *"default) need_gb=256"* ]] || false
-  [[ "$output" == *"mid) need_gb=128"* ]] || false
-  [[ "$output" == *"lean) need_gb=64"* ]] || false
+  grep -qE '^[[:space:]]+default\) need_gb=256 ;;' "${REPO_ROOT}/bin/4lm"
+  grep -qE '^[[:space:]]+mid\) need_gb=128 ;;' "${REPO_ROOT}/bin/4lm"
+  grep -qE '^[[:space:]]+lean\) need_gb=64 ;;' "${REPO_ROOT}/bin/4lm"
+}
+
+@test "README, index and CLAUDE.md list the same four profiles" {
+  for doc in README.md index.md CLAUDE.md; do
+    for p in default mid lean ollama; do
+      grep -qE "^\| \`${p}\`" "${REPO_ROOT}/${doc}"
+    done
+    run grep -cE '^\| `(max-100gb|max-170gb|mlx-coding|mlx-knowledge|ornith-vs-qwen)`' "${REPO_ROOT}/${doc}"
+    [ "${output}" = "0" ]
+  done
 }

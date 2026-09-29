@@ -204,8 +204,17 @@ fi
 # ---- 5. Active profile default --------------------------------------------
 ACTIVE="${CONFIG_DIR}/active-profile"
 if [[ ! -L "${ACTIVE}" && ! -f "${ACTIVE}" ]]; then
-  ln -sfn "${PROFILES_DIR}/default.yaml" "${ACTIVE}"
-  ok "Active profile → default"
+  # One profile per memory class; pick the one this machine can hold.
+  mem_gb=$(($(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024))
+  if ((mem_gb >= 250)); then
+    first_profile=default
+  elif ((mem_gb >= 120)); then
+    first_profile=mid
+  else
+    first_profile=lean
+  fi
+  ln -sfn "${PROFILES_DIR}/${first_profile}.yaml" "${ACTIVE}"
+  ok "Active profile → ${first_profile} (${mem_gb} GB RAM)"
 else
   info "Active profile already set: $(readlink "${ACTIVE}" 2>/dev/null || echo "${ACTIVE}")"
 fi

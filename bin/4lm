@@ -1612,10 +1612,10 @@ _doctor_check_ram() {
   profile="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
   local need_gb
   case "${profile}" in
-    lean | mlx-coding) need_gb=64 ;;
-    default) need_gb=96 ;;
-    max-100gb) need_gb=128 ;;
-    mlx-knowledge | ollama) need_gb=36 ;;
+    default) need_gb=256 ;;
+    mid) need_gb=128 ;;
+    lean) need_gb=64 ;;
+    ollama) need_gb=36 ;;
     *) return 0 ;;
   esac
   local memsize_bytes have_gb

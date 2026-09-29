@@ -167,8 +167,9 @@ or `ollama`) and the models to load. The active profile is selected via
 the `~/.4lm/config/active-profile` symlink; switch atomically with
 `4lm profile set <name>`.
 
-Six profiles ship with the repo. The full table — coder/chat/embed/
-rerank/vision per profile, steady RAM, fits-on hardware — lives in the
+Four profiles ship with the repo: one per memory class plus the Ollama smoke
+test. The full table — models per profile, resident RAM, fits-on hardware —
+lives in the
 [README](../README.md#profile-lineup). Profile YAML headers carry per-slot
 rationale, memory math, when-to-use, and assumptions-to-validate.
 
@@ -176,13 +177,13 @@ rationale, memory math, when-to-use, and assumptions-to-validate.
 
 | Situation | Profile |
 |---|---|
-| Default daily driver, 96 GB+ Mac | `default` |
-| 64 GB Mac, or want headroom on a bigger one | `lean` |
-| 128 GB Mac, willing to spend it on bigger chat + reranker | `max-100gb` |
-| 256 GB Mac shared with a VM or desktop work | `max-170gb` |
-| Long agentic coding session (max KV-cache headroom) | `mlx-coding` |
-| Text-only knowledge synthesis / vault RAG | `mlx-knowledge` |
+| 256 GB Mac | `default` |
+| 128 GB Mac | `mid` |
+| 64 GB Mac, or a small fallback on a bigger one | `lean` |
 | GGUF smoke test (confirm Ollama still works) | `ollama` |
+
+The installer activates the matching profile on first install; later
+re-installs keep whatever is active.
 
 ```sh
 4lm profile list                 # installed profiles
@@ -351,9 +352,7 @@ Cold reload is 30-60 s. Subsequent prompts rebuild caches on demand.
 If it recurs within minutes (not hours), tune one of:
 
 1. **Drop to a leaner profile** to reduce the resident model set:
-   `4lm profile set lean` (~40 GB) or `4lm profile set mlx-coding`
-   (~42 GB; coder only). For pure RAG work,
-   `4lm profile set mlx-knowledge` (~23 GB).
+   `4lm profile set mid` (~62 GB) or `4lm profile set lean` (~40 GB).
 2. **Cap omlx memory in the profile YAML.** Set omlx's memory guard
    ceiling in the `omlx:` block, and cap each model's prompt length:
    ```yaml

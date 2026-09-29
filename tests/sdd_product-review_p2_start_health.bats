@@ -7,8 +7,8 @@ load helpers/setup
 
 setup() {
   mkdir -p "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs" "${HOME}/.4lm/launchd"
-  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
-  ln -sfn "${HOME}/.4lm/config/profiles/mlx-coding.yaml" "${HOME}/.4lm/config/active-profile"
+  cp "${REPO_ROOT}/config/profiles/lean.yaml" "${HOME}/.4lm/config/profiles/lean.yaml"
+  ln -sfn "${HOME}/.4lm/config/profiles/lean.yaml" "${HOME}/.4lm/config/active-profile"
   cat > "${HOME}/.4lm/config/network.yaml" <<'YAML'
 mode: local
 backend_port: 8080
@@ -52,11 +52,11 @@ YAML
 # ---- cmd_doctor formatting --------------------------------------------------
 
 @test "cmd_doctor: active profile with uncached mlx model prints warn: and download hint" {
-  # Use mlx-coding profile (has mlx backend + models), point HF_HOME at empty dir.
+  # Use lean profile (has mlx backend + models), point HF_HOME at empty dir.
   # Doctor may exit non-zero due to wired-memory check in sandbox; only assert output.
-  cp "${REPO_ROOT}/config/profiles/mlx-coding.yaml" \
-     "${HOME}/.4lm/config/profiles/mlx-coding.yaml"
-  ln -sfn "${HOME}/.4lm/config/profiles/mlx-coding.yaml" \
+  cp "${REPO_ROOT}/config/profiles/lean.yaml" \
+     "${HOME}/.4lm/config/profiles/lean.yaml"
+  ln -sfn "${HOME}/.4lm/config/profiles/lean.yaml" \
      "${HOME}/.4lm/config/active-profile"
   export HF_HOME="${BATS_TMPDIR}/empty-hf-cache"
   mkdir -p "${HF_HOME}/hub"

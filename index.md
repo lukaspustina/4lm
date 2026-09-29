@@ -61,23 +61,16 @@ closet does the inference; the Air on the couch does the typing.
 
 ## Profile lineup
 
-Six profiles. The three Qwen3-stack tiers share an 8B embedder so
+One profile per memory class, plus the Ollama smoke test; the installer picks
+the one that fits. All omlx profiles share the embedder and reranker names, so
 knowledge bases stay valid across switches.
 
-| Profile         | Backend | Coder                   | Chat            | Embed | Rerank | Vision | Steady | Fits on |
-|-----------------|---------|-------------------------|-----------------|-------|--------|--------|--------|---------|
-| `lean`          | omlx    | Qwen3-Coder-30B-A3B     | Qwen3.6-35B-A3B | 8B    | 0.6B   | —      | ~40 GB | 64 GB+  |
-| `default`       | omlx    | Qwen3-Coder-Next (80B)  | Qwen3.8-27B     | 8B    | 0.6B   | VL-8B  | ~62 GB | 96 GB+  |
-| `max-100gb`     | omlx    | Qwen3-Coder-Next (80B)  | Qwen3-Next-80B  | 8B    | 4B     | VL-8B  | ~92 GB | 128 GB  |
-| `max-170gb`     | omlx    | Qwen3.8-Flash-Next (125B, one model for code, chat, vision) | ← | 8B | 4B | ← | ~108 GB | 256 GB |
-| `mlx-coding`    | omlx    | Qwen3-Coder-Next (80B)  | —               | —     | —      | —      | ~42 GB | 64 GB+  |
-| `mlx-knowledge` | omlx    | —                       | Qwen3.8-27B     | 8B    | 0.6B   | —      | ~20 GB | 36 GB+  |
-| `ollama`        | ollama  | qwen3-coder-next:q4_K_M | —               | —     | —      | —      | ~22 GB | 36 GB+  |
-
-The everyday ladder is `lean` → `default` → `max-100gb`. `mlx-coding`
-strips everything except the 80B coder for long agentic sessions.
-`mlx-knowledge` is the text-only vault-synthesis tier. `ollama` is
-the GGUF smoke test.
+| Profile   | Backend | Models                                              | Resident | Fits on |
+|-----------|---------|-----------------------------------------------------|----------|---------|
+| `lean`    | omlx    | Qwen3-Coder-30B-A3B + Qwen3.6-35B-A3B + embed + rerank | ~40 GB | 64 GB  |
+| `mid`     | omlx    | Qwen3-Coder-Next 80B + Qwen3.8-27B (VLM) + embed + rerank | ~62 GB | 128 GB |
+| `default` | omlx    | Qwen3.8-Flash-Next 125B MoE (VLM, MTP) + embed + 4B rerank | ~108 GB | 256 GB |
+| `ollama`  | ollama  | qwen3-coder-next GGUF (smoke test)                  | ~22 GB   | 36 GB+  |
 
 ## Architecture
 

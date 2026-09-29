@@ -7,8 +7,8 @@
 //   ollama backend → ollama pull tag (e.g. qwen3-coder-next:q4_K_M)
 //   mlx_lm backend → model_path from profile YAML
 //
-// Pre-wired for the v0.6 `default` profile (omlx + full Qwen3 stack).
-// Add or remove entries to match your active profile.
+// Pre-wired for all shipped profiles; the backend only serves the active
+// profile's models. Remove entries you never use.
 //
 // Schema reference: https://opencode.ai/config.json
 {
@@ -22,18 +22,14 @@
         "apiKey": "{file:~/.4lm/config/api-key}"
       },
       "models": {
-        // default / lean / max-100gb / mlx-coding profiles
-        "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code)" },
-        // default / mlx-knowledge profiles
-        "qwen3.8-27b":      { "name": "Qwen3.8-27B (plan/chat)" },
-        // lean profile (keeps the faster MoE chat model)
-        "qwen3.6-35b":      { "name": "Qwen3.6-35B-A3B (plan/chat)" },
-        // max-100gb profile (chat tier upgrade)
-        "qwen3-next-80b":   { "name": "Qwen3-Next-80B-A3B (heavy reasoning)" },
-        // max-170gb profile (one model for build, plan and vision)
+        // default profile (256 GB): one model for build, plan and vision
         "qwen3.8-flash-next": { "name": "Qwen3.8-Flash-Next (build/plan/vision)" },
-        // default / max-100gb profiles
-        "qwen3-vl-8b":      { "name": "Qwen3-VL-8B (vision)" },
+        // mid profile (128 GB)
+        "qwen3-coder-next": { "name": "Qwen3-Coder-Next (build/code)" },
+        "qwen3.8-27b":      { "name": "Qwen3.8-27B (plan/chat/vision)" },
+        // lean profile (64 GB)
+        "qwen3-coder-30b":  { "name": "Qwen3-Coder-30B-A3B (build/code)" },
+        "qwen3.6-35b":      { "name": "Qwen3.6-35B-A3B (plan/chat)" },
         // ollama profile (single-model smoke test)
         "qwen3-coder-next:q4_K_M": { "name": "Qwen3-Coder-Next GGUF (ollama)" }
       }
