@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Per-model profile fields `reasoning_effort` (rendered as the chat template's
+  default) and `top_k`. The documented-but-unimplemented `chat_template_kwargs`
+  and `sampling` rows are gone from the schema reference.
 - `4lm model download --profile <name>` and `just models <profile>` fetch one
   profile's models instead of every profile's. Without the argument nothing
   changes.

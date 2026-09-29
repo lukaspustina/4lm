@@ -895,14 +895,16 @@ validate_profile() {
       /^[[:space:]]*-[[:space:]]*model_path:/ {
         if (in_entry) _flush()
         in_entry = 1
-        path = $NF; served = ""; ttl = ""; model_type = ""; ctx = ""; mtp = ""
-        has_ttl = 0; has_model_type = 0; has_ctx = 0; has_mtp = 0
+        path = $NF; served = ""; ttl = ""; model_type = ""; ctx = ""; mtp = ""; effort = ""; topk = ""
+        has_ttl = 0; has_model_type = 0; has_ctx = 0; has_mtp = 0; has_effort = 0; has_topk = 0
       }
       in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
       in_entry && /^[[:space:]]+ttl:/ { ttl = $NF; has_ttl = 1 }
       in_entry && /^[[:space:]]+model_type:/ { model_type = $NF; has_model_type = 1 }
       in_entry && /^[[:space:]]+max_context_window:/ { ctx = $NF; has_ctx = 1 }
       in_entry && /^[[:space:]]+mtp:/ { mtp = $NF; has_mtp = 1 }
+      in_entry && /^[[:space:]]+reasoning_effort:/ { effort = $NF; has_effort = 1 }
+      in_entry && /^[[:space:]]+top_k:/ { topk = $NF; has_topk = 1 }
       function _flush() {
         name = (served != "") ? served : path
         if (path == "") { print "model entry missing required field '"'"'model_path'"'"'"; return }
@@ -912,6 +914,12 @@ validate_profile() {
         }
         if (has_ttl && ttl != "null" && ttl !~ /^[0-9]+$/) {
           print "model '"'"'" name "'"'"' field '"'"'ttl'"'"' must be integer or null"
+        }
+        if (has_effort && effort !~ /^[a-z]+$/) {
+          print "model '"'"'" name "'"'"' field '"'"'reasoning_effort'"'"' must be a lowercase word (e.g. medium)"
+        }
+        if (has_topk && topk !~ /^[1-9][0-9]*$/) {
+          print "model '"'"'" name "'"'"' field '"'"'top_k'"'"' must be a positive integer"
         }
         if (has_mtp && mtp != "true" && mtp != "false") {
           print "model '"'"'" name "'"'"' field '"'"'mtp'"'"' must be true or false"
@@ -1009,17 +1017,19 @@ render_omlx_settings() {
     /^[[:space:]]*-[[:space:]]*model_path:/ {
       if (in_entry) _emit()
       in_entry = 1
-      served = ""; pin = ""; ttl_val = ""; ctx = ""; mtp = ""; has_pin = 0; has_ttl = 0
+      served = ""; pin = ""; ttl_val = ""; ctx = ""; mtp = ""; effort = ""; topk = ""; has_pin = 0; has_ttl = 0
     }
     in_entry && /^[[:space:]]+served_model_name:/ { served = $NF }
     in_entry && /^[[:space:]]+pin:/ { pin = $NF; has_pin = 1 }
     in_entry && /^[[:space:]]+ttl:/ { ttl_val = $NF; has_ttl = 1 }
     in_entry && /^[[:space:]]+max_context_window:/ { ctx = $NF }
     in_entry && /^[[:space:]]+mtp:/ { mtp = $NF }
+    in_entry && /^[[:space:]]+reasoning_effort:/ { effort = $NF }
+    in_entry && /^[[:space:]]+top_k:/ { topk = $NF }
     function _emit() {
       if (served == "") return
       print served "|" (has_pin ? pin : "") "|" (has_pin ? "1" : "0") "|" \
-            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0") "|" ctx "|" mtp
+            (has_ttl ? ttl_val : "") "|" (has_ttl ? "1" : "0") "|" ctx "|" mtp "|" effort "|" topk
     }
     END { if (in_entry) _emit() }
   ' "${yaml_path}")"
@@ -1031,7 +1041,7 @@ render_omlx_settings() {
 
   # Build a jq object: {"model_id": {per-model settings}, ...}
   local models_obj="{}"
-  while IFS='|' read -r served pin has_pin ttl_val has_ttl ctx mtp; do
+  while IFS='|' read -r served pin has_pin ttl_val has_ttl ctx mtp effort topk; do
     [[ -z "${served}" ]] && continue
     local entry
     # shellcheck disable=SC2016  # jq filter: $vars are jq args, not shell vars
@@ -1042,10 +1052,14 @@ render_omlx_settings() {
       --arg has_ttl "${has_ttl}" \
       --arg ctx "${ctx}" \
       --arg mtp "${mtp}" \
+      --arg effort "${effort}" \
+      --arg topk "${topk}" \
       '(if $has_pin == "1" and $pin_val == "true" then {is_pinned: true} else {} end) +
        (if $has_ttl == "1" and $ttl_val != "null" then {ttl_seconds: ($ttl_val | tonumber)} else {} end) +
        (if $ctx != "" then {max_context_window: ($ctx | tonumber)} else {} end) +
-       (if $mtp == "true" then {mtp_enabled: true} else {} end)')"
+       (if $mtp == "true" then {mtp_enabled: true} else {} end) +
+       (if $effort != "" then {chat_template_kwargs: {reasoning_effort: $effort}} else {} end) +
+       (if $topk != "" then {top_k: ($topk | tonumber)} else {} end)')"
     # shellcheck disable=SC2016
     models_obj="$("${_jq}" -n \
       --arg model_id "${served}" \

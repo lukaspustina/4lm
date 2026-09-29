@@ -177,22 +177,21 @@ source of truth — changing the env value won't override the DB. Set
 
 ## What a profile can and cannot configure
 
-`render_omlx_settings` writes exactly two per-model keys to
-`~/.omlx/model_settings.json`: `is_pinned` and `ttl_seconds`. Everything else
-in a profile entry is either consumed by 4lm itself or is documentation.
+`render_omlx_settings` writes these per-model keys to
+`~/.omlx/model_settings.json`: `is_pinned`, `ttl_seconds`, `max_context_window`,
+`mtp_enabled`, `chat_template_kwargs.reasoning_effort` and `top_k`. Everything
+else in a profile entry is either consumed by 4lm itself or is documentation.
 
 - **`model_type` never reaches omlx.** It is validated (`lm` | `vlm`) and
   otherwise unused — omlx detects the type from the checkpoint's own
   `config.json` (`Discovered model: … type: vlm, engine: vlm`). Set it
   correctly for readers, but do not expect it to change behaviour.
-- **Chat-template defaults cannot be overridden from a profile.** Measured
-  2026-08-17 on Qwen3.8-27B, whose template carries
-  `reasoning_effort|default('xhigh')`: the same key in `chat_template_kwargs`
-  works in the **request body** (128 s for a prompt) and has **no effect** via
-  `model_settings.json` (336 s for the same prompt on the same server, which
-  logged `Loaded settings for 1 models`). Client-side is the only lever.
-  `docs/profile-schema.md` documents a `chat_template_kwargs` profile field
-  that `bin/4lm` does not implement — do not build on it.
+- **Chat-template defaults depend on the omlx version.** On 0.6.0 (measured
+  2026-08-17, Qwen3.8-27B) `chat_template_kwargs` in `model_settings.json` had
+  no effect; on omlx main `f0d8428a` (measured 2026-09-29, Qwen3.8-Flash-Next)
+  it does, so the profile field `reasoning_effort` renders it. A request's own
+  `chat_template_kwargs` still wins. After an omlx bump, re-check with one
+  timed prompt before relying on it.
 
 ## Changing a served_model_name
 

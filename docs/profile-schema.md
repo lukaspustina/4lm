@@ -39,8 +39,8 @@ fallback in the profile YAML.
 | `ttl` | int \| null | no | Unload after N seconds idle; `null` = never unload |
 | `max_context_window` | int > 0 | no | Longest prompt omlx admits for this model, in tokens; longer requests are rejected up front. Measure it with omlx's context benchmark |
 | `mtp` | bool | no | Speculative decoding with the checkpoint's own multi-token-prediction head (omlx `mtp_enabled`, adaptive depth). Needs an `-mtp` checkpoint. Gains are single-stream; a fixed draft depth (omlx `mtp_fixed_depth`) measured slower than adaptive and is not exposed |
-| `chat_template_kwargs` | dict | no | Passed to `~/.omlx/settings.json`; empty `{}` is omitted |
-| `sampling` | dict | no | Per-model sampling defaults; empty `{}` is omitted |
+| `reasoning_effort` | lowercase word | no | Default for the chat template's `reasoning_effort` (e.g. `low` / `medium` / `high` / `xhigh` — the values depend on the model's template), rendered as `chat_template_kwargs`. A request that sends its own value wins. Takes effect on omlx main after 0.7.0rc1; 0.6.0 ignored it. Measured on Qwen3.8-Flash-Next: `medium` cut a coding answer from ~78 s to ~21 s, and `low` made non-English prose slip into other scripts in most answers while `medium` did not |
+| `top_k` | int > 0 | no | Per-model sampling default; omlx's global default is 0 (off). Use the value from the model card |
 
 `~/.omlx/model_settings.json` is a **derived runtime artifact** rendered from
 the active profile YAML by `render_omlx_settings()` on every `profile set`,
