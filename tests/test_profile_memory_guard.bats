@@ -129,3 +129,30 @@ _render() {
     [[ "$output" == *"paged_ssd_cache_max_size"* ]] || false
   done
 }
+
+@test "reasoning_effort is rendered into chat_template_kwargs" {
+  out="${BATS_TMPDIR}/ms-${BATS_TEST_NAME}.json"
+  _render "$(_yaml '' 'reasoning_effort: medium')" "${out}"
+  [ "$("${REAL_JQ}" -r '.models."test-model".chat_template_kwargs.reasoning_effort' "${out}")" = "medium" ]
+}
+
+@test "top_k is rendered as an integer" {
+  out="${BATS_TMPDIR}/ms-${BATS_TEST_NAME}.json"
+  _render "$(_yaml '' 'top_k: 20')" "${out}"
+  [ "$("${REAL_JQ}" '.models."test-model".top_k' "${out}")" = "20" ]
+}
+
+@test "absent reasoning_effort and top_k are not rendered" {
+  out="${BATS_TMPDIR}/ms-${BATS_TEST_NAME}.json"
+  _render "$(_yaml '' '')" "${out}"
+  [ "$("${REAL_JQ}" '.models."test-model" | has("chat_template_kwargs") or has("top_k")' "${out}")" = "false" ]
+}
+
+@test "reasoning_effort and top_k reject malformed values" {
+  for line in 'reasoning_effort: Medium!' 'reasoning_effort: ""' 'top_k: 0' 'top_k: -3' 'top_k: 2.5'; do
+    run _validate "$(_yaml '' "${line}")"
+    [ "$status" -ne 0 ]
+  done
+  run _validate "$(_yaml '' 'reasoning_effort: xhigh')"
+  [ "$status" -eq 0 ]
+}
