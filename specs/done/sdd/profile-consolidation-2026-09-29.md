@@ -1,7 +1,9 @@
 # SDD: Consolidate the profiles to one per machine class
 
-Status: Active
+Status: Done
 Created: 2026-09-29
+Finished: 2026-09-29
+Original: specs/sdd/profile-consolidation.md
 
 ## Overview
 
