@@ -286,13 +286,15 @@ set as a GUI session. Backend only; there is no WebUI or opencode in this mode.
   readable by other accounts).
 - The Homebrew tools from the `Brewfile`, installed by an admin.
 - No GUI-mode 4lm on the same machine: it would hold the port, and its
-  `~/.local/bin/4lm` shadows the daemon CLI in `sudo`'s `PATH`. Remove it with
-  `./uninstall.sh` (not `4lm uninstall`, which daemon mode refuses).
+  `~/.local/bin/4lm` shadows the daemon CLI in `sudo`'s `PATH`. Remove it
+  **before** installing the daemon — `4lm stop && 4lm uninstall --confirm` —
+  because once the daemon exists, the CLI routes everything to it.
 
-**Install** (idempotent — re-run it to update scripts and the CLI):
+**Install** (idempotent — re-run it to update scripts and the CLI). It runs
+from the checkout, since the installed CLI has no sources:
 
 ```sh
-sudo ./install.sh --daemon <user>
+sudo <checkout>/bin/4lm install --daemon <user>
 ```
 
 As root it checks the account and its home, runs the regular backend-only
@@ -316,7 +318,7 @@ you at it. `autostart` does not apply: launchd loads the daemon at every boot;
 A typical sequence, e.g. from configuration management:
 
 ```sh
-sudo ./install.sh --daemon <user>
+sudo <checkout>/bin/4lm install --daemon <user>
 sudo /usr/local/bin/4lm profile set <name>
 sudo /usr/local/bin/4lm model download --profile <name>
 sudo /usr/local/bin/4lm expose lan --confirm
@@ -337,7 +339,8 @@ account gets a new API key, and omlx sub keys from your old
 **Limits.** `4lm upgrade brew` needs the admin who owns Homebrew. A changed
 plist (after a re-install) takes effect after `sudo 4lm stop && sudo 4lm start`.
 
-**Uninstall** the system pieces with `sudo ./uninstall.sh --daemon`. The account
+**Uninstall** the system pieces with `sudo 4lm uninstall --daemon --confirm`
+(without `--confirm` it lists what it would remove). The account
 and its home — install, config, models — stay until you remove the account.
 
 ## Troubleshooting

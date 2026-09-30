@@ -40,7 +40,8 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 | Task | Command |
 |---|---|
 | Bootstrap dev tools | `just bootstrap` (Brewfile + Brewfile-tui + `pipx ensurepath`; `BACKEND_ONLY=1` skips TUI) |
-| Install / re-install | `just install` (or `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
+| Install / re-install | `just install` (or `./bin/4lm install` / `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
+| Daemon install / removal | `sudo ./bin/4lm install --daemon <user>` · `sudo 4lm uninstall --daemon --confirm` |
 | Full uninstall | `just uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
 | Pre-download models | `just models [profile]` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download [--profile <name>]` |
 | Start everything | `4lm start` |
@@ -68,8 +69,9 @@ reboot, services are stopped unless autostart is enabled.
 
 ## Daemon mode
 
-`sudo ./install.sh --daemon <user>` is the third shape: the backend-only
-install runs **as** an existing account (`--service`), and root adds
+`sudo <checkout>/bin/4lm install --daemon <user>` is the third shape
+(`daemon_install` in `bin/4lm`): `install.sh --service` runs **as** an existing
+account, and root adds
 `/Library/LaunchDaemons/com.4lm.backend.plist` (`UserName`), a root-owned
 `/usr/local/bin/4lm` and `/etc/newsyslog.d/4lm-daemon.conf`. The CLI switches
 on the system plist's presence (`DAEMON_PLIST`, `FOURLM_DAEMON_PLIST` in tests;
@@ -84,6 +86,9 @@ mode on a daemon host).
   `service_kick` SIGTERMs the pid and `KeepAlive` respawns it. New restart
   sites go through `service_kick`, never `launchctl kickstart` directly, and
   launchd targets use `${LAUNCHD_DOMAIN}`, never `gui/<uid>`.
+- `4lm install` needs the checkout next to the CLI (`repo_dir`); the root-owned
+  `/usr/local/bin/4lm` has none, so updates run `<checkout>/bin/4lm install`.
+  `sudo 4lm uninstall --daemon --confirm` removes the system pieces only.
 - Account creation, model migration and host settings are the operator's —
   4lm stays generic (public repo).
 

@@ -22,7 +22,7 @@ plist and a root-owned CLI entry point.
 
 ## Requirements
 
-1. `sudo ./install.sh --daemon <user>` installs daemon mode for an **existing**
+1. `sudo <checkout>/bin/4lm install --daemon <user>` installs daemon mode for an **existing**
    account. It fails fast when not root, when the account does not exist, when
    its home is missing or not owned by it, or when the account cannot read the
    source checkout. 4lm never creates or deletes accounts.
@@ -49,7 +49,7 @@ plist and a root-owned CLI entry point.
 7. `profile set`, `expose`, `status`, `doctor`, `model …`, `bench`, `logs` and
    `diag` work in daemon mode through that re-execution, including the
    profile-switch rollback.
-8. `sudo ./uninstall.sh --daemon` removes only the system pieces (boots out the
+8. `sudo 4lm uninstall --daemon --confirm` removes only the system pieces (boots out the
    daemon, removes the system plist, the CLI copy and the newsyslog entry). The
    account and its home, including downloaded models, stay.
 9. The GUI-domain install is unchanged when no system plist exists.
@@ -77,8 +77,8 @@ plist and a root-owned CLI entry point.
 |---|---|---|
 | 1 | Refactor: `LAUNCHD_DOMAIN` and `service_kick` in `bin/4lm` | full bats suite green before and after |
 | 2 | CLI daemon detection, root dispatch, account-side restart | new bats: root / account / other-user paths with stubbed `id`, `sudo`, `plutil`, `launchctl` |
-| 3 | `install.sh --daemon <user>` and the account-side `--service` skip set | new bats: fail-fast checks, plist content, CLI copy, newsyslog line, account install invoked |
-| 4 | `uninstall.sh --daemon` | new bats: system pieces removed, home untouched |
+| 3 | `4lm install --daemon <user>` (`daemon_install`) and the account-side `--service` skip set | new bats: fail-fast checks, plist content, CLI copy, newsyslog line, account install invoked |
+| 4 | `4lm uninstall --daemon` (`daemon_uninstall`) | new bats: system pieces removed, home untouched |
 | 5 | Docs: setup runbook section, README, CLAUDE.md, CHANGELOG | review |
 
 On-host acceptance after phase 5: install over a disposable account, `sudo 4lm

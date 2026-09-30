@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **System daemon mode.** `sudo ./install.sh --daemon <user>` installs the
+- **System daemon mode.** `sudo 4lm install --daemon <user>` installs the
   backend as a LaunchDaemon (`/Library/LaunchDaemons/com.4lm.backend.plist`,
   `UserName <user>`) for an existing account, with a root-owned CLI at
   `/usr/local/bin/4lm`. `sudo 4lm start|stop|restart` drive the system job;
-  every other command re-executes as the account. `sudo ./uninstall.sh
-  --daemon` removes the system pieces and keeps the account's home. The GUI
-  install is unchanged.
+  every other command re-executes as the account. `sudo 4lm uninstall --daemon
+  --confirm` removes the system pieces and keeps the account's home.
+  `4lm install [--backend-only]` runs `install.sh` from the checkout the CLI
+  lives in. The GUI install is unchanged.
 - Per-model profile fields `reasoning_effort` (rendered as the chat template's
   default) and `top_k`. The documented-but-unimplemented `chat_template_kwargs`
   and `sampling` rows are gone from the schema reference.
