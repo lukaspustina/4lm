@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # uninstall.sh — Remove 4lm completely.
 #
+# `sudo ./uninstall.sh --daemon` instead removes only the system pieces of a
+# daemon install (system plist, root-owned CLI, newsyslog file); see below.
+#
 # What it does:
 #   1. Boots out running agents (com.4lm.{backend,webui})
 #   2. Removes ~/.local/bin/4lm symlink
@@ -45,6 +48,32 @@ fi
 ok() { echo "${C_GRN}✓${C_RST} $*"; }
 warn() { echo "${C_YEL}⚠${C_RST} $*" >&2; }
 info() { echo "${C_BLU}→${C_RST} $*"; }
+
+# ---- Daemon mode: system pieces only --------------------------------------
+# `sudo ./uninstall.sh --daemon` removes what install.sh --daemon put outside
+# the account's home. The account and its home (install, config, models) stay;
+# remove those with the account. Paths are overridable for bats.
+if [[ "${1:-}" == "--daemon" ]]; then
+  daemon_plist="${FOURLM_DAEMON_PLIST:-/Library/LaunchDaemons/${BACKEND_LABEL}.plist}"
+  system_cli="${FOURLM_SYSTEM_BIN:-/usr/local/bin}/4lm"
+  daemon_newsyslog="${FOURLM_DAEMON_NEWSYSLOG_CONF:-/etc/newsyslog.d/4lm-daemon.conf}"
+  if [[ "${UID_NUM}" -ne 0 ]]; then
+    echo "${C_RED}✗${C_RST} --daemon needs root: sudo ./uninstall.sh --daemon" >&2
+    exit 1
+  fi
+  if launchctl print "system/${BACKEND_LABEL}" >/dev/null 2>&1; then
+    launchctl bootout "system/${BACKEND_LABEL}" 2>/dev/null || true
+    ok "bootout system/${BACKEND_LABEL}"
+  fi
+  for f in "${daemon_plist}" "${system_cli}" "${daemon_newsyslog}"; do
+    if [[ -f "${f}" ]]; then
+      rm -f "${f}"
+      ok "removed ${f}"
+    fi
+  done
+  echo "The service account and its home are untouched."
+  exit 0
+fi
 
 echo "${C_DIM}════════════════════════════════════${C_RST}"
 echo " 4lm — Uninstaller"
