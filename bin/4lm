@@ -51,6 +51,8 @@ readonly BACKEND_POLL_SECS="${BACKEND_POLL_SECS:-30}"
 # Cache uid once.
 UID_NUM="$(id -u)"
 readonly UID_NUM
+LAUNCHD_DOMAIN="gui/${UID_NUM}"
+readonly LAUNCHD_DOMAIN
 
 # ---- Colors (only if stdout is a TTY) --------------------------------------
 if [[ -t 1 ]]; then
@@ -125,8 +127,10 @@ require_component() {
   esac
 }
 
-is_loaded() { launchctl print "gui/${UID_NUM}/$1" >/dev/null 2>&1; }
-is_running() { launchctl print "gui/${UID_NUM}/$1" 2>/dev/null | grep -q "state = running"; }
+is_loaded() { launchctl print "${LAUNCHD_DOMAIN}/$1" >/dev/null 2>&1; }
+is_running() { launchctl print "${LAUNCHD_DOMAIN}/$1" 2>/dev/null | grep -q "state = running"; }
+# Kill and restart a loaded service.
+service_kick() { launchctl kickstart -k "${LAUNCHD_DOMAIN}/$1"; }
 
 # Read mode from network.yaml; default `local` if missing.
 net_mode() {
@@ -319,12 +323,12 @@ service_start() {
   [[ -f "${plist}" ]] || die "plist not found: ${plist} — run install.sh first"
   if is_loaded "${label}"; then
     info "${label} already loaded, kickstarting…"
-    launchctl kickstart -k "gui/${UID_NUM}/${label}" >/dev/null 2>&1 ||
+    service_kick "${label}" >/dev/null 2>&1 ||
       warn "${label}: kickstart returned non-zero — check: 4lm logs $(basename "${label##*.}")"
   else
     # Propagate failure so callers using `service_start ... || rc=1` see it.
     # set -e is suppressed in `||` contexts, so we must return explicitly.
-    launchctl bootstrap "gui/${UID_NUM}" "${plist}" || return 1
+    launchctl bootstrap "${LAUNCHD_DOMAIN}" "${plist}" || return 1
   fi
   ok "${label} started"
 
@@ -351,7 +355,7 @@ service_stop() {
     info "${label} not loaded"
     return 0
   fi
-  launchctl bootout "gui/${UID_NUM}/${label}" >/dev/null 2>&1 ||
+  launchctl bootout "${LAUNCHD_DOMAIN}/${label}" >/dev/null 2>&1 ||
     warn "${label}: bootout returned non-zero — service may still be running"
   ok "${label} stopped"
 }
@@ -359,7 +363,7 @@ service_stop() {
 service_restart() {
   local label="$1" plist="$2"
   if is_loaded "${label}"; then
-    launchctl kickstart -k "gui/${UID_NUM}/${label}"
+    service_kick "${label}"
     ok "${label} restarted"
   else
     service_start "${label}" "${plist}"
@@ -367,7 +371,7 @@ service_restart() {
 }
 
 # ---- Status ----------------------------------------------------------------
-# Parse `launchctl print gui/<uid>/<label>` for state, last exit, restarts.
+# Parse `launchctl print <domain>/<label>` for state, last exit, restarts.
 print_service_status() {
   local label="$1" name="$2"
   if ! is_loaded "${label}"; then
@@ -376,7 +380,7 @@ print_service_status() {
   fi
 
   local detail
-  detail="$(launchctl print "gui/${UID_NUM}/${label}" 2>/dev/null || true)"
+  detail="$(launchctl print "${LAUNCHD_DOMAIN}/${label}" 2>/dev/null || true)"
   local state pid last_exit last_signal restarts started_seconds
   state="$(awk -F' = ' '/^[[:space:]]*state =/{print $2; exit}' <<<"${detail}")"
   pid="$(awk -F' = ' '/^[[:space:]]*pid =/{print $2; exit}' <<<"${detail}")"
@@ -1278,7 +1282,7 @@ cmd_profile_set() {
     if ! is_loaded "${BACKEND_LABEL}"; then
       return 0
     fi
-    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
+    service_kick "${BACKEND_LABEL}" >/dev/null 2>&1 || true
     local _start=$SECONDS _timed_out=0
     local url
     url="$(backend_url)/v1/models"
@@ -1326,7 +1330,7 @@ cmd_profile_set() {
 
   # (d) Kickstart backend (no-op if not loaded — switch is for next start).
   if is_loaded "${BACKEND_LABEL}"; then
-    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 || true
+    service_kick "${BACKEND_LABEL}" >/dev/null 2>&1 || true
 
     # (e) Poll /v1/models with elapsed-wall-clock budget.
     local url
@@ -1349,7 +1353,7 @@ cmd_profile_set() {
       log_rollback_event "${previous}" "${name}" "poll_timeout"
       if [[ -n "${previous}" && -f "${PROFILES_DIR}/${previous}.yaml" ]]; then
         ln -sfn "${PROFILES_DIR}/${previous}.yaml" "${ACTIVE_CONFIG}"
-        if ! launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1; then
+        if ! service_kick "${BACKEND_LABEL}" >/dev/null 2>&1; then
           warn "rollback kickstart failed — backend may be in unknown state. Run: 4lm logs backend"
           exit 1
         fi
@@ -1430,12 +1434,12 @@ EOF
   # Restart only services currently running.
   if is_running "${BACKEND_LABEL}"; then
     info "Restarting backend…"
-    launchctl kickstart -k "gui/${UID_NUM}/${BACKEND_LABEL}" >/dev/null 2>&1 ||
+    service_kick "${BACKEND_LABEL}" >/dev/null 2>&1 ||
       warn "${BACKEND_LABEL}: kickstart returned non-zero — check: 4lm logs backend"
   fi
   if is_running "${WEBUI_LABEL}"; then
     info "Restarting WebUI…"
-    launchctl kickstart -k "gui/${UID_NUM}/${WEBUI_LABEL}" >/dev/null 2>&1 ||
+    service_kick "${WEBUI_LABEL}" >/dev/null 2>&1 ||
       warn "${WEBUI_LABEL}: kickstart returned non-zero — check: 4lm logs webui"
   fi
 
@@ -1867,7 +1871,7 @@ _autostart_enable() {
     ok "autostart ${label}: enabled"
     if ! is_loaded "${label}"; then
       local _bc_out
-      if ! _bc_out="$(launchctl bootstrap "gui/${UID_NUM}" "${la_plist}" 2>&1)"; then
+      if ! _bc_out="$(launchctl bootstrap "${LAUNCHD_DOMAIN}" "${la_plist}" 2>&1)"; then
         rm -f "${la_plist}"
         die "${_bc_out}"
       fi
@@ -1888,7 +1892,7 @@ _autostart_disable() {
       info "autostart ${label}: was not enabled"
     fi
     if is_loaded "${label}"; then
-      launchctl bootout "gui/${UID_NUM}/${label}" >/dev/null 2>&1 || true
+      launchctl bootout "${LAUNCHD_DOMAIN}/${label}" >/dev/null 2>&1 || true
       ok "${label}: stopped"
     fi
   done < <(_autostart_pairs "${target}")
