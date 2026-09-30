@@ -1,6 +1,7 @@
 # SDD — System daemon mode
 
-Status: phases 1–5 done · on-host acceptance open · 2026-09-30
+Status: phases 1–5 done · on-host: install, start, expose lan, key enforcement
+verified 2026-09-30; five findings fixed; open: re-run with the fixes, uninstall
 
 ## Context
 
