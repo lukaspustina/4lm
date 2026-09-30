@@ -138,6 +138,10 @@ mkdir -p "${LLM_HOME}/bin" \
   "${LLM_HOME}/runtime" \
   "${LLM_HOME}/cache/omlx"
 
+# Create the backend log as this user, so launchd appends to a file this user
+# can read (a system daemon would otherwise get a root-owned one).
+[[ -e "${LOG_DIR}/backend.log" ]] || (umask 077 && : >"${LOG_DIR}/backend.log")
+
 # Create omlx config directory with restricted permissions.
 if [[ ! -d "${HOME}/.omlx" ]]; then
   mkdir -m 0700 "${HOME}/.omlx"

@@ -352,9 +352,29 @@ profile_backend() {
 }
 
 # ---- Service control -------------------------------------------------------
+# Stage the active omlx profile's runtime dir if it is missing (fresh install,
+# models downloaded since). Without it the wrapper exits EX_CONFIG and launchd
+# crash-loops, so refuse to start instead.
+ensure_runtime() {
+  [[ -L "${ACTIVE_CONFIG}" ]] || return 0
+  [[ "$(profile_backend "${ACTIVE_CONFIG}" 2>/dev/null || true)" == "omlx" ]] || return 0
+  local name models
+  name="$(basename "$(readlink "${ACTIVE_CONFIG}")" .yaml)"
+  models="${LLM_HOME}/runtime/${name}/models"
+  [[ -d "${models}" ]] && return 0
+  info "Staging profile ${name}…"
+  if render_omlx_settings "${ACTIVE_CONFIG}" "${HOME}/.omlx/model_settings.json" &&
+    stage_omlx_model_dir "${name}" "${ACTIVE_CONFIG}"; then
+    return 0
+  fi
+  rmdir "${models}" 2>/dev/null || true
+  die "profile ${name} is not ready — run: 4lm model download --profile ${name}"
+}
+
 service_start() {
   local label="$1" plist="$2"
   [[ -f "${plist}" ]] || die "plist not found: ${plist} — run install.sh first"
+  [[ "${label}" != "${BACKEND_LABEL}" ]] || ensure_runtime
   if is_loaded "${label}"; then
     info "${label} already loaded, kickstarting…"
     service_kick "${label}" >/dev/null 2>&1 ||
@@ -461,6 +481,12 @@ cmd_status() {
 
   local be_auto webui_auto=""
   [[ -L "${LA_DIR}/${BACKEND_LABEL}.plist" ]] && be_auto="enabled" || be_auto="disabled"
+  # A system daemon is loaded by launchd at every boot; LaunchAgents do not apply.
+  local be_auto_json="${be_auto}"
+  if [[ "${LAUNCHD_DOMAIN}" == "system" ]]; then
+    be_auto="at boot (system daemon)"
+    be_auto_json="system"
+  fi
   if [[ "${has_webui}" == "true" ]]; then
     [[ -L "${LA_DIR}/${WEBUI_LABEL}.plist" ]] && webui_auto="enabled" || webui_auto="disabled"
   fi
@@ -510,12 +536,12 @@ cmd_status() {
     # Build autostart, services, http blocks — webui sub-keys omitted when absent.
     local autostart_block services_block http_block
     if [[ "${has_webui}" == "true" ]]; then
-      autostart_block="$(printf '{"backend":"%s","webui":"%s"}' "${be_auto}" "${webui_auto}")"
+      autostart_block="$(printf '{"backend":"%s","webui":"%s"}' "${be_auto_json}" "${webui_auto}")"
       services_block="$(printf '{"backend":{"loaded":%s,"running":%s},"webui":{"loaded":%s,"running":%s}}' \
         "${be_loaded}" "${be_running}" "${webui_loaded}" "${webui_running}")"
       http_block="$(printf '{"backend":%s,"webui":%s}' "${be_http}" "${webui_http}")"
     else
-      autostart_block="$(printf '{"backend":"%s"}' "${be_auto}")"
+      autostart_block="$(printf '{"backend":"%s"}' "${be_auto_json}")"
       services_block="$(printf '{"backend":{"loaded":%s,"running":%s}}' "${be_loaded}" "${be_running}")"
       http_block="$(printf '{"backend":%s}' "${be_http}")"
     fi
@@ -588,7 +614,12 @@ cmd_status() {
 cmd_logs() {
   local target="${1:-backend}"
   case "${target}" in
-    backend | be) tail -F "${LOG_DIR}/backend.log" ;;
+    backend | be)
+      # tail -F retries an unreadable file silently; say so instead.
+      [[ ! -e "${LOG_DIR}/backend.log" || -r "${LOG_DIR}/backend.log" ]] ||
+        die "cannot read ${LOG_DIR}/backend.log — check its owner"
+      tail -F "${LOG_DIR}/backend.log"
+      ;;
     webui | ui)
       require_component webui
       tail -F "${LOG_DIR}/webui.log"
@@ -1739,6 +1770,8 @@ cmd_install() {
 daemon_install() {
   local repo="$1" user="$2" home plist_tmp log
   [[ "${UID_NUM}" -eq 0 ]] || die "needs root: sudo 4lm install --daemon ${user}"
+  # The caller's cwd is usually unreadable for the account; pip fails on it.
+  cd /
   id -u "${user}" >/dev/null 2>&1 || die "account not found: ${user} — create it first"
   home="$(dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
   [[ -n "${home}" && -d "${home}" ]] || die "home of ${user} missing: ${home:-none}"
@@ -1749,6 +1782,13 @@ daemon_install() {
   info "Installing 4lm for ${user} in ${home}…"
   sudo -u "${user}" -H env PATH="${home}/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     "${repo}/install.sh" --service || die "account install failed"
+
+  # launchd may have created the log as root on an earlier start; the account
+  # must read it for `4lm logs`. -h: never follow a link the account planted.
+  log="${home}/.4lm/logs/backend.log"
+  if [[ -f "${log}" && ! -L "${log}" ]]; then
+    chown -h "${user}:$(id -gn "${user}")" "${log}"
+  fi
 
   plist_tmp="$(mktemp)"
   sed "s|__HOME__|${home}|g" "${repo}/launchd/${BACKEND_LABEL}.plist" >"${plist_tmp}"
@@ -1767,7 +1807,6 @@ daemon_install() {
   chmod 755 "${SYSTEM_BIN}/4lm"
   ok "CLI → ${SYSTEM_BIN}/4lm (root-owned; run as: sudo 4lm <cmd>)"
 
-  log="${home}/.4lm/logs/backend.log"
   if grep -qF "${log} " "${DAEMON_NEWSYSLOG_CONF}" 2>/dev/null; then
     ok "newsyslog entry already present"
   else
@@ -2508,6 +2547,13 @@ daemon_dispatch() {
       ;;
   esac
   case "${cmd}" in
+    start | restart)
+      # The runtime lives in the account's home: stage it as the account.
+      (cd / && sudo -u "${DAEMON_USER}" -H "${BASH_SOURCE[0]}" _prepare) ||
+        die "${BACKEND_LABEL} not started"
+      ;;
+  esac
+  case "${cmd}" in
     start)
       if launchctl print "${job}" >/dev/null 2>&1; then
         launchctl kickstart -k "${job}" || die "kickstart ${job} failed"
@@ -2578,6 +2624,7 @@ main() {
     opencode | code) cmd_opencode "$@" ;;
     install) cmd_install "$@" ;;
     uninstall | remove) cmd_uninstall "$@" ;;
+    _prepare) ensure_runtime ;;
     help | --help | -h) cmd_help ;;
     *) die "Unknown command: ${cmd}. Try \`4lm help\`." ;;
   esac
