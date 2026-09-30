@@ -51,7 +51,23 @@ readonly BACKEND_POLL_SECS="${BACKEND_POLL_SECS:-30}"
 # Cache uid once.
 UID_NUM="$(id -u)"
 readonly UID_NUM
+
+# Daemon mode: a system plist with UserName runs the backend as a LaunchDaemon
+# under that account. Root handles the launchd lifecycle and re-executes every
+# other command as the account (see daemon_dispatch). Overridable for bats.
+readonly DAEMON_PLIST="${FOURLM_DAEMON_PLIST:-/Library/LaunchDaemons/${BACKEND_LABEL}.plist}"
+DAEMON_USER=""
+if [[ -f "${DAEMON_PLIST}" ]]; then
+  DAEMON_USER="$(plutil -extract UserName raw -o - "${DAEMON_PLIST}" 2>/dev/null || true)"
+fi
+readonly DAEMON_USER
+
 LAUNCHD_DOMAIN="gui/${UID_NUM}"
+if [[ -n "${DAEMON_USER}" && "$(id -un)" == "${DAEMON_USER}" ]]; then
+  LAUNCHD_DOMAIN="system"
+  # sudo -H does not carry the account's tool paths.
+  PATH="${PATH}:${HOME}/.local/bin:/opt/homebrew/bin"
+fi
 readonly LAUNCHD_DOMAIN
 
 # ---- Colors (only if stdout is a TTY) --------------------------------------
@@ -129,8 +145,23 @@ require_component() {
 
 is_loaded() { launchctl print "${LAUNCHD_DOMAIN}/$1" >/dev/null 2>&1; }
 is_running() { launchctl print "${LAUNCHD_DOMAIN}/$1" 2>/dev/null | grep -q "state = running"; }
-# Kill and restart a loaded service.
-service_kick() { launchctl kickstart -k "${LAUNCHD_DOMAIN}/$1"; }
+# Kill and restart a loaded service. The daemon account cannot kickstart a
+# system job, but it owns the process: SIGTERM it and KeepAlive respawns it.
+service_kick() {
+  if [[ "${LAUNCHD_DOMAIN}" != "system" ]]; then
+    launchctl kickstart -k "${LAUNCHD_DOMAIN}/$1"
+    return
+  fi
+  local pid i
+  pid="$(launchctl print "system/$1" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid =/{print $2; exit}')"
+  [[ -n "${pid}" ]] || return 0
+  kill -TERM "${pid}" || return 1
+  for ((i = 0; i < 60; i++)); do
+    kill -0 "${pid}" 2>/dev/null || return 0
+    sleep 1
+  done
+  return 1
+}
 
 # Read mode from network.yaml; default `local` if missing.
 net_mode() {
@@ -2347,9 +2378,68 @@ EOF
 }
 
 # ---- Main dispatch ---------------------------------------------------------
+# Daemon mode, called by root or any user other than the daemon account. Root
+# runs only the launchd lifecycle, which reads nothing but the root-owned
+# plist; every other command runs as the account, so root never follows a path
+# the account controls.
+daemon_dispatch() {
+  local cmd="${1:-status}"
+  [[ "${UID_NUM}" -eq 0 ]] || die "4lm runs as a system daemon for ${DAEMON_USER}; use: sudo 4lm ${cmd}"
+  local target="${2:-all}" job="system/${BACKEND_LABEL}"
+  case "${cmd}" in
+    start | stop | restart)
+      case "${target}" in
+        backend | be | all) ;;
+        webui | ui) die "daemon mode has no WebUI" ;;
+        *) die "Unknown target: ${target}" ;;
+      esac
+      ;;
+  esac
+  case "${cmd}" in
+    start)
+      if launchctl print "${job}" >/dev/null 2>&1; then
+        launchctl kickstart -k "${job}" || die "kickstart ${job} failed"
+      else
+        launchctl bootstrap system "${DAEMON_PLIST}" || die "bootstrap ${DAEMON_PLIST} failed"
+      fi
+      ok "${BACKEND_LABEL} started — check: sudo 4lm status"
+      ;;
+    stop)
+      if launchctl print "${job}" >/dev/null 2>&1; then
+        launchctl bootout "${job}" || warn "${BACKEND_LABEL}: bootout returned non-zero"
+        ok "${BACKEND_LABEL} stopped"
+      else
+        info "${BACKEND_LABEL} not loaded"
+      fi
+      ;;
+    restart)
+      if launchctl print "${job}" >/dev/null 2>&1; then
+        launchctl kickstart -k "${job}" || die "kickstart ${job} failed"
+      else
+        launchctl bootstrap system "${DAEMON_PLIST}" || die "bootstrap ${DAEMON_PLIST} failed"
+      fi
+      ok "${BACKEND_LABEL} restarted"
+      ;;
+    *)
+      [[ $# -gt 0 ]] || set -- status
+      exec sudo -u "${DAEMON_USER}" -H "${BASH_SOURCE[0]}" "$@"
+      ;;
+  esac
+}
+
 main() {
+  if [[ -n "${DAEMON_USER}" && "${LAUNCHD_DOMAIN}" != "system" ]]; then
+    daemon_dispatch "$@"
+    return
+  fi
   local cmd="${1:-status}"
   shift || true
+  if [[ "${LAUNCHD_DOMAIN}" == "system" ]]; then
+    case "${cmd}" in
+      start | stop | autostart) die "daemon mode: the backend is a system job; use: sudo 4lm ${cmd}" ;;
+      uninstall | remove) die "daemon mode: use: sudo ./uninstall.sh --daemon" ;;
+    esac
+  fi
   case "${cmd}" in
     start) cmd_start "$@" ;;
     stop) cmd_stop "$@" ;;
