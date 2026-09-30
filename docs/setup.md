@@ -315,11 +315,13 @@ cannot plant a path that a root process follows. Without `sudo`, the CLI points
 you at it. `autostart` does not apply: launchd loads the daemon at every boot;
 `sudo 4lm stop` holds until the next one.
 
-A typical sequence, e.g. from configuration management:
+A typical sequence, e.g. from configuration management. The install picks the
+profile by RAM; `start` stages it once its models are cached and refuses to
+start otherwise. Choose another profile with `profile set <name>` after its
+models are downloaded.
 
 ```sh
 sudo <checkout>/bin/4lm install --daemon <user>
-sudo /usr/local/bin/4lm profile set <name>
 sudo /usr/local/bin/4lm model download --profile <name>
 sudo /usr/local/bin/4lm expose lan --confirm
 sudo /usr/local/bin/4lm start
@@ -330,11 +332,13 @@ The API key is `<home>/.4lm/config/api-key`, readable by the account only
 (`sudo -u <user> cat …`). Create consumer sub keys in the omlx admin UI after
 the switch.
 
-**Moving from a GUI install.** Models are not copied: move the
-`models--*` directories from your `~/.cache/huggingface/hub/` into the
-account's, then `chown -R <user>` them, instead of downloading again. The
-account gets a new API key, and omlx sub keys from your old
-`~/.omlx/settings.json` do not carry over.
+**Moving from a GUI install.** Move the models instead of downloading them
+again, and move the **whole** `~/.cache/huggingface/hub/` directory in one
+rename, then `chown -R <user>` it. Moving only the `models--*` directories
+leaves dead links: current HF caches keep the files in a shared blob store
+(`hub/blobs/`), and the snapshots link into it. Afterwards `sudo 4lm start`
+stages the active profile from the moved cache. The account gets a new API key,
+and omlx sub keys from your old `~/.omlx/settings.json` do not carry over.
 
 **Limits.** `4lm upgrade brew` needs the admin who owns Homebrew. A changed
 plist (after a re-install) takes effect after `sudo 4lm stop && sudo 4lm start`.
