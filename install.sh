@@ -114,7 +114,8 @@ die() {
 if [[ -n "${DAEMON_USER}" ]]; then
   DAEMON_PLIST="${FOURLM_DAEMON_PLIST:-/Library/LaunchDaemons/com.4lm.backend.plist}"
   SYSTEM_BIN="${FOURLM_SYSTEM_BIN:-/usr/local/bin}"
-  NEWSYSLOG_CONF="${NEWSYSLOG_CONF:-/etc/newsyslog.d/4lm.conf}"
+  # Not the GUI install's 4lm.conf: its uninstaller deletes that file whole.
+  DAEMON_NEWSYSLOG_CONF="${FOURLM_DAEMON_NEWSYSLOG_CONF:-/etc/newsyslog.d/4lm-daemon.conf}"
 
   [[ "$(id -u)" -eq 0 ]] || die "--daemon needs root: sudo ./install.sh --daemon ${DAEMON_USER}"
   id -u "${DAEMON_USER}" >/dev/null 2>&1 || die "account not found: ${DAEMON_USER} — create it first"
@@ -146,11 +147,11 @@ if [[ -n "${DAEMON_USER}" ]]; then
   ok "CLI → ${SYSTEM_BIN}/4lm (root-owned; run as: sudo 4lm <cmd>)"
 
   svc_log="${svc_home}/.4lm/logs/backend.log"
-  if grep -qF "${svc_log} " "${NEWSYSLOG_CONF}" 2>/dev/null; then
+  if grep -qF "${svc_log} " "${DAEMON_NEWSYSLOG_CONF}" 2>/dev/null; then
     ok "newsyslog entry already present"
   else
-    printf '%s %s:%s 600  7     10240 *     J\n' "${svc_log}" "${DAEMON_USER}" "$(id -gn "${DAEMON_USER}")" >>"${NEWSYSLOG_CONF}"
-    ok "newsyslog rotation → ${NEWSYSLOG_CONF}"
+    printf '%s %s:%s 600  7     10240 *     J\n' "${svc_log}" "${DAEMON_USER}" "$(id -gn "${DAEMON_USER}")" >>"${DAEMON_NEWSYSLOG_CONF}"
+    ok "newsyslog rotation → ${DAEMON_NEWSYSLOG_CONF}"
   fi
 
   echo
