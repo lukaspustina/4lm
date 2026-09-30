@@ -2422,6 +2422,8 @@ daemon_dispatch() {
       ;;
     *)
       [[ $# -gt 0 ]] || set -- status
+      # The caller's cwd is usually unreadable for the account.
+      cd /
       exec sudo -u "${DAEMON_USER}" -H "${BASH_SOURCE[0]}" "$@"
       ;;
   esac
