@@ -56,6 +56,9 @@ readonly UID_NUM
 # under that account. Root handles the launchd lifecycle and re-executes every
 # other command as the account (see daemon_dispatch). Overridable for bats.
 readonly DAEMON_PLIST="${FOURLM_DAEMON_PLIST:-/Library/LaunchDaemons/${BACKEND_LABEL}.plist}"
+readonly SYSTEM_BIN="${FOURLM_SYSTEM_BIN:-/usr/local/bin}"
+# Not the GUI install's 4lm.conf: its uninstaller deletes that file whole.
+readonly DAEMON_NEWSYSLOG_CONF="${FOURLM_DAEMON_NEWSYSLOG_CONF:-/etc/newsyslog.d/4lm-daemon.conf}"
 DAEMON_USER=""
 if [[ -f "${DAEMON_PLIST}" ]]; then
   DAEMON_USER="$(plutil -extract UserName raw -o - "${DAEMON_PLIST}" 2>/dev/null || true)"
@@ -1710,16 +1713,117 @@ cmd_opencode() {
 }
 
 # ---- Uninstall (runtime side: bootout + remove ~/.local/bin/4lm) ----------
+# ---- Install ------------------------------------------------------------------
+# The checkout this CLI runs from, or nothing for an installed copy.
+repo_dir() {
+  local d
+  d="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [[ -f "${d}/install.sh" && -f "${d}/launchd/${BACKEND_LABEL}.plist" ]] && echo "${d}"
+  return 0
+}
+
+cmd_install() {
+  local repo
+  repo="$(repo_dir)"
+  [[ -n "${repo}" ]] || die "install runs from a checkout: <checkout>/bin/4lm install $*"
+  if [[ "${1:-}" != "--daemon" ]]; then
+    exec "${repo}/install.sh" "$@"
+  fi
+  [[ -n "${2:-}" ]] || die "Usage: sudo 4lm install --daemon <user>"
+  daemon_install "${repo}" "$2"
+}
+
+# Root installs only what the account cannot: the system plist, a root-owned
+# CLI copy, the newsyslog entry. Everything in the account's home is written by
+# install.sh --service running as the account.
+daemon_install() {
+  local repo="$1" user="$2" home plist_tmp log
+  [[ "${UID_NUM}" -eq 0 ]] || die "needs root: sudo 4lm install --daemon ${user}"
+  id -u "${user}" >/dev/null 2>&1 || die "account not found: ${user} — create it first"
+  home="$(dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  [[ -n "${home}" && -d "${home}" ]] || die "home of ${user} missing: ${home:-none}"
+  [[ "$(stat -f %Su "${home}")" == "${user}" ]] || die "${home} is not owned by ${user}"
+  sudo -u "${user}" test -r "${repo}/install.sh" ||
+    die "${user} cannot read ${repo} — put the checkout where the account can read it"
+
+  info "Installing 4lm for ${user} in ${home}…"
+  sudo -u "${user}" -H env PATH="${home}/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+    "${repo}/install.sh" --service || die "account install failed"
+
+  plist_tmp="$(mktemp)"
+  sed "s|__HOME__|${home}|g" "${repo}/launchd/${BACKEND_LABEL}.plist" >"${plist_tmp}"
+  plutil -insert UserName -string "${user}" "${plist_tmp}"
+  mkdir -p "$(dirname "${DAEMON_PLIST}")"
+  cp "${plist_tmp}" "${DAEMON_PLIST}"
+  rm -f "${plist_tmp}"
+  chown root:wheel "${DAEMON_PLIST}"
+  chmod 644 "${DAEMON_PLIST}"
+  ok "LaunchDaemon → ${DAEMON_PLIST} (UserName ${user})"
+
+  mkdir -p "${SYSTEM_BIN}"
+  rm -f "${SYSTEM_BIN}/4lm"
+  cp "${repo}/bin/4lm" "${SYSTEM_BIN}/4lm"
+  chown root:wheel "${SYSTEM_BIN}/4lm"
+  chmod 755 "${SYSTEM_BIN}/4lm"
+  ok "CLI → ${SYSTEM_BIN}/4lm (root-owned; run as: sudo 4lm <cmd>)"
+
+  log="${home}/.4lm/logs/backend.log"
+  if grep -qF "${log} " "${DAEMON_NEWSYSLOG_CONF}" 2>/dev/null; then
+    ok "newsyslog entry already present"
+  else
+    printf '%s %s:%s 600  7     10240 *     J\n' "${log}" "${user}" "$(id -gn "${user}")" >>"${DAEMON_NEWSYSLOG_CONF}"
+    ok "newsyslog rotation → ${DAEMON_NEWSYSLOG_CONF}"
+  fi
+
+  echo
+  echo "Next steps:"
+  echo "  sudo 4lm model download   # models land in ${home}"
+  echo "  sudo 4lm start            # launchd also starts it at every boot"
+  echo "  sudo 4lm status"
+  echo "A running daemon picks up a changed plist only after: sudo 4lm stop && sudo 4lm start"
+}
+
+# Removes what daemon_install put outside the account's home. The account and
+# its home (install, config, models) stay.
+daemon_uninstall() {
+  local confirm="$1" f
+  local files=("${DAEMON_PLIST}" "${SYSTEM_BIN}/4lm" "${DAEMON_NEWSYSLOG_CONF}")
+  if [[ "${confirm}" != "true" ]]; then
+    printf 'Would stop the daemon and remove:\n'
+    printf '  %s\n' "${files[@]}"
+    printf "The service account and its home are kept. Pass --confirm to proceed.\n"
+    return 0
+  fi
+  [[ "${UID_NUM}" -eq 0 ]] || die "needs root: sudo 4lm uninstall --daemon --confirm"
+  if launchctl print "system/${BACKEND_LABEL}" >/dev/null 2>&1; then
+    launchctl bootout "system/${BACKEND_LABEL}" 2>/dev/null || true
+    ok "bootout system/${BACKEND_LABEL}"
+  fi
+  for f in "${files[@]}"; do
+    if [[ -f "${f}" ]]; then
+      rm -f "${f}"
+      ok "removed ${f}"
+    fi
+  done
+  echo "The service account and its home are untouched."
+}
+
 cmd_uninstall() {
-  local confirm=false purge=false
+  local confirm=false purge=false daemon=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --confirm) confirm=true ;;
       --purge) purge=true ;;
+      --daemon) daemon=true ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
   done
+  if [[ "${daemon}" == "true" ]]; then
+    [[ "${purge}" == "false" ]] || die "--daemon keeps the account's home; remove it with the account"
+    daemon_uninstall "${confirm}"
+    return
+  fi
   if [[ "${confirm}" != "true" ]]; then
     if [[ "${purge}" == "true" ]]; then
       printf 'Would remove (--purge scope):\n'
@@ -2371,11 +2475,16 @@ ${C_DIM}Updates:${C_RST}
   4lm upgrade [chan] [name...]       Apply updates (brew, models, python). chan: brew | models | python.
                                      No args = all channels. Names limit to specific entries.
 
+${C_DIM}Install:${C_RST}
+  4lm install [--backend-only]       Install or update from the checkout this CLI runs from (install.sh)
+  4lm install --daemon <user>        As root: backend as a system LaunchDaemon under an existing account
+  4lm uninstall --daemon [--confirm] As root: remove the daemon's system pieces; keeps the account's home
+
 ${C_DIM}Other:${C_RST}
   4lm uninstall [--confirm]          Stop services, remove autostart symlinks and ~/.local/bin/4lm; keeps ~/.4lm
   4lm uninstall --purge [--confirm]  Same plus wipes ~/.4lm/ and all model caches (nothing left)
 
-${C_DIM}Daemon mode${C_RST} (install.sh --daemon <user>): run every command as ${C_DIM}sudo 4lm <cmd>${C_RST}.
+${C_DIM}Daemon mode${C_RST} (4lm install --daemon <user>): run every command as ${C_DIM}sudo 4lm <cmd>${C_RST}.
   start/stop/restart drive the system job as root; all else runs as the service account.
 EOF
 }
@@ -2423,6 +2532,11 @@ daemon_dispatch() {
       fi
       ok "${BACKEND_LABEL} restarted"
       ;;
+    install) cmd_install "${@:2}" ;;
+    uninstall | remove)
+      [[ "${2:-}" == "--daemon" ]] || die "daemon mode: use: sudo 4lm uninstall --daemon"
+      cmd_uninstall "${@:2}"
+      ;;
     *)
       [[ $# -gt 0 ]] || set -- status
       # The caller's cwd is usually unreadable for the account.
@@ -2441,8 +2555,8 @@ main() {
   shift || true
   if [[ "${LAUNCHD_DOMAIN}" == "system" ]]; then
     case "${cmd}" in
-      start | stop | autostart) die "daemon mode: the backend is a system job; use: sudo 4lm ${cmd}" ;;
-      uninstall | remove) die "daemon mode: use: sudo ./uninstall.sh --daemon" ;;
+      start | stop | autostart | install) die "daemon mode: the backend is a system job; use: sudo 4lm ${cmd}" ;;
+      uninstall | remove) die "daemon mode: use: sudo 4lm uninstall --daemon" ;;
     esac
   fi
   case "${cmd}" in
@@ -2462,6 +2576,7 @@ main() {
     upgrade | up) cmd_upgrade "$@" ;;
     open) cmd_open "$@" ;;
     opencode | code) cmd_opencode "$@" ;;
+    install) cmd_install "$@" ;;
     uninstall | remove) cmd_uninstall "$@" ;;
     help | --help | -h) cmd_help ;;
     *) die "Unknown command: ${cmd}. Try \`4lm help\`." ;;

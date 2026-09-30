@@ -4,9 +4,7 @@
 # Usage:
 #   ./install.sh                 # full install (workstation: backend + WebUI + OpenCode)
 #   ./install.sh --backend-only  # headless LAN inference server (backend only)
-#   sudo ./install.sh --daemon <user>
-#                                # backend as a system LaunchDaemon under an
-#                                # existing account (see docs/setup.md)
+#   ./install.sh --service       # account side of `sudo 4lm install --daemon <user>`
 #
 # What it does:
 #   1. Verifies prerequisites (macOS arm64, Python 3.11+)
@@ -37,7 +35,6 @@ set -euo pipefail
 
 # ---- 0. Argument parsing ---------------------------------------------------
 BACKEND_ONLY=0
-DAEMON_USER=""
 SERVICE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,23 +42,15 @@ while [[ $# -gt 0 ]]; do
       BACKEND_ONLY=1
       shift
       ;;
-    --daemon)
-      [[ -n "${2:-}" ]] || {
-        echo "✗ --daemon needs the service account: --daemon <user>" >&2
-        exit 1
-      }
-      DAEMON_USER="$2"
-      shift 2
-      ;;
     --service)
-      # Account side of --daemon: backend-only, nothing that needs root or a
-      # GUI user. Invoked by --daemon, not meant to be run by hand.
+      # Account side of `4lm install --daemon`: backend-only, nothing that
+      # needs root or a GUI user. Invoked by 4lm, not meant to be run by hand.
       SERVICE=1
       BACKEND_ONLY=1
       shift
       ;;
     -h | --help)
-      sed -n '2,34p' "$0" | sed 's/^# \?//'
+      sed -n '2,32p' "$0" | sed 's/^# \?//'
       exit 0
       ;;
     *)
@@ -70,7 +59,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-readonly BACKEND_ONLY DAEMON_USER SERVICE
+readonly BACKEND_ONLY SERVICE
 
 readonly WEBUI_ARTIFACTS_NOTICE="WebUI artifacts found; not managed in backend-only mode."
 
@@ -106,62 +95,6 @@ die() {
   echo "${C_RED}✗${C_RST} $*" >&2
   exit 1
 }
-
-# ---- 0a. Daemon mode (root) -------------------------------------------------
-# Root installs only what the account cannot: the system plist, a root-owned
-# CLI copy, the newsyslog entry. Everything in the account's home is written by
-# the regular installer running as the account. Paths are overridable for bats.
-if [[ -n "${DAEMON_USER}" ]]; then
-  DAEMON_PLIST="${FOURLM_DAEMON_PLIST:-/Library/LaunchDaemons/com.4lm.backend.plist}"
-  SYSTEM_BIN="${FOURLM_SYSTEM_BIN:-/usr/local/bin}"
-  # Not the GUI install's 4lm.conf: its uninstaller deletes that file whole.
-  DAEMON_NEWSYSLOG_CONF="${FOURLM_DAEMON_NEWSYSLOG_CONF:-/etc/newsyslog.d/4lm-daemon.conf}"
-
-  [[ "$(id -u)" -eq 0 ]] || die "--daemon needs root: sudo ./install.sh --daemon ${DAEMON_USER}"
-  id -u "${DAEMON_USER}" >/dev/null 2>&1 || die "account not found: ${DAEMON_USER} — create it first"
-  svc_home="$(dscl . -read "/Users/${DAEMON_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-  [[ -n "${svc_home}" && -d "${svc_home}" ]] || die "home of ${DAEMON_USER} missing: ${svc_home:-none}"
-  [[ "$(stat -f %Su "${svc_home}")" == "${DAEMON_USER}" ]] || die "${svc_home} is not owned by ${DAEMON_USER}"
-  sudo -u "${DAEMON_USER}" test -r "${SOURCE_DIR}/install.sh" ||
-    die "${DAEMON_USER} cannot read ${SOURCE_DIR} — put the checkout where the account can read it"
-
-  info "Installing 4lm for ${DAEMON_USER} in ${svc_home}…"
-  sudo -u "${DAEMON_USER}" -H env PATH="${svc_home}/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-    "${SOURCE_DIR}/install.sh" --service || die "account install failed"
-
-  plist_tmp="$(mktemp)"
-  sed "s|__HOME__|${svc_home}|g" "${SOURCE_DIR}/launchd/com.4lm.backend.plist" >"${plist_tmp}"
-  plutil -insert UserName -string "${DAEMON_USER}" "${plist_tmp}"
-  mkdir -p "$(dirname "${DAEMON_PLIST}")"
-  cp "${plist_tmp}" "${DAEMON_PLIST}"
-  rm -f "${plist_tmp}"
-  chown root:wheel "${DAEMON_PLIST}"
-  chmod 644 "${DAEMON_PLIST}"
-  ok "LaunchDaemon → ${DAEMON_PLIST} (UserName ${DAEMON_USER})"
-
-  mkdir -p "${SYSTEM_BIN}"
-  rm -f "${SYSTEM_BIN}/4lm"
-  cp "${SOURCE_DIR}/bin/4lm" "${SYSTEM_BIN}/4lm"
-  chown root:wheel "${SYSTEM_BIN}/4lm"
-  chmod 755 "${SYSTEM_BIN}/4lm"
-  ok "CLI → ${SYSTEM_BIN}/4lm (root-owned; run as: sudo 4lm <cmd>)"
-
-  svc_log="${svc_home}/.4lm/logs/backend.log"
-  if grep -qF "${svc_log} " "${DAEMON_NEWSYSLOG_CONF}" 2>/dev/null; then
-    ok "newsyslog entry already present"
-  else
-    printf '%s %s:%s 600  7     10240 *     J\n' "${svc_log}" "${DAEMON_USER}" "$(id -gn "${DAEMON_USER}")" >>"${DAEMON_NEWSYSLOG_CONF}"
-    ok "newsyslog rotation → ${DAEMON_NEWSYSLOG_CONF}"
-  fi
-
-  echo
-  echo "Next steps (as an admin):"
-  echo "  sudo 4lm model download   # models land in ${svc_home}"
-  echo "  sudo 4lm start            # launchd also starts it at every boot"
-  echo "  sudo 4lm status"
-  echo "A running daemon picks up a changed plist only after: sudo 4lm stop && sudo 4lm start"
-  exit 0
-fi
 
 echo "${C_DIM}════════════════════════════════════${C_RST}"
 if [[ "${BACKEND_ONLY}" -eq 1 ]]; then
@@ -469,7 +402,7 @@ fi
 "${LLM_HOME}/venv/bin/pip" install --quiet -r "${SOURCE_DIR}/requirements-helpers.txt"
 ok "helpers deps installed from requirements-helpers.txt"
 
-# The account side of --daemon ends here: root writes the newsyslog entry, and
+# The account side of `4lm install --daemon` ends here: root writes the newsyslog entry, and
 # the account neither removes system files nor installs Homebrew formulas.
 if [[ "${SERVICE}" -eq 1 ]]; then
   ok "Account install complete"
