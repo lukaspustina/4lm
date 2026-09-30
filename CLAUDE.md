@@ -66,6 +66,27 @@ bootstrap` / `bootout`. Autostart at login is opt-in via `4lm autostart
 enable`, which symlinks the plist into `~/Library/LaunchAgents/`. After
 reboot, services are stopped unless autostart is enabled.
 
+## Daemon mode
+
+`sudo ./install.sh --daemon <user>` is the third shape: the backend-only
+install runs **as** an existing account (`--service`), and root adds
+`/Library/LaunchDaemons/com.4lm.backend.plist` (`UserName`), a root-owned
+`/usr/local/bin/4lm` and `/etc/newsyslog.d/4lm-daemon.conf`. The CLI switches
+on the system plist's presence (`DAEMON_PLIST`, `FOURLM_DAEMON_PLIST` in tests;
+`tests/helpers/setup.bash` points it at a missing file so the suite stays in GUI
+mode on a daemon host).
+
+- **Root never touches the account's files.** Root runs only `start`/`stop`/
+  `restart` (`daemon_dispatch`); every other command `exec`s as the account.
+  Do not add a root-side read of `~<user>/…` — the account runs the LAN-facing
+  process, and a symlink it plants would be followed by root.
+- **The account restarts by signal.** It cannot kickstart a system job, so
+  `service_kick` SIGTERMs the pid and `KeepAlive` respawns it. New restart
+  sites go through `service_kick`, never `launchctl kickstart` directly, and
+  launchd targets use `${LAUNCHD_DOMAIN}`, never `gui/<uid>`.
+- Account creation, model migration and host settings are the operator's —
+  4lm stays generic (public repo).
+
 ## Network exposure
 
 `~/.4lm/config/network.yaml` is the **single** config channel. `mode: local`

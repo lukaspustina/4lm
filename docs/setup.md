@@ -268,6 +268,78 @@ Security hardening applied in all modes (not LAN-only):
 Better than `lan`: bind to `127.0.0.1` and use Tailscale or another VPN that
 provides authentication.
 
+## Running as a system daemon
+
+For a headless host the backend can run as a system-domain LaunchDaemon under
+a dedicated service account instead of a LaunchAgent in your login session. It
+then starts at boot once the disk is unlocked, needs no GUI login, and keeps
+the LAN-facing process out of your own account. Metal works from such a
+daemon: a LaunchDaemon under a hidden account gets the same GPU and working
+set as a GUI session. Backend only; there is no WebUI or opencode in this mode.
+
+**Prerequisites** — 4lm does not create them:
+
+- An account for the daemon, typically hidden and without a login shell, with
+  an existing home directory it owns. 4lm installs everything there: `~/.4lm`,
+  `~/.omlx`, the HF cache, the pipx venvs.
+- A checkout of this repo the account can read (your own home usually is not
+  readable by other accounts).
+- The Homebrew tools from the `Brewfile`, installed by an admin.
+- No GUI-mode 4lm on the same machine: it would hold the port, and its
+  `~/.local/bin/4lm` shadows the daemon CLI in `sudo`'s `PATH`. Remove it with
+  `./uninstall.sh` (not `4lm uninstall`, which daemon mode refuses).
+
+**Install** (idempotent — re-run it to update scripts and the CLI):
+
+```sh
+sudo ./install.sh --daemon <user>
+```
+
+As root it checks the account and its home, runs the regular backend-only
+install **as the account**, writes `/Library/LaunchDaemons/com.4lm.backend.plist`
+with `UserName <user>`, copies the CLI to `/usr/local/bin/4lm` (root-owned),
+and adds log rotation in `/etc/newsyslog.d/4lm-daemon.conf`. It does not start
+anything.
+
+**Operate** — always `sudo 4lm <cmd>`:
+
+| Command | Runs as | What happens |
+|---|---|---|
+| `start`, `stop`, `restart` | root | `launchctl bootstrap` / `bootout` / `kickstart` in the system domain |
+| everything else (`status`, `profile set`, `expose`, `model …`, `doctor`, `bench`, `logs`, …) | the account | re-executed via `sudo -u <user> -H`; restarts signal the backend and launchd's `KeepAlive` respawns it |
+
+Root never reads or writes the account's files, so a compromised backend
+cannot plant a path that a root process follows. Without `sudo`, the CLI points
+you at it. `autostart` does not apply: launchd loads the daemon at every boot;
+`sudo 4lm stop` holds until the next one.
+
+A typical sequence, e.g. from configuration management:
+
+```sh
+sudo ./install.sh --daemon <user>
+sudo /usr/local/bin/4lm profile set <name>
+sudo /usr/local/bin/4lm model download --profile <name>
+sudo /usr/local/bin/4lm expose lan --confirm
+sudo /usr/local/bin/4lm start
+sudo /usr/local/bin/4lm status
+```
+
+The API key is `<home>/.4lm/config/api-key`, readable by the account only
+(`sudo -u <user> cat …`). Create consumer sub keys in the omlx admin UI after
+the switch.
+
+**Moving from a GUI install.** Models are not copied: move the
+`models--*` directories from your `~/.cache/huggingface/hub/` into the
+account's, then `chown -R <user>` them, instead of downloading again. The
+account gets a new API key, and omlx sub keys from your old
+`~/.omlx/settings.json` do not carry over.
+
+**Limits.** `4lm upgrade brew` needs the admin who owns Homebrew. A changed
+plist (after a re-install) takes effect after `sudo 4lm stop && sudo 4lm start`.
+
+**Uninstall** the system pieces with `sudo ./uninstall.sh --daemon`. The account
+and its home — install, config, models — stay until you remove the account.
+
 ## Troubleshooting
 
 ### "Why are the fans on?" — finding the workload

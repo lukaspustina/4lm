@@ -58,6 +58,11 @@ closet does the inference; the Air on the couch does the typing.
 > keys (omlx admin UI), revocable one by one. Only the omlx backend can
 > enforce a key, so only omlx profiles may bind to the LAN.
 
+No login on that Mac? `sudo ./install.sh --daemon <user>` runs the backend as
+a system LaunchDaemon under an existing service account: up at boot, no GUI
+session, operated with `sudo 4lm <cmd>`. See
+[`docs/setup.md`](docs/setup.md#running-as-a-system-daemon).
+
 ## What it refuses to do
 
 - **Never auto-starts after reboot.** A 70 GB working set should not

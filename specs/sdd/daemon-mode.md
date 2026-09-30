@@ -1,6 +1,6 @@
 # SDD — System daemon mode
 
-Status: active · 2026-09-30
+Status: phases 1–5 done · on-host acceptance open · 2026-09-30
 
 ## Context
 
