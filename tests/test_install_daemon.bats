@@ -34,7 +34,8 @@ SH
   export FOURLM_DAEMON_PLIST="${BATS_TMPDIR}/daemon-${BATS_TEST_NAME}.plist"
   export FOURLM_SYSTEM_BIN="${BATS_TMPDIR}/sysbin-${BATS_TEST_NAME}"
   export NEWSYSLOG_CONF="${BATS_TMPDIR}/newsyslog-${BATS_TEST_NAME}.conf"
-  rm -f "${CHOWN_LOG}" "${SUDO_LOG}" "${FOURLM_DAEMON_PLIST}" "${NEWSYSLOG_CONF}"
+  export FOURLM_DAEMON_NEWSYSLOG_CONF="${BATS_TMPDIR}/newsyslog-daemon-${BATS_TEST_NAME}.conf"
+  rm -f "${CHOWN_LOG}" "${SUDO_LOG}" "${FOURLM_DAEMON_PLIST}" "${NEWSYSLOG_CONF}" "${FOURLM_DAEMON_NEWSYSLOG_CONF}"
   rm -rf "${FOURLM_SYSTEM_BIN}"
 }
 
@@ -99,11 +100,13 @@ install_daemon() { run "${REPO_ROOT}/install.sh" --daemon "${SVC}"; }
   [ "$(stat -f %Lp "${FOURLM_SYSTEM_BIN}/4lm")" = "755" ]
 }
 
-@test "--daemon adds one newsyslog entry owned by the account" {
+@test "--daemon adds one newsyslog entry owned by the account, in its own file" {
   install_daemon
   install_daemon
   [ "$status" -eq 0 ]
-  [ "$(grep -c "^${SVC_HOME}/.4lm/logs/backend.log[[:space:]]\+${SVC}:" "${NEWSYSLOG_CONF}")" -eq 1 ]
+  [ "$(grep -c "^${SVC_HOME}/.4lm/logs/backend.log[[:space:]]\+${SVC}:" "${FOURLM_DAEMON_NEWSYSLOG_CONF}")" -eq 1 ]
+  # The GUI uninstaller deletes the shared file; the daemon entry must not live there.
+  [ ! -e "${NEWSYSLOG_CONF}" ]
 }
 
 @test "--daemon does not bootstrap the daemon" {
