@@ -6,6 +6,8 @@ bats_require_minimum_version 1.5.0
 load helpers/setup
 
 setup() {
+  # A prepared install: start refuses without the active profile's runtime dir.
+  mkdir -p "${HOME}/.4lm/runtime/lean/models"
   mkdir -p "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs" "${HOME}/.4lm/launchd"
   cp "${REPO_ROOT}/config/profiles/lean.yaml" "${HOME}/.4lm/config/profiles/lean.yaml"
   ln -sfn "${HOME}/.4lm/config/profiles/lean.yaml" "${HOME}/.4lm/config/active-profile"

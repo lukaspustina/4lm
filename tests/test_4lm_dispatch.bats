@@ -3,6 +3,8 @@
 load helpers/setup
 
 setup() {
+  # A prepared install: start refuses without the active profile's runtime dir.
+  mkdir -p "${HOME}/.4lm/runtime/default/models"
   mkdir -p "${HOME}/.4lm/launchd" "${HOME}/.4lm/config/profiles" "${HOME}/.4lm/logs"
   # Provide a default profile + symlink so commands that read it don't fail.
   cp "${REPO_ROOT}/config/profiles/default.yaml" "${HOME}/.4lm/config/profiles/default.yaml"

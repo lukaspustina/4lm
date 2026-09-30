@@ -18,6 +18,8 @@ setup() {
     sed "s|__HOME__|${HOME}|g" "$p" >"${HOME}/.4lm/launchd/$(basename "$p")"
   done
   export HF_HOME="${HOME}/hf"
+  # Staging renders model_settings.json with jq; the suite stubs jq on PATH.
+  for c in /opt/homebrew/bin/jq /usr/local/bin/jq; do [[ -x "$c" ]] && { export JQ_BIN="$c"; break; }; done
 }
 
 _cache_default_models() {
