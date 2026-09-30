@@ -30,7 +30,12 @@ case "$*" in
   *) exec /usr/bin/id "$@" ;;
 esac
 SH
-  chmod +x "${STUB_BIN}/id"
+  cat >"${STUB_BIN}/sudo" <<'SH'
+#!/usr/bin/env bash
+echo "$*" >>"${SUDO_LOG}"
+exit "${SUDO_EXIT:-0}"
+SH
+  chmod +x "${STUB_BIN}/id" "${STUB_BIN}/sudo"
   export PATH="${STUB_BIN}:${PATH}"
   export SUDO_LOG="${BATS_TMPDIR}/sudo-${BATS_TEST_NAME}.log"
   : >"${SUDO_LOG}"
@@ -49,6 +54,21 @@ as_other() { export STUB_UID=501 STUB_USER=someone; }
   run "${BIN}" start
   [ "$status" -eq 0 ]
   grep -qxF "bootstrap system ${FOURLM_DAEMON_PLIST}" "${LAUNCHCTL_LOG}"
+}
+
+@test "root start prepares the runtime as the account before bootstrapping" {
+  as_root
+  run "${BIN}" start
+  [ "$status" -eq 0 ]
+  grep -qxF -- "-u ${SVC} -H ${BIN} _prepare" "${SUDO_LOG}"
+}
+
+@test "root start does not bootstrap when the account cannot prepare the runtime" {
+  as_root
+  export SUDO_EXIT=1
+  run "${BIN}" start
+  [ "$status" -ne 0 ]
+  run ! grep -q bootstrap "${LAUNCHCTL_LOG}"
 }
 
 @test "root start kickstarts an already loaded daemon" {
@@ -111,6 +131,14 @@ as_other() { export STUB_UID=501 STUB_USER=someone; }
   [ ! -s "${LAUNCHCTL_LOG}" ]
 }
 
+@test "service account status reports autostart as the system daemon's" {
+  as_svc
+  run "${BIN}" status
+  [[ "$output" == *"Autostart:"*"at boot (system daemon)"* ]] || false
+  run "${BIN}" status --json
+  [[ "$output" == *'"autostart":{"backend":"system"}'* ]] || false
+}
+
 @test "service account queries the system domain" {
   as_svc
   run "${BIN}" status
@@ -145,4 +173,16 @@ as_other() { export STUB_UID=501 STUB_USER=someone; }
   run "${BIN}" stop backend
   run "${BIN}" status
   grep -q "^print gui/$(id -u)/com.4lm.backend" "${LAUNCHCTL_LOG}"
+}
+
+# ---- logs ----------------------------------------------------------------------------------
+
+@test "logs fails loudly on an unreadable log instead of waiting silently" {
+  echo "FATAL: x" >"${HOME}/.4lm/logs/backend.log"
+  chmod 000 "${HOME}/.4lm/logs/backend.log"
+  export FOURLM_DAEMON_PLIST="${BATS_TMPDIR}/absent.plist"
+  run "${BIN}" logs
+  chmod 600 "${HOME}/.4lm/logs/backend.log"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot read"*"backend.log"* ]] || false
 }

@@ -28,6 +28,12 @@ SH
 #!/usr/bin/env bash
 echo "chown $*" >>"${CHOWN_LOG}"
 SH
+  cat >"${STUB_BIN}/sudo" <<'SH'
+#!/usr/bin/env bash
+echo "$*" >>"${SUDO_LOG}"
+echo "$(pwd)" >>"${SUDO_LOG}.cwd"
+exit 0
+SH
   chmod +x "${STUB_BIN}"/*
   export PATH="${STUB_BIN}:${PATH}"
   export STUB_SVC_HOME="${SVC_HOME}"
@@ -37,7 +43,7 @@ SH
   export FOURLM_SYSTEM_BIN="${BATS_TMPDIR}/sysbin-${BATS_TEST_NAME}"
   export NEWSYSLOG_CONF="${BATS_TMPDIR}/newsyslog-${BATS_TEST_NAME}.conf"
   export FOURLM_DAEMON_NEWSYSLOG_CONF="${BATS_TMPDIR}/newsyslog-daemon-${BATS_TEST_NAME}.conf"
-  rm -f "${CHOWN_LOG}" "${SUDO_LOG}" "${FOURLM_DAEMON_PLIST}" "${NEWSYSLOG_CONF}" "${FOURLM_DAEMON_NEWSYSLOG_CONF}"
+  rm -f "${CHOWN_LOG}" "${SUDO_LOG}" "${SUDO_LOG}.cwd" "${FOURLM_DAEMON_PLIST}" "${NEWSYSLOG_CONF}" "${FOURLM_DAEMON_NEWSYSLOG_CONF}"
   rm -rf "${FOURLM_SYSTEM_BIN}"
 }
 
@@ -98,6 +104,23 @@ install_daemon() { run "${REPO_ROOT}/bin/4lm" install --daemon "${SVC}"; }
   install_daemon
   [ "$status" -eq 0 ]
   grep -qE -- "^-u ${SVC} -H .*${REPO_ROOT}/install.sh --service$" "${SUDO_LOG}"
+}
+
+@test "--daemon runs every account step from /, not the caller's cwd" {
+  mkdir -p "${BATS_TMPDIR}/caller-${BATS_TEST_NAME}"
+  cd "${BATS_TMPDIR}/caller-${BATS_TEST_NAME}"
+  install_daemon
+  [ "$status" -eq 0 ]
+  [ -s "${SUDO_LOG}.cwd" ]
+  run ! grep -vx / "${SUDO_LOG}.cwd"
+}
+
+@test "--daemon hands an existing backend.log to the account" {
+  mkdir -p "${SVC_HOME}/.4lm/logs"
+  touch "${SVC_HOME}/.4lm/logs/backend.log"
+  install_daemon
+  [ "$status" -eq 0 ]
+  grep -qE "^chown -h ${SVC}:[^ ]+ ${SVC_HOME}/.4lm/logs/backend.log$" "${CHOWN_LOG}"
 }
 
 @test "--daemon writes the system plist with UserName and the account's home" {
@@ -181,6 +204,9 @@ _service_install() {
   [ -f "${HOME}/.4lm/launchd/com.4lm.backend.plist" ]
   [ ! -e "${HOME}/.4lm/launchd/com.4lm.webui.plist" ]
   [ -s "${HOME}/.4lm/config/api-key" ]
+  # Created by the account, so launchd appends to a file the account can read.
+  [ -f "${HOME}/.4lm/logs/backend.log" ]
+  [ "$(stat -f %Lp "${HOME}/.4lm/logs/backend.log")" = "600" ]
 }
 
 @test "--service skips everything that needs root or a GUI user" {
