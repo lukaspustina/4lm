@@ -20,6 +20,10 @@ mkdir -p "${HOME}"
 export LAUNCHCTL_LOG="${BATS_TMPDIR}/launchctl.log"
 : >"${LAUNCHCTL_LOG}"
 
+# No system daemon plist unless a test stages one — keeps the suite in GUI
+# mode on a host where daemon mode is installed.
+export FOURLM_DAEMON_PLIST="${BATS_TMPDIR}/no-daemon.plist"
+
 # Point 4lm at the real venv so bats tests avoid the python3 PATH stub.
 export LLM_HELPERS_PYTHON="${_REAL_4LM_VENV}"
 
