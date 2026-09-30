@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# uninstall.sh --daemon: removes the system pieces only. The account and its
+# 4lm uninstall --daemon --confirm: removes the system pieces only. The account and its
 # home — install, config, downloaded models — stay.
 
 bats_require_minimum_version 1.5.0
@@ -12,6 +12,7 @@ setup() {
   cat >"${STUB_BIN}/id" <<'SH'
 #!/usr/bin/env bash
 [[ "$*" == "-u" ]] && { echo "${STUB_UID:-0}"; exit 0; }
+[[ "$*" == "-un" && "${STUB_UID:-0}" == 0 ]] && { echo root; exit 0; }
 exec /usr/bin/id "$@"
 SH
   chmod +x "${STUB_BIN}/id"
@@ -23,6 +24,7 @@ SH
   export SUDO_LOG="${BATS_TMPDIR}/sudo-${BATS_TEST_NAME}.log"
   rm -f "${SUDO_LOG}"
   sed "s|__HOME__|${HOME}|g" "${REPO_ROOT}/launchd/com.4lm.backend.plist" >"${FOURLM_DAEMON_PLIST}"
+  plutil -insert UserName -string _svc4lm "${FOURLM_DAEMON_PLIST}"
   mkdir -p "${FOURLM_SYSTEM_BIN}" "${HOME}/.4lm/config" "${HOME}/.cache/huggingface/hub"
   cp "${REPO_ROOT}/bin/4lm" "${FOURLM_SYSTEM_BIN}/4lm"
   echo "x" >"${FOURLM_DAEMON_NEWSYSLOG_CONF}"
@@ -31,7 +33,7 @@ SH
 
 @test "--daemon without root fails and removes nothing" {
   export STUB_UID=501
-  run "${REPO_ROOT}/uninstall.sh" --daemon
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon --confirm
   [ "$status" -ne 0 ]
   [[ "$output" == *"sudo"* ]] || false
   [ -f "${FOURLM_DAEMON_PLIST}" ]
@@ -40,13 +42,13 @@ SH
 
 @test "--daemon boots out a loaded daemon" {
   export LAUNCHCTL_PRINT_OUTPUT="state = running"
-  run "${REPO_ROOT}/uninstall.sh" --daemon
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon --confirm
   [ "$status" -eq 0 ]
   grep -qxF "bootout system/com.4lm.backend" "${LAUNCHCTL_LOG}"
 }
 
 @test "--daemon removes the system plist, CLI copy and newsyslog file" {
-  run "${REPO_ROOT}/uninstall.sh" --daemon
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon --confirm
   [ "$status" -eq 0 ]
   [ ! -e "${FOURLM_DAEMON_PLIST}" ]
   [ ! -e "${FOURLM_SYSTEM_BIN}/4lm" ]
@@ -54,15 +56,23 @@ SH
 }
 
 @test "--daemon leaves the account's home and models alone" {
-  run "${REPO_ROOT}/uninstall.sh" --daemon
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon --confirm
   [ "$status" -eq 0 ]
   [ -f "${HOME}/.4lm/config/api-key" ]
   [ -d "${HOME}/.cache/huggingface/hub" ]
   [ ! -e "${SUDO_LOG}" ]
 }
 
+@test "--daemon without --confirm lists and removes nothing" {
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"${FOURLM_DAEMON_PLIST}"* ]] || false
+  [ -f "${FOURLM_DAEMON_PLIST}" ]
+  [ ! -s "${LAUNCHCTL_LOG}" ]
+}
+
 @test "--daemon is idempotent" {
-  run "${REPO_ROOT}/uninstall.sh" --daemon
-  run "${REPO_ROOT}/uninstall.sh" --daemon
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon --confirm
+  run "${REPO_ROOT}/bin/4lm" uninstall --daemon --confirm
   [ "$status" -eq 0 ]
 }

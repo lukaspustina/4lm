@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# install.sh --daemon <user>: root installs the system pieces and runs the
-# regular backend-only install as the account (--service).
+# 4lm install --daemon <user>: root installs the system pieces and runs the
+# regular backend-only install as the account (install.sh --service).
+# 4lm install [--backend-only] delegates the GUI install to install.sh.
 
 bats_require_minimum_version 1.5.0
 
@@ -16,6 +17,7 @@ setup() {
   cat >"${STUB_BIN}/id" <<'SH'
 #!/usr/bin/env bash
 [[ "$*" == "-u" ]] && { echo "${STUB_UID:-0}"; exit 0; }
+[[ "$*" == "-un" && "${STUB_UID:-0}" == 0 ]] && { echo root; exit 0; }
 exec /usr/bin/id "$@"
 SH
   cat >"${STUB_BIN}/dscl" <<'SH'
@@ -39,7 +41,7 @@ SH
   rm -rf "${FOURLM_SYSTEM_BIN}"
 }
 
-install_daemon() { run "${REPO_ROOT}/install.sh" --daemon "${SVC}"; }
+install_daemon() { run "${REPO_ROOT}/bin/4lm" install --daemon "${SVC}"; }
 
 # ---- fail fast ---------------------------------------------------------------------
 
@@ -53,7 +55,7 @@ install_daemon() { run "${REPO_ROOT}/install.sh" --daemon "${SVC}"; }
 }
 
 @test "--daemon for a missing account fails" {
-  run "${REPO_ROOT}/install.sh" --daemon no_such_account_4lm
+  run "${REPO_ROOT}/bin/4lm" install --daemon no_such_account_4lm
   [ "$status" -ne 0 ]
   [[ "$output" == *"no_such_account_4lm"* ]] || false
   [ ! -e "${FOURLM_DAEMON_PLIST}" ]
@@ -68,8 +70,26 @@ install_daemon() { run "${REPO_ROOT}/install.sh" --daemon "${SVC}"; }
 }
 
 @test "--daemon requires a user argument" {
-  run "${REPO_ROOT}/install.sh" --daemon
+  run "${REPO_ROOT}/bin/4lm" install --daemon
   [ "$status" -ne 0 ]
+  [[ "$output" == *"<user>"* ]] || false
+}
+
+@test "install needs a checkout next to the CLI" {
+  mkdir -p "${BATS_TMPDIR}/lone-${BATS_TEST_NAME}"
+  cp "${REPO_ROOT}/bin/4lm" "${BATS_TMPDIR}/lone-${BATS_TEST_NAME}/4lm"
+  run "${BATS_TMPDIR}/lone-${BATS_TEST_NAME}/4lm" install --daemon "${SVC}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"checkout"* ]] || false
+  [ ! -e "${FOURLM_DAEMON_PLIST}" ]
+}
+
+@test "re-running install --daemon over an installed daemon works as root" {
+  install_daemon
+  [ "$status" -eq 0 ]
+  install_daemon
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- "install.sh --service" "${SUDO_LOG}")" -eq 2 ]
 }
 
 # ---- what it installs ------------------------------------------------------------------
@@ -122,9 +142,9 @@ install_daemon() { run "${REPO_ROOT}/install.sh" --daemon "${SVC}"; }
   [ ! -e "${HOME}/.local/bin/4lm" ]
 }
 
-# ---- account side (--service) ------------------------------------------------------------
+# ---- account side (--service) and GUI delegation ----------------------------------------
 
-_service_install() {
+_stub_pip() {
   printf '#!/usr/bin/env bash\nexit 0\n' >"${STUB_BIN}/pipx"
   cat >"${STUB_BIN}/python3.12" <<'SH'
 #!/usr/bin/env bash
@@ -136,7 +156,22 @@ SH
   chmod +x "${STUB_BIN}"/*
   export STUB_UID=450 LEGACY_SUDOERS_FILE="${BATS_TMPDIR}/sudoers-${BATS_TEST_NAME}"
   touch "${LEGACY_SUDOERS_FILE}"
+}
+
+_service_install() {
+  _stub_pip
   run "${REPO_ROOT}/install.sh" --service
+}
+
+@test "4lm install --backend-only runs install.sh for the invoking user" {
+  _stub_pip
+  export STUB_UID=501
+  run "${REPO_ROOT}/bin/4lm" install --backend-only
+  [ "$status" -eq 0 ]
+  [ -f "${HOME}/.4lm/launchd/com.4lm.backend.plist" ]
+  [ ! -e "${HOME}/.4lm/launchd/com.4lm.webui.plist" ]
+  [ -L "${HOME}/.local/bin/4lm" ]
+  [ ! -e "${FOURLM_DAEMON_PLIST}" ]
 }
 
 @test "--service is a backend-only install in the account's home" {
