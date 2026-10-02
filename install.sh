@@ -347,7 +347,7 @@ done <"${SOURCE_DIR}/requirements.txt"
 # 0.7.0rc1 still says 0.7.0rc1). pip records the resolved commit in the
 # package's direct_url.json; anything else — another commit, or no record —
 # is force-reinstalled.
-readonly OMLX_GIT_REF="f0d8428acd3220c364177d1ea9593e4e15f94107" # main after v0.7.0rc1, 2026-09-27
+readonly OMLX_GIT_REF="4d4f5a280bc1739ba2cf39c1cee44fd5cc89cb40" # v0.7.0, 2026-09-30
 
 # The commit pip recorded for the installed omlx, or nothing.
 omlx_installed_commit() {

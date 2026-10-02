@@ -61,9 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` activates the profile matching the machine's RAM on first
   install (≥ 250 GB `default`, ≥ 120 GB `mid`, else `lean`); `4lm doctor`'s RAM
   check knows the new names.
-- omlx pinned to main `f0d8428a` (after v0.7.0rc1, before 0.7.0 final): about
-  10–14 % faster single-stream decode than rc1 in our measurements, and the
-  memory-guard fix for vision engines. v0.7.0rc1 (`35be079d`) loads the current
+- omlx pinned to v0.7.0 (`4d4f5a28`): faster Qwen3.8-Flash-Next, GLM-5.3-Flash
+  and MiMo kernels, exact Lightning MTP, and fixes for prefill admission after
+  eviction and SSD cache growth on hybrid models. Before that, main `f0d8428a`
+  (after v0.7.0rc1): about 10–14 % faster single-stream decode than rc1 in our
+  measurements, and the memory-guard fix for vision engines. v0.7.0rc1 (`35be079d`) loads the current
   model generation, adds M5 prefill kernels, and refuses a non-loopback bind
   without an API key. With a key configured, loopback clients need it too.
 - open-webui 0.11.4, huggingface_hub 2.0.0, pytest 9.1.1. Checked against
