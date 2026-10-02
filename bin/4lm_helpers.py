@@ -922,6 +922,73 @@ def cmd_bench(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---- key ---------------------------------------------------------------------
+# omlx sub keys through the admin API on loopback, so the dashboard — whose
+# login sends the main key — need not be opened over the LAN.
+
+_KEY_NAME_RE = r"^[A-Za-z0-9._-]{1,64}$"
+
+
+def _admin_request(opener, url: str, method: str = "GET", payload: dict | None = None) -> dict:
+    import urllib.request
+
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Content-Type": "application/json"})
+    with opener.open(req, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
+def cmd_key(args: argparse.Namespace) -> int:
+    import http.cookiejar
+    import re
+    import secrets
+    import urllib.error
+    import urllib.request
+
+    if args.action in ("create", "revoke") and not re.match(_KEY_NAME_RE, args.name or ""):
+        print(f"error: key name must match {_KEY_NAME_RE}: {args.name!r}", file=sys.stderr)
+        return 1
+    headers = _backend_headers()
+    if not headers:
+        print("error: API key missing: ~/.4lm/config/api-key (run: just install)", file=sys.stderr)
+        return 1
+    main_key = headers["Authorization"].removeprefix("Bearer ")
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    base = args.base_url
+
+    try:
+        _admin_request(opener, f"{base}/admin/api/login", "POST", {"api_key": main_key})
+        existing = _admin_request(opener, f"{base}/admin/api/global-settings")["auth"]["sub_keys"]
+        by_name = {sk.get("name"): sk for sk in existing}
+
+        if args.action == "list":
+            for sk in existing:
+                print(f"{sk.get('name') or '(unnamed)':<32} {sk.get('created_at', ''):<26} {sk.get('key', '')[:6]}…")
+            return 0
+
+        if args.action == "create":
+            if args.name in by_name:
+                print(f"error: a sub key named {args.name} exists; revoke it first", file=sys.stderr)
+                return 1
+            new = secrets.token_hex(32)
+            _admin_request(opener, f"{base}/admin/api/sub-keys", "POST", {"key": new, "name": args.name})
+            print(f"created sub key {args.name}", file=sys.stderr)
+            print(new, end="")
+            return 0
+
+        if args.name not in by_name:
+            print(f"error: no sub key named {args.name}", file=sys.stderr)
+            return 1
+        _admin_request(opener, f"{base}/admin/api/sub-keys", "DELETE", {"key": by_name[args.name]["key"]})
+        print(f"revoked sub key {args.name}", file=sys.stderr)
+        return 0
+    except (urllib.error.URLError, OSError, KeyError, ValueError) as e:
+        print(f"error: key {args.action} failed: {e}", file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="4lm_helpers",
@@ -958,6 +1025,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument("--prompt-length", type=int, default=65536, help="prompt tokens (omlx: fixed set)")
     p_bench.add_argument("--poll-seconds", type=float, default=5.0, help=argparse.SUPPRESS)
 
+    p_key = sub.add_parser("key", help="manage omlx sub keys over the loopback admin API")
+    p_key.add_argument("base_url", help="backend base URL (e.g. http://127.0.0.1:8000)")
+    p_key.add_argument("action", choices=["create", "list", "revoke"])
+    p_key.add_argument("name", nargs="?", default="", help="sub key name (create, revoke)")
+
     p_out = sub.add_parser("outdated", help="check for outdated Python and Homebrew packages")
     p_out.add_argument("repo_dir", help="path to 4lm repo root")
     p_out.add_argument("--porcelain", action="store_true", help="emit JSON instead of rich table")
@@ -983,6 +1055,8 @@ def main() -> int:
         return cmd_outdated(args)
     if args.command == "bench":
         return cmd_bench(args)
+    if args.command == "key":
+        return cmd_key(args)
 
     parser.print_help()
     return 1

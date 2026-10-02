@@ -654,6 +654,15 @@ cmd_diag() {
 
 # ---- Bench -----------------------------------------------------------------
 # Measures the active profile's models through omlx's admin bench API.
+cmd_key() {
+  local backend
+  backend="$(profile_backend "${ACTIVE_CONFIG}")" || die "no valid active profile"
+  [[ "${backend}" == "omlx" ]] || die "sub keys need the omlx backend (active: ${backend})"
+  [[ -n "${1:-}" ]] || die "Usage: 4lm key create|list|revoke [<name>]"
+  require_helpers_python
+  "${HELPERS_PYTHON}" "${HELPERS_PY}" key "$(backend_url)" "$@"
+}
+
 cmd_bench() {
   local backend
   backend="$(profile_backend "${ACTIVE_CONFIG}")" || die "no valid active profile"
@@ -2493,6 +2502,11 @@ ${C_DIM}Profiles:${C_RST}
 ${C_DIM}Network exposure:${C_RST}
   4lm expose local|lan [--confirm]   Change bind mode
 
+${C_DIM}API keys${C_RST} (omlx sub keys for remote clients, via the loopback admin API):
+  4lm key create <name>              Create a sub key; prints only the key (pipe it: | pbcopy)
+  4lm key list                       List sub keys (name, created, key prefix)
+  4lm key revoke <name>              Revoke a sub key
+
 ${C_DIM}Clients:${C_RST}
   4lm opencode [args...]             Run OpenCode TUI against the local backend (alias: code)
   4lm open [webui|backend]           Open URL in browser (default: webui)
@@ -2617,6 +2631,7 @@ main() {
     doctor) cmd_doctor "$@" ;;
     diag | diagnose) cmd_diag ;;
     bench) cmd_bench "$@" ;;
+    key) cmd_key "$@" ;;
     model | m) cmd_models "$@" ;;
     outdated | out) cmd_outdated ;;
     upgrade | up) cmd_upgrade "$@" ;;

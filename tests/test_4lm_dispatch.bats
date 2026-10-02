@@ -185,3 +185,17 @@ YAML
   [ "$status" -ne 0 ]
   [[ "$output" == *"omlx"* ]]
 }
+
+@test "key without an action prints its usage and fails" {
+  run "${REPO_ROOT}/bin/4lm" key
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"4lm key create|list|revoke"* ]] || false
+}
+
+@test "key refuses a non-omlx profile" {
+  cp "${REPO_ROOT}/config/profiles/ollama.yaml" "${HOME}/.4lm/config/profiles/ollama.yaml"
+  ln -sfn "${HOME}/.4lm/config/profiles/ollama.yaml" "${HOME}/.4lm/config/active-profile"
+  run "${REPO_ROOT}/bin/4lm" key list
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"omlx"* ]] || false
+}
