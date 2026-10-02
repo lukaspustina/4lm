@@ -1,7 +1,7 @@
 # 4lm developer + runtime dependencies.
 # Install with: just bootstrap (or: brew bundle --file=Brewfile)
 
-# The verb contract itself. Listed first because every
+# The verb contract itself (the justfile). Listed first because every
 # other verb in this file is reached through it — a machine without `just`
 # cannot run `just bootstrap` to get the rest.
 brew "just"
