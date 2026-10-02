@@ -216,7 +216,9 @@ else in a profile entry is either consumed by 4lm itself or is documentation.
 - **Chat-template defaults depend on the omlx version.** On 0.6.0 (measured
   2026-08-17, Qwen3.8-27B) `chat_template_kwargs` in `model_settings.json` had
   no effect; on omlx main `f0d8428a` (measured 2026-09-29, Qwen3.8-Flash-Next)
-  it does, so the profile field `reasoning_effort` renders it. A request's own
+  and on v0.7.0 (2026-10-02: the profile default produced the same output as
+  an explicit `medium` in the request, `xhigh` a different one) it does, so the
+  profile field `reasoning_effort` renders it. A request's own
   `chat_template_kwargs` still wins. After an omlx bump, re-check with one
   timed prompt before relying on it.
 
