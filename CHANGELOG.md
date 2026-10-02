@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `4lm key create|list|revoke <name>` manages omlx sub keys through the admin
+  API on loopback. `create` prints only the new key (pipe it to `pbcopy`);
+  `list` shows names, dates and key prefixes, never full keys. In daemon mode,
+  `sudo 4lm key …` runs as the service account.
+- `docs/setup.md` and `SECURITY.md` document a known limitation: with
+  `mode: lan`, omlx's admin dashboard answers on the LAN and its login sends
+  the main key in clear text; omlx has no TLS and cannot keep `/admin` on
+  loopback. Open it only on the host or through an SSH tunnel.
+- `docs/setup.md`: updating a daemon install from a release tag.
+
 ## [0.8.1] - 2026-10-02
 
 ### Fixed

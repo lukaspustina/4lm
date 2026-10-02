@@ -262,9 +262,25 @@ checks both. An `opencode.jsonc` from before 2026-09 lacks the key; add to
 "apiKey": "{file:~/.4lm/config/api-key}"
 ```
 
-For remote clients, create a sub key per consumer in the omlx admin UI
-(`http://<host>:8000/admin`). Sub keys reach `/v1/*` only, not management
-endpoints, and can be revoked individually.
+For remote clients, create a sub key per consumer. Sub keys reach `/v1/*`
+only, not management endpoints, and can be revoked individually:
+
+```sh
+4lm key create <name> | pbcopy   # prints only the key; store it in your password manager
+4lm key list                     # name, created, key prefix
+4lm key revoke <name>
+```
+
+**Known limitation: the admin UI on the LAN.** omlx has no TLS and no way to
+keep `/admin` on loopback. With `mode: lan` its dashboard answers on the LAN
+address, and its login sends the **main key** in clear text: one remote admin
+login seen on the network gives away full control of the backend. Do not open
+the dashboard over the LAN — use `http://127.0.0.1:8000/admin` on the host, or
+an SSH tunnel (`ssh -L 8000:127.0.0.1:8000 <host>`, then
+`http://127.0.0.1:8000/admin` locally). `4lm key` talks to the admin API over
+loopback, so routine key work needs no dashboard at all. Closing this for good
+takes a reverse proxy in front of omlx (TLS, `/admin` filtered); 4lm does not
+ship one. See [`SECURITY.md`](../SECURITY.md).
 
 Security hardening applied in all modes (not LAN-only):
 - `ENABLE_SIGNUP=False` — no new accounts can register after the first (admin) one
@@ -335,8 +351,8 @@ sudo /usr/local/bin/4lm status
 ```
 
 The API key is `<home>/.4lm/config/api-key`, readable by the account only
-(`sudo -u <user> cat …`). Create consumer sub keys in the omlx admin UI after
-the switch.
+(`sudo -u <user> cat …`). Create consumer sub keys with `sudo 4lm key create
+<name> | pbcopy` — it runs as the account and talks to omlx over loopback.
 
 **Moving from a GUI install.** Move the models instead of downloading them
 again, and move the **whole** `~/.cache/huggingface/hub/` directory in one

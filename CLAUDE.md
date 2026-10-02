@@ -53,6 +53,7 @@ specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed wor
 | Login autostart | `4lm autostart enable\|disable\|status [backend\|webui\|all]` |
 | Sanity sweep | `4lm doctor` (prereqs + smoke-test); `4lm diag` (live clients, inflight work) |
 | Measure models | `4lm bench [model…] [--context] [--json]` (omlx admin bench API; each omlx bench unloads the model, 4lm reloads it at the end — run it deliberately, load/unload cycles are an IOGPU panic trigger) |
+| Sub keys | `4lm key create <name>` / `list` / `revoke <name>` (omlx admin API on loopback; the dashboard login sends the main key in clear text, so never open it over the LAN — see `SECURITY.md`) |
 | Update probes | `4lm outdated` (PyPI / brew / HF); `4lm upgrade [brew\|models\|python]` to apply |
 | Model picks | `4lm model recommend [<use-case>]` (uses `llmfit` + localmaxxing benchmarks) |
 | Run all checks | `just check` |

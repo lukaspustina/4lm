@@ -12,8 +12,22 @@ read the same file.
 then the only gate on `/v1/*` — there is no TLS, so it travels in clear
 text on the LAN. Only the omlx backend enforces a key; ollama and
 `mlx_lm` profiles refuse a LAN bind. Give each remote client its own
-omlx sub key so it can be revoked alone, and keep the main key (which
-also opens omlx's admin UI) on the host.
+omlx sub key so it can be revoked alone (`4lm key create <name>`), and keep
+the main key (which also opens omlx's admin UI) on the host.
+
+**Known limitation — the admin UI is exposed with the LAN bind.** omlx
+serves no TLS and cannot restrict `/admin` to loopback: on `mode: lan` its
+dashboard answers on the LAN address, and its login sends the **main key** in
+clear text. Anyone on the network who sees one remote admin login holds full
+control of the backend (sub keys, settings, models). 4lm cannot close this
+without a reverse proxy in front of omlx, which it deliberately does not ship.
+Mitigation: never log in to the dashboard over the LAN — use
+`http://127.0.0.1:8000/admin` on the host or an SSH tunnel
+(`ssh -L 8000:127.0.0.1:8000 <host>`), and manage sub keys with `4lm key`,
+which talks to the admin API over loopback. If you suspect the main key
+leaked, rotate it: replace `~/.4lm/config/api-key`, restart the backend, and
+confirm the old key now gets 401 (omlx also keeps a copy in
+`~/.omlx/settings.json`).
 
 omlx stores the key in plain text in `~/.omlx/settings.json`; 4lm keeps
 that file at 0600 and `4lm doctor` checks it.

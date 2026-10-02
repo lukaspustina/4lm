@@ -241,6 +241,11 @@ just models [profile]              # download/update config/profiles/ (all, or o
 4lm expose lan --confirm
 4lm expose local --confirm
 
+# Sub keys for remote clients (over loopback; prints only the key)
+4lm key create <name> | pbcopy
+4lm key list
+4lm key revoke <name>
+
 # Autostart at login (off by default)
 4lm autostart enable [backend|webui|all]
 4lm autostart disable [backend|webui|all]
