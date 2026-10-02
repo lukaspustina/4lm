@@ -7,129 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-02
+
+Profiles for one machine class each, an always-on API key, a system daemon
+mode for headless hosts, and omlx 0.7.0. Three breaking changes; read
+**Changed** before upgrading.
+
 ### Added
-- **System daemon mode.** `sudo 4lm install --daemon <user>` installs the
-  backend as a LaunchDaemon (`/Library/LaunchDaemons/com.4lm.backend.plist`,
-  `UserName <user>`) for an existing account, with a root-owned CLI at
-  `/usr/local/bin/4lm`. `sudo 4lm start|stop|restart` drive the system job;
-  every other command re-executes as the account. `sudo 4lm uninstall --daemon
-  --confirm` removes the system pieces and keeps the account's home.
-  `4lm install [--backend-only]` runs `install.sh` from the checkout the CLI
-  lives in. The GUI install is unchanged.
-- Per-model profile fields `reasoning_effort` (rendered as the chat template's
-  default) and `top_k`. The documented-but-unimplemented `chat_template_kwargs`
-  and `sampling` rows are gone from the schema reference.
+- **System daemon mode.** `sudo <checkout>/bin/4lm install --daemon <user>`
+  installs the backend as a LaunchDaemon under an existing account
+  (`/Library/LaunchDaemons/com.4lm.backend.plist`, `UserName <user>`): up at
+  boot, no GUI login. Root gets a root-owned CLI at `/usr/local/bin/4lm`;
+  `sudo 4lm start|stop|restart` drive the system job, every other command
+  re-executes as the account, so root never touches the account's files.
+  `sudo 4lm uninstall --daemon --confirm` removes the system pieces and keeps
+  the account's home. See `docs/setup.md`, "Running as a system daemon".
+- `4lm install [--backend-only]` runs `install.sh` from the checkout the CLI
+  lives in.
+- **The backend API key is always on.** The installer generates
+  `~/.4lm/config/api-key` (0600, never rewritten); the backend wrapper passes
+  it to omlx as `OMLX_API_KEY` and exits 78 without it. Open WebUI, the seeded
+  opencode config, `4lm` probes and the helpers send it as a bearer token.
+  `4lm doctor` checks the key file and `~/.omlx/settings.json` are 0600.
+  Remote clients get their own omlx sub keys.
+- Profile fields: `omlx.memory_guard_gb` (`--memory-guard-gb`),
+  `omlx.paged_ssd_cache_max_size` (`--paged-ssd-cache-max-size`; omlx's `auto`
+  takes half the free disk), and per model `max_context_window`, `mtp`
+  (Lightning MTP), `reasoning_effort` (the chat template's default) and
+  `top_k`, rendered into `~/.omlx/model_settings.json`.
+- `4lm bench [model…] [--context] [--json]`: cold and warm TTFT, prefill and
+  decode rate, peak memory and system memory pressure through omlx's admin
+  benchmark API; `--context` finds the largest admissible prompt.
 - `4lm model download --profile <name>` and `just models <profile>` fetch one
-  profile's models instead of every profile's. Without the argument nothing
-  changes.
-- Profile `max-170gb` for 256 GB machines shared with a VM or desktop:
-  Qwen3.8-Flash-Next (125B MoE, VLM) as the single main model with MTP, the 4B
-  reranker, no separate vision model (it does not serve `qwen3-vl-8b`), memory
-  guard 170 GiB, 262k context. A plain `just models` fetches its ~106 GB
-  checkpoint too; pass a profile name to avoid that.
-- **The backend API key is always on.** `install.sh` generates
-  `~/.4lm/config/api-key` (0600, never rewritten); the backend wrapper passes it
-  to omlx as `OMLX_API_KEY` and exits 78 without it. Open WebUI, the seeded
-  opencode config (`{file:…}`), `4lm` probes and the helpers send it as a
-  bearer token. `4lm doctor` checks the key file and `~/.omlx/settings.json`
-  are 0600.
-- Profile field `omlx.memory_guard_gb`, forwarded as `--memory-guard-gb`
-  (omlx's process memory ceiling), and per-model `max_context_window`,
-  rendered into `~/.omlx/model_settings.json`.
-- Profile field `omlx.paged_ssd_cache_max_size`, forwarded as
-  `--paged-ssd-cache-max-size`; omlx's `auto` default takes half the free disk.
-- `docs/setup.md` gains "Running a large model on a shared machine": jetsam,
-  budgets, and what not to do while a large set is resident.
-- Per-model `mtp: true` renders omlx's `mtp_enabled` (multi-token-prediction
-  speculative decoding, adaptive depth) for checkpoints that ship an MTP head.
-- `4lm bench`: cold and warm TTFT, prefill and decode rate, and peak memory
-  per model through omlx's admin benchmark API, plus system memory pressure.
-  `--context` also measures the largest admissible prompt under the memory
-  guard (omlx unloads the model afterwards); `--json` for tables in `docs/`.
+  profile's models.
+- `docs/setup.md`: "Running a large model on a shared machine" (jetsam,
+  budgets, local snapshots) and "Running as a system daemon".
 
 ### Changed
-- **BREAKING — one profile per memory class.** The repo ships `default` (256 GB),
-  `mid` (128 GB), `lean` (64 GB) and `ollama`. `max-100gb`, `max-170gb`,
-  `mlx-coding`, `mlx-knowledge` and `ornith-vs-qwen` are gone; `default` is the
-  former `max-170gb` plus `reasoning_effort: medium` and `top_k: 20`, `mid` the
-  former `default` without `qwen3-vl-8b` (Qwen3.8-27B reads images), `lean` the
-  former `lean`. Every omlx profile now pins all models, sets a memory guard and
-  caps the context. No profile serves `qwen3-vl-8b` any more.
-  **Existing installs keep their old `default.yaml`** (profiles are never
-  overwritten) — adopt the new one with the `cp` the installer prints, and
-  remove the dropped profiles from `~/.4lm/config/profiles/`.
-- `install.sh` activates the profile matching the machine's RAM on first
-  install (≥ 250 GB `default`, ≥ 120 GB `mid`, else `lean`); `4lm doctor`'s RAM
-  check knows the new names.
-- omlx pinned to v0.7.0 (`4d4f5a28`): faster Qwen3.8-Flash-Next, GLM-5.3-Flash
-  and MiMo kernels, exact Lightning MTP, and fixes for prefill admission after
-  eviction and SSD cache growth on hybrid models. Before that, main `f0d8428a`
-  (after v0.7.0rc1): about 10–14 % faster single-stream decode than rc1 in our
-  measurements, and the memory-guard fix for vision engines. v0.7.0rc1 (`35be079d`) loads the current
-  model generation, adds M5 prefill kernels, and refuses a non-loopback bind
-  without an API key. With a key configured, loopback clients need it too.
-- open-webui 0.11.4, huggingface_hub 2.0.0, pytest 9.1.1. Checked against
-  every env var, `hf` subcommand and output format 4lm uses; no edits needed.
-- **BREAKING**: `4lm expose lan` refuses without a key file or when the active
-  backend is not omlx, and the ollama and `mlx_lm` wrappers exit 78 on
-  `mode: lan` — neither can enforce a key. An existing
+- **BREAKING — one profile per memory class.** The repo ships `default`
+  (now for 256 GB: Qwen3.8-Flash-Next with MTP, guard 170 GiB, 262k context),
+  `mid` (128 GB: the former `default`, with Qwen3.8-27B as chat model instead
+  of `qwen3.6-35b` and without `qwen3-vl-8b`), `lean` (64 GB, unchanged
+  models) and `ollama`. `max-100gb`, `mlx-coding` and `mlx-knowledge` are
+  gone, and no profile serves `qwen3-vl-8b` any more (the chat models read
+  images). **On a 128 GB machine the old `default` is now `mid`.** Every omlx
+  profile pins all models, sets a memory guard and caps the context; the
+  embedder and reranker keep their served names, so knowledge bases need no
+  reindexing. **Existing installs keep their old profiles** — adopt a new
+  one with the `cp` the installer prints, then `4lm profile set <name>`.
+- **BREAKING — LAN needs the key.** `4lm expose lan` refuses without a key
+  file or when the active backend is not omlx; the ollama and `mlx_lm`
+  wrappers exit 78 on `mode: lan`. An existing
   `~/.config/opencode/opencode.jsonc` needs
   `"apiKey": "{file:~/.4lm/config/api-key}"` under `provider.4lm.options`;
-  `install.sh` warns when it is missing.
-- **BREAKING**: the chat slot of the `default` and `mlx-knowledge` profiles
-  serves `qwen3.8-27b` (`mlx-community/Qwen3.8-27B-4bit`) instead of
-  `qwen3.6-35b`. **Run `make models` before switching**: the ~15 GB
-  checkpoint must be in the HF cache, or `4lm profile set default` fails in
-  staging with "HF model not found". Anything hard-coding the old
-  served-model name — an existing `~/.config/opencode/opencode.jsonc`,
-  OpenWebUI presets, scripts — must be updated by hand; the seeded template
-  only covers fresh installs. `lean` keeps `qwen3.6-35b` deliberately.
-  Knowledge bases need no reindexing: the embedder and reranker names are
-  unchanged. **An existing install does not pick this up by re-running the
-  installer** — `install.sh` never overwrites an installed profile. Copy it
-  by hand (`cp config/profiles/default.yaml ~/.4lm/config/profiles/`) and
-  re-issue `4lm profile set default`.
-  The new model is a dense 27B, not a 3B-active MoE — measured ~27 tok/s here
-  against the MoE's ~105 tps. Its chat template also defaults
-  `reasoning_effort` to `xhigh`, which must be overridden per request
-  (`chat_template_kwargs`); setting it in `model_settings.json` has no effect.
-- `install.sh` now reports drift between a repo profile and its installed
-  copy under `~/.4lm/config/profiles/`, printing the `diff` and `cp` commands
-  to inspect and adopt it. Installed profiles are still never overwritten;
-  previously the mismatch passed silently as "Profile exists, not overwriting".
-- omlx pinned to v0.6.0 (`b16a1d1b`), the first release that loads Qwen3.8
-  checkpoints (blockwise FP8, embedded MTP, ModelOpt NVFP4).
-- `install.sh` now **enforces** the omlx pin instead of only recording it: it
-  compares the installed package version against `OMLX_EXPECTED_VERSION` and
-  reinstalls with `pipx install --force` when they differ. Previously any
-  installed omlx short-circuited the check, so a pin bump never reached a
-  machine that already had 4lm.
+  the installer warns when it is missing.
+- **BREAKING — served names.** `qwen3-vl-8b` and `qwen3-next-80b` are gone,
+  and `qwen3.6-35b` remains only in `lean`. Clients that call them must switch
+  to `qwen3.8-flash-next` (`default`) or `qwen3.8-27b` (`mid`).
+- omlx pinned to v0.7.0 (`4d4f5a28`). Measured on a 256 GB Apple Silicon machine against
+  0.7.0rc1 with Qwen3.8-Flash-Next: 65k cold TTFT 39 → 20 s, prefill
+  1.7k → 3.4k tok/s, MTP decode 104 → 124 tok/s short and 95 → 107 tok/s at
+  65k. The installer enforces the pin by the installed commit
+  (`direct_url.json`), not the version string, and reinstalls on mismatch.
+- The installer activates the profile matching the machine's RAM on first
+  install (≥ 250 GB `default`, ≥ 120 GB `mid`, else `lean`) and reports drift
+  between a repo profile and its installed copy.
+- `4lm start` stages a missing runtime dir for the active omlx profile, or
+  refuses to start with a pointer to `4lm model download --profile <name>`,
+  instead of letting the backend crash-loop with EX_CONFIG.
+- `4lm logs` fails on an unreadable log instead of waiting silently.
+- open-webui 0.11.4, huggingface_hub 2.0.0, pytest 9.1.1.
 
 ### Fixed
-- The omlx pin is enforced by commit instead of by version string. Commits
-  between releases report the same version, so moving `OMLX_GIT_REF` to such a
-  commit was a silent no-op on machines that already had omlx.
-  `OMLX_EXPECTED_VERSION` is gone.
-- omlx v0.7.0rc1 served every model in the HuggingFace cache next to the
-  profile's staged set, so a client could load any downloaded checkpoint.
-  The backend now runs with `--no-hf-cache`.
-- Open WebUI sign-up was never disabled: 4lm set `WEBUI_REGISTRATION_ENABLED`,
-  which Open WebUI does not read. It now sets `ENABLE_SIGNUP=False`. Web
-  search likewise used `RAG_`-prefixed names that do not exist and now sets
-  `ENABLE_WEB_SEARCH`, `WEB_SEARCH_ENGINE`, `WEB_SEARCH_RESULT_COUNT`. Both
-  are first-boot defaults: an existing `webui.db` keeps its stored values —
-  check **Admin → Settings → General → Enable New Sign Ups** by hand.
+- The backend runs with `--no-hf-cache`: omlx otherwise served every model in
+  the HuggingFace cache next to the profile's staged set.
+- Open WebUI sign-up was never disabled (4lm set a variable Open WebUI does
+  not read); it now sets `ENABLE_SIGNUP=False`, and web search uses the
+  current `ENABLE_WEB_SEARCH` / `WEB_SEARCH_*` names. Both are first-boot
+  defaults: an existing `webui.db` keeps its stored values — check
+  **Admin → Settings → General → Enable New Sign Ups** by hand.
 
 ### Removed
-- `omlx.max_process_memory` and `omlx.max_model_memory`. omlx has no such
-  flags (neither v0.6.0 nor v0.7.0rc1); no shipped profile set them. Unknown
-  `omlx:` keys now fail validation instead of being ignored.
-- The `iogpu.wired_limit_mb` mechanism: `install.sh` no longer installs
-  `/etc/sudoers.d/4lm-stack` or runs `sysctl`, the `mlx_lm` wrapper no longer
-  calls `sudo`, and `4lm doctor` drops its wired-limit check. The hard-coded
-  `98304` equals the macOS default on 128 GB machines, so it raised nothing
-  there — and on larger machines it *lowered* the GPU working set until the
-  next reboot. `install.sh` and `uninstall.sh` remove a leftover sudoers file.
+- `omlx.max_process_memory` and `omlx.max_model_memory` (omlx has no such
+  flags). Unknown `omlx:` keys now fail validation.
+- The `iogpu.wired_limit_mb` mechanism and its sudoers rule. The hard-coded
+  value lowered the GPU working set on machines above 128 GB. The installer
+  and uninstaller remove a leftover `/etc/sudoers.d/4lm-stack`.
 
 ## [0.7.0] - 2026-05-17
 
