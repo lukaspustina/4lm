@@ -22,6 +22,7 @@ MODELS = ["coder", "qwen3-embedding", "qwen3-reranker"]
 class FakeOmlx(BaseHTTPRequestHandler):
     calls: list = []
     swallow_token = False
+    decode_tokens = 51  # completion tokens the decode request reports
 
     def log_message(self, *a):
         pass
@@ -81,6 +82,16 @@ class FakeOmlx(BaseHTTPRequestHandler):
             self.wfile.write(b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n')
             self.wfile.flush()
             time.sleep(0.2)
+            if body.get("max_tokens", 1) > 1:
+                # Decode request: first token, 0.5 s of generation, then usage.
+                self.wfile.write(b'data: {"choices":[{"delta":{"content":"Once"}}]}\n\n')
+                self.wfile.flush()
+                time.sleep(0.5)
+                usage = {"prompt_tokens": 40, "completion_tokens": FakeOmlx.decode_tokens}
+                self.wfile.write(b'data: {"choices":[{"delta":{"content":" upon"},"finish_reason":"length"}]}\n\n')
+                self.wfile.write(b'data: ' + json.dumps({"choices": [], "usage": usage}).encode() + b'\n\n')
+                self.wfile.write(b'data: [DONE]\n\n')
+                return
             if FakeOmlx.swallow_token:
                 # Some models emit their only token as a special token with no text.
                 self.wfile.write(b'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')
@@ -98,6 +109,7 @@ def omlx(tmp_path, monkeypatch):
     (cfg / "api-key").write_text(KEY + "\n")
     FakeOmlx.calls = []
     FakeOmlx.swallow_token = False
+    FakeOmlx.decode_tokens = 51
     server = ThreadingHTTPServer(("127.0.0.1", 0), FakeOmlx)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
@@ -140,7 +152,6 @@ def test_bench_json_maps_results(omlx, capsys):
     row = report["models"][0]
     assert row["model"] == "coder"
     assert row["cold_ttft_ms"] == 41000.0
-    assert row["decode_tps"] == 52.3
     assert row["peak_memory_gib"] == 150.0
     assert row["warm_ttft_ms"] >= 200  # first token, not the keepalive/role chunks
     assert row["max_context_window"] is None
@@ -188,3 +199,33 @@ def test_warm_ttft_counts_a_bare_finish_chunk(omlx, capsys):
     rc, out = _run(_args(omlx), capsys)
     assert rc == 0
     assert json.loads(out)["models"][0]["warm_ttft_ms"] >= 200
+
+
+# ---- decode is measured by 4lm, not taken from omlx's bench ------------------------
+# omlx's bench reloads the model itself; whether Lightning MTP was active in that
+# run is not reported, and the same model measured 71 and 120 tok/s in two runs.
+# 4lm measures decode through the client path instead.
+
+def test_decode_comes_from_the_streamed_request_not_omlx_gen_tps(omlx, capsys):
+    rc, out = _run(_args(omlx), capsys)
+    assert rc == 0
+    decode = json.loads(out)["models"][0]["decode_tps"]
+    assert decode != 52.3
+    assert 70 <= decode <= 110  # 50 tokens after the first in ~0.5 s
+
+
+def test_decode_request_generates_enough_tokens_deterministically(omlx, capsys):
+    _run(_args(omlx), capsys)
+    gens = [c[2] for c in FakeOmlx.calls
+            if c[:2] == ("POST", "/v1/chat/completions") and c[2].get("max_tokens", 1) > 1]
+    assert len(gens) == 1
+    assert gens[0]["max_tokens"] >= 256
+    assert gens[0]["temperature"] == 0
+    assert gens[0]["stream_options"] == {"include_usage": True}
+
+
+def test_decode_is_unmeasured_when_too_few_tokens_arrive(omlx, capsys):
+    FakeOmlx.decode_tokens = 5
+    rc, out = _run(_args(omlx), capsys)
+    assert rc == 0
+    assert json.loads(out)["models"][0]["decode_tps"] is None
