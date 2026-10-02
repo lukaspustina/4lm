@@ -228,6 +228,12 @@ ceiling sits well below RAM, and well below the omlx guard.
 - Exclude `~/.cache/huggingface` and `~/.omlx` from Time Machine
   (`tmutil addexclusion`) and Spotlight, so backups don't read hundreds of GB
   through the page cache.
+- The exclusion does **not** cover local APFS snapshots: Time Machine's hourly
+  local snapshots keep a deleted checkpoint's blocks for up to 24 hours, so
+  `4lm model rm` frees no space until they go. Swapping several 100+ GB
+  checkpoints in a row can fill the disk that way. Check with `df` after a
+  removal and release the space with `tmutil thinlocalsnapshots / <bytes> 4`
+  (no root needed).
 - Leave `iogpu.wired_limit_mb` at its default. Raising it adds no memory; it
   only lets the GPU wire more of what macOS itself needs.
 
