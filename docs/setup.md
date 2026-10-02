@@ -346,6 +346,22 @@ leaves dead links: current HF caches keep the files in a shared blob store
 stages the active profile from the moved cache. The account gets a new API key,
 and omlx sub keys from your old `~/.omlx/settings.json` do not carry over.
 
+**Updating — pin the checkout to a release.** Install from a clone of the
+GitHub repo with a release tag checked out, not from a working branch, so the
+daemon only ever runs a published version:
+
+```sh
+git clone https://github.com/lukaspustina/4lm.git <checkout>   # once
+git -C <checkout> fetch --tags
+git -C <checkout> switch --detach vX.Y.Z
+sudo <checkout>/bin/4lm install --daemon <user>
+```
+
+The re-install replaces the scripts in the account's home and the root-owned
+CLI, and enforces the release's omlx pin (it reinstalls omlx when the commit
+differs). Restart only when the release notes say the backend changed:
+`sudo 4lm stop && sudo 4lm start`.
+
 **Limits.** `4lm upgrade brew` needs the admin who owns Homebrew. A changed
 plist (after a re-install) takes effect after `sudo 4lm stop && sudo 4lm start`.
 
