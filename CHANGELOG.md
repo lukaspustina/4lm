@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-02
+
+### Fixed
+- `4lm bench` measures the decode rate itself, from one streamed 256-token
+  completion through `/v1` like any client. It used omlx's bench figure, which
+  comes from a run where omlx reloads the model itself and does not report
+  whether Lightning MTP was active: the same model read 71 and 120 tok/s in
+  two consecutive runs.
+
 ## [0.8.0] - 2026-10-02
 
 Profiles for one machine class each, an always-on API key, a system daemon
