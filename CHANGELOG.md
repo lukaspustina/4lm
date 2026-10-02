@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-02
+
 ### Added
 - `4lm key create|list|revoke <name>` manages omlx sub keys through the admin
   API on loopback. `create` prints only the new key (pipe it to `pbcopy`);
