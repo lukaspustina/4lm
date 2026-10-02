@@ -706,8 +706,11 @@ def cmd_hello(args: argparse.Namespace) -> int:
 
 # ---- bench -------------------------------------------------------------------
 # Drives omlx's admin benchmark API.
-# omlx measures cold TTFT, decode rate and peak memory; 4lm adds the warm TTFT
-# (omlx benches skip the prefix cache) and system memory pressure. Each omlx
+# omlx measures cold TTFT, prefill rate and peak memory; 4lm adds the warm TTFT
+# (omlx benches skip the prefix cache), the decode rate and system memory
+# pressure. Decode is measured through /v1 like any client: omlx's bench
+# reloads the model itself and does not report whether Lightning MTP was
+# active, and the same model measured 71 and 120 tok/s in two runs. Each omlx
 # bench unloads the model afterwards — load/unload cycles are an IOGPU panic
 # trigger (mlx #3346), so run it deliberately, not on a schedule.
 
@@ -788,6 +791,46 @@ def _ttft_ms(base_url: str, model_id: str, prompt: str) -> float:
     raise RuntimeError(f"{model_id}: stream ended without data")
 
 
+_DECODE_TOKENS = 256
+_MIN_DECODE_TOKENS = 16  # below this the span is MTP bursts, not a rate
+
+
+def _decode_tps(base_url: str, model_id: str) -> float | None:
+    """Decode rate of one streamed completion: tokens after the first ÷ time after it."""
+    import time
+    import urllib.request
+
+    payload = json.dumps({
+        "model": model_id,
+        "messages": [{"role": "user", "content": "Write a long story about a lighthouse keeper."}],
+        "max_tokens": _DECODE_TOKENS,
+        "temperature": 0,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }).encode()
+    req = urllib.request.Request(
+        f"{base_url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json", **_backend_headers()},
+    )
+    first = None
+    tokens = None
+    with urllib.request.urlopen(req, timeout=_BENCH_MAX_WAIT_S) as resp:
+        for line in resp:
+            if not line.startswith(b"data:") or line.strip() == b"data: [DONE]":
+                continue
+            chunk = json.loads(line[5:])
+            if chunk.get("usage"):
+                tokens = chunk["usage"].get("completion_tokens")
+            delta = ((chunk.get("choices") or [{}])[0]).get("delta", {})
+            if first is None and any(delta.get(k) for k in ("content", "reasoning_content", "reasoning")):
+                first = time.time()
+    end = time.time()
+    if first is None or not tokens or tokens < _MIN_DECODE_TOKENS or end <= first:
+        return None
+    return round((tokens - 1) / (end - first), 1)
+
+
 def _bench_model(opener, args, model_id: str) -> dict:
     base = args.base_url
     start = _bench_json(opener, f"{base}/admin/api/bench/start", {
@@ -802,6 +845,7 @@ def _bench_model(opener, args, model_id: str) -> dict:
     prompt = ("Summarise the following log line by line. " * (args.prompt_length // 9))
     _ttft_ms(base, model_id, prompt)
     warm = _ttft_ms(base, model_id, prompt)
+    decode = _decode_tps(base, model_id)
 
     ctx = None
     if args.context:
@@ -822,7 +866,7 @@ def _bench_model(opener, args, model_id: str) -> dict:
         "cold_ttft_ms": trial.get("ttft_ms"),
         "warm_ttft_ms": warm,
         "prefill_tps": trial.get("processing_tps"),
-        "decode_tps": trial.get("gen_tps"),
+        "decode_tps": decode,
         "peak_memory_gib": round(peak / 1024**3, 1) if peak else None,
         "max_context_window": ctx,
     }
