@@ -1,7 +1,6 @@
 # SDD — System daemon mode
 
-Status: phases 1–5 done · on-host: install, start, expose lan, key enforcement
-verified 2026-09-30; five findings fixed; open: re-run with the fixes, uninstall
+Status: done · 2026-10-02
 
 ## Context
 
@@ -85,3 +84,20 @@ plist and a root-owned CLI entry point.
 On-host acceptance after phase 5: install over a disposable account, `sudo 4lm
 start`, `sudo 4lm status`, `sudo 4lm profile set <name>` restarts and serves,
 `sudo 4lm stop`, uninstall leaves the home intact.
+
+## Acceptance result
+
+Run on an Apple Silicon host with a hidden service account, twice.
+
+- 2026-09-30: install, start, `expose lan`, key enforcement (401 without a key on
+  loopback and LAN) passed. Five findings, all fixed with tests: install ran
+  from the caller's unreadable cwd; the migration doc moved only `models--*`
+  (dead blob links); `logs` waited silently on a root-owned log; `status`
+  reported LaunchAgent autostart; `start` right after install crash-looped
+  with EX_CONFIG instead of staging the runtime.
+- 2026-10-02: `uninstall --daemon --confirm` removed the system pieces and kept
+  the account's home; re-install with the fixes and omlx v0.7.0, `start`,
+  `status`, `logs` passed; the daemon came up on the first run (no respawns),
+  401 without a key on loopback and LAN.
+- Not exercised on the host: `sudo 4lm profile set` restarting the daemon by
+  signal (covered by bats with a stubbed launchd).
