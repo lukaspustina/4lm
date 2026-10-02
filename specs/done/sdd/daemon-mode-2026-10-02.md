@@ -99,5 +99,6 @@ Run on an Apple Silicon host with a hidden service account, twice.
   the account's home; re-install with the fixes and omlx v0.7.0, `start`,
   `status`, `logs` passed; the daemon came up on the first run (no respawns),
   401 without a key on loopback and LAN.
-- Not exercised on the host: `sudo 4lm profile set` restarting the daemon by
-  signal (covered by bats with a stubbed launchd).
+- `sudo 4lm profile set default` (same-name re-issue) restarted the daemon by
+  signal: no rollback, 4.3 s wall clock, new pid, launchd `runs` 1 → 2, all
+  three models listed afterwards, 401 without a key on the LAN.
