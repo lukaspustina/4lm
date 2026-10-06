@@ -23,6 +23,7 @@ default: adlc-verify
 # What the ADLC gate runs: every static check plus the suite. No network, no
 # brew, nothing that writes outside the repository.
 adlc-verify: lint syntax plist-lint yaml-lint test
+    @for t in tests/*.bats; do echo "ADLC-RAN $t"; done
 
 # Identical to adlc-verify, and that is not an oversight: everything this
 # repository can check without installing something is already in it. When a
@@ -153,3 +154,20 @@ models-rm model: _require-hf
 [private]
 _require-hf:
     @command -v hf >/dev/null || { echo "hf not found — run: just install" >&2; exit 1; }
+
+# The tools the contract calls, pinned: shellcheck through uv (PyPI's shellcheck-py), shfmt through
+# go install, bats-core from its release tag into ~/.local. python3, plutil and xmllint come with
+# macOS, which plist-lint needs anyway.
+
+# Install the pinned shellcheck, shfmt and bats the contract needs.
+adlc-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv tool install shellcheck-py==0.11.0.1
+    go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
+    if [ "$(bats --version 2>/dev/null)" != "Bats 1.14.0" ]; then
+        d=$(mktemp -d)
+        git clone -q --depth 1 --branch v1.14.0 https://github.com/bats-core/bats-core "$d"
+        "$d/install.sh" "$HOME/.local"
+        rm -rf "$d"
+    fi
