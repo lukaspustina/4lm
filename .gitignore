@@ -12,5 +12,5 @@ _site/
 .jekyll-cache/
 .jekyll-metadata
 
-# ADLC run state (cycle log, test-commit baselines, attestation)
-.adlc/
+# ADLC: .adlc/.gitignore decides which of its files are kept (receipts are local, measurement
+# series are committed).
