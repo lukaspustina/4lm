@@ -1,161 +1,42 @@
 # 4lm — Local LLM Control Plane
 
-**Thesis.** Single-command control plane for one engineer's local LLM
-stack on Apple Silicon. Two first-class deployment shapes —
-**workstation** (full stack: `omlx` + `open-webui` + `opencode`) and
-**appliance** (`./install.sh --backend-only`: headless `/v1/*` server
-for the LAN) — share one CLI, one profile system, one set of security
-defaults.
+Single-command control plane for one engineer's local LLM stack on Apple Silicon. Two shapes share
+one CLI, one profile system, one set of security defaults: **workstation** (`omlx` + `open-webui` +
+`opencode`) and **appliance** (`./install.sh --backend-only`: headless `/v1/*` server for the LAN).
+Pitch: `README.md`. Layout, command table, measurements and background: `docs/internals.md`.
+Model selection and architecture rationale: `specs/done/sdd/4lm-rework-2026-05-09.md` — read it
+before changing the model set, the backend choice or the activation model. Checks: `just check`.
 
-The user-facing pitch lives in [`README.md`](README.md). This file is
-the working orientation for contributors and AI assistants.
+## Rules
 
-Model selection and the layered architecture rationale live in the
-archived rework SDD at `specs/done/sdd/4lm-rework-2026-05-09.md`. Read it
-before changing the model set, the backend choice, or the activation model.
-
-## Repo layout
-
-```
-bin/                       # 4lm, launchd wrapper scripts, and 4lm_helpers.py
-launchd/                   # plist templates with __HOME__ placeholder
-config/profiles/           # lean (64 GB) / mid (128 GB) / default (256 GB) via omlx + ollama smoke-test YAML
-config/network.example.yaml
-config/opencode.example.jsonc  # template seeded into ~/.config/opencode/
-docs/                      # setup runbook + profile schema reference
-tests/                     # bats suite (helpers/ has launchctl + curl stubs)
-.github/workflows/         # macOS CI: shellcheck, shfmt, plutil, xmllint, bats; matrix runs default + backend-only
-install.sh                 # idempotent installer; --backend-only skips WebUI + opencode
-uninstall.sh               # full removal (services, ~/.4lm, newsyslog)
-requirements.txt           # pinned open-webui, huggingface_hub[cli]; omlx from git
-requirements-helpers.txt   # 4lm_helpers.py runtime deps (rich, pyyaml, pytest)
-Brewfile                   # core: shellcheck, shfmt, bats-core, jq, python@3.12, pipx, llmfit, ollama
-Brewfile-tui               # TUI extras: opencode (skipped when BACKEND_ONLY=1)
-Makefile                   # bootstrap / install / uninstall / models* / check / lint / fmt / test / ci / ci-default / ci-backend-only
-specs/sdd/                 # active SDDs (webui-tools-and-mcp.md); completed work archived under specs/done/sdd/
-```
-
-## Key commands
-
-| Task | Command |
-|---|---|
-| Bootstrap dev tools | `just bootstrap` (Brewfile + Brewfile-tui + `pipx ensurepath`; `BACKEND_ONLY=1` skips TUI) |
-| Install / re-install | `just install` (or `./bin/4lm install` / `./install.sh`; `BACKEND_ONLY=1` / `--backend-only` skips WebUI + opencode) |
-| Daemon install / removal | `sudo ./bin/4lm install --daemon <user>` · `sudo 4lm uninstall --daemon --confirm` |
-| Full uninstall | `just uninstall` (or `./uninstall.sh`) — removes ~/.4lm |
-| Pre-download models | `just models [profile]` (idempotent; `models-list`, `models-clean`, `models-rm`) — CLI: `4lm model download [--profile <name>]` |
-| Start everything | `4lm start` |
-| Stop everything | `4lm stop` |
-| Status | `4lm` (alias for `4lm status`; `--json` for machine-readable) |
-| Switch profile | `4lm profile set <name>` |
-| Toggle LAN exposure | `4lm expose lan --confirm` |
-| OpenCode TUI | `4lm opencode` (alias `4lm code`) |
-| Login autostart | `4lm autostart enable\|disable\|status [backend\|webui\|all]` |
-| Sanity sweep | `4lm doctor` (prereqs + smoke-test); `4lm diag` (live clients, inflight work) |
-| Measure models | `4lm bench [model…] [--context] [--json]` (omlx admin bench API; each omlx bench unloads the model, 4lm reloads it at the end — run it deliberately, load/unload cycles are an IOGPU panic trigger) |
-| Sub keys | `4lm key create <name>` / `list` / `revoke <name>` (omlx admin API on loopback; the dashboard login sends the main key in clear text, so never open it over the LAN — see `SECURITY.md`) |
-| Update probes | `4lm outdated` (PyPI / brew / HF); `4lm upgrade [brew\|models\|python]` to apply |
-| Model picks | `4lm model recommend [<use-case>]` (uses `llmfit` + localmaxxing benchmarks) |
-| Run all checks | `just check` |
-| Run tests | `just test` (requires `bats-core`) |
-| Mirror CI matrix locally | `just ci` (runs `ci-default` + `ci-backend-only`) |
-
-## Activation model
-
-Plists live in `~/.4lm/launchd/` (NOT `~/Library/LaunchAgents/`) → launchd
-never discovers them automatically. `4lm start` / `stop` call `launchctl
-bootstrap` / `bootout`. Autostart at login is opt-in via `4lm autostart
-enable`, which symlinks the plist into `~/Library/LaunchAgents/`. After
-reboot, services are stopped unless autostart is enabled.
+- Bash scripts start with `set -euo pipefail`.
+- `4lm bench` unloads and reloads models: run it deliberately, load/unload cycles are an IOGPU panic trigger.
+- Never open the omlx dashboard over the LAN: its login sends the main key in clear text (`SECURITY.md`).
+- Plists live in `~/.4lm/launchd/`, never `~/Library/LaunchAgents/`; `4lm start`/`stop` bootstrap/bootout them, and only `4lm autostart enable` symlinks into `~/Library/LaunchAgents/`. After reboot services are stopped unless autostart is on.
+- Plist templates carry the `__HOME__` placeholder, substituted by `install.sh`.
+- `~/.4lm/config/network.yaml` is the single network config channel (`local` → `127.0.0.1`, `lan` → `0.0.0.0`), switched only by `4lm expose <mode> --confirm`. Never add an env-var override: the friction is a security feature.
+- Profile YAMLs are validated by `validate_profile` in `bin/4lm`; schema in `docs/profile-schema.md`.
+- `install.sh` §4 copies a profile into `~/.4lm/config/profiles/` only when absent, so a repo profile change never reaches an installed machine: adopt it with an explicit `cp` and re-issue `4lm profile set <name>`.
+- `4lm profile set` is atomic with rollback (30 s `/v1/models` poll); a same-name re-issue re-renders and re-stages without a full stop/start.
 
 ## Daemon mode
 
-`sudo <checkout>/bin/4lm install --daemon <user>` is the third shape
-(`daemon_install` in `bin/4lm`): `install.sh --service` runs **as** an existing
-account, and root adds
-`/Library/LaunchDaemons/com.4lm.backend.plist` (`UserName`), a root-owned
-`/usr/local/bin/4lm` and `/etc/newsyslog.d/4lm-daemon.conf`. The CLI switches
-on the system plist's presence (`DAEMON_PLIST`, `FOURLM_DAEMON_PLIST` in tests;
-`tests/helpers/setup.bash` points it at a missing file so the suite stays in GUI
-mode on a daemon host).
+`sudo <checkout>/bin/4lm install --daemon <user>` (`daemon_install`) is the third shape.
 
-- **Root never touches the account's files.** Root runs only `start`/`stop`/
-  `restart` (`daemon_dispatch`); every other command `exec`s as the account.
-  Do not add a root-side read of `~<user>/…` — the account runs the LAN-facing
-  process, and a symlink it plants would be followed by root.
-- **The account restarts by signal.** It cannot kickstart a system job, so
-  `service_kick` SIGTERMs the pid and `KeepAlive` respawns it. New restart
-  sites go through `service_kick`, never `launchctl kickstart` directly, and
-  launchd targets use `${LAUNCHD_DOMAIN}`, never `gui/<uid>`.
-- `4lm install` needs the checkout next to the CLI (`repo_dir`); the root-owned
-  `/usr/local/bin/4lm` has none, so updates run `<checkout>/bin/4lm install`.
-  `sudo 4lm uninstall --daemon --confirm` removes the system pieces only.
-- Account creation, model migration and host settings are the operator's —
-  4lm stays generic (public repo).
+- Root never touches the account's files: root runs only `start`/`stop`/`restart` (`daemon_dispatch`), every other command `exec`s as the account. Never add a root-side read of `~<user>/…`: a symlink the LAN-facing account plants would be followed by root.
+- New restart sites go through `service_kick`, never `launchctl kickstart`; launchd targets use `${LAUNCHD_DOMAIN}`, never `gui/<uid>`.
+- Updates run `<checkout>/bin/4lm install` (the root-owned `/usr/local/bin/4lm` has no checkout beside it); `sudo 4lm uninstall --daemon --confirm` removes the system pieces only.
+- Account creation, model migration and host settings are the operator's: 4lm stays generic (public repo).
 
-## Network exposure
+## Dual shape
 
-`~/.4lm/config/network.yaml` is the **single** config channel. `mode: local`
-binds to `127.0.0.1`; `mode: lan` binds to `0.0.0.0`. Switching is done
-only via `4lm expose <mode> --confirm`. No env-var overrides exist or
-should be added — the deliberate friction is a security feature.
+`--backend-only` (or `BACKEND_ONLY=1`) skips `open-webui`, the webui plist and wrapper, `opencode` and the seeded `~/.config/opencode/opencode.jsonc`.
 
-## Dual-shape conventions
+- `bin/4lm` probes for the webui plist on disk and treats the WebUI as absent without it; never assume the WebUI exists.
+- A full re-install over backend-only upgrades cleanly; `--backend-only` over a full install does not strip WebUI artifacts.
+- Every feature works in both shapes (`just ci-default` + `just ci-backend-only`) or guards its behaviour on the webui-plist probe.
 
-`./install.sh --backend-only` (or `just install BACKEND_ONLY=1`) skips
-`open-webui` (pipx), the webui plist, the webui wrapper, the `opencode`
-brew formula, and the seeded `~/.config/opencode/opencode.jsonc`. The
-contract this imposes:
-
-- `bin/4lm` **probes for the webui plist on disk** and treats the WebUI
-  layer as not installed when absent (status output, autostart targets,
-  `4lm doctor` checks all adapt). Never assume the WebUI exists.
-- Re-running the full installer over a backend-only install **upgrades**
-  cleanly to full; re-running `--backend-only` over a full install **does
-  not strip** existing WebUI artifacts. Tests for these invariants live
-  in the bats suite.
-- The CI matrix runs both legs (`just ci-default` + `just ci-backend-only`);
-  any new feature must work in both shapes or guard its behavior on the
-  webui-plist probe.
-
-## Installed profiles are never overwritten
-
-`install.sh` §4 copies `config/profiles/*.yaml` into
-`~/.4lm/config/profiles/` **only when the target is absent** — a re-run never
-updates an existing copy, by design (it would clobber local edits). A repo
-profile change therefore does not reach a machine that already has 4lm
-installed; adopt it with an explicit `cp` and re-issue `4lm profile set
-<name>`. Since 2026-08-18 the installer prints a drift warning with the
-`diff` and `cp` commands instead of staying silent, so the gap is at least
-visible. The check below it reports the other direction: profiles present
-under `~/.4lm` that no longer exist in the repo.
-
-## Profile switching is atomic with rollback
-
-`4lm profile set <name>` validates the YAML, saves the previous profile name,
-swaps the symlink, kickstarts the backend, and polls `/v1/models` for 30 s.
-On timeout it restores the previous symlink and kickstarts again.
-
-Same-name re-issue (e.g. after editing the active profile YAML) re-renders
-`~/.omlx/model_settings.json` and re-stages `~/.4lm/runtime/<profile>/models/`
-before kickstarting, so YAML edits propagate without a full stop/start.
-
-## Conventions
-
-- Bash scripts: `set -euo pipefail`, `shellcheck` clean, formatted by `shfmt`.
-- Plists: `__HOME__` placeholder, substituted by `install.sh`.
-- Profile YAMLs validated by `validate_profile` in `bin/4lm`. Schema reference
-  in `docs/profile-schema.md`. Three backends: `omlx` (vLLM-style MLX,
-  multi-model, paged KV cache), `mlx_lm` (python -m mlx_lm server,
-  single-model upstream), `ollama` (llama.cpp/Metal).
-- No `Co-Authored-By: Claude` lines in commits.
-- Conventional-commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`,
-  `test:`. Subject under 72 characters.
-
-## Profile lineup (quick reference)
-
-Full table with use-cases, fits-on, and memory math lives in
-[`README.md`](README.md). Contributor-relevant constraints:
+## Profiles
 
 | Profile | Backend | Resident | Fits on |
 |---|---|---|---|
@@ -164,93 +45,15 @@ Full table with use-cases, fits-on, and memory math lives in
 | `default` | omlx | ~108 GB | 256 GB |
 | `ollama` | ollama | ~22 GB | 36 GB+ |
 
-Every omlx profile pins all models with no TTL and sets `memory_guard_gb` and a
-`max_context_window` on every generative model — `tests/test_profiles_consolidated.bats`
-enforces it. `install.sh` picks the profile by RAM on first install.
+- All omlx embedders serve as `qwen3-embedding`, all rerankers as `qwen3-reranker`; no profile serves a separate vision model. Switching omlx profiles never requires reindexing knowledge bases: never change these names without an explicit migration plan.
+- Changing a coder or chat `served_model_name` touches the profile YAMLs, `config/opencode.example.jsonc`, the profile tables in `README.md`, `index.md` and this file, the examples in `docs/setup.md`, and any active SDD under `specs/sdd/`. Grep for both `served_model_name` and `model_path`: they diverge in spelling.
+- Each profile YAML's header comment carries rationale and memory math; update its `Last reviewed:` line when reviewing.
+- `render_omlx_settings` writes only `is_pinned`, `ttl_seconds`, `max_context_window`, `mtp_enabled`, `chat_template_kwargs.reasoning_effort` and `top_k` to `~/.omlx/model_settings.json`; `model_type` is validated but never reaches omlx (it detects the type from the checkpoint).
+- Whether `chat_template_kwargs` in `model_settings.json` takes effect depends on the omlx version: after an omlx bump, re-check with one timed prompt before relying on it.
 
-All omlx embedders share `served_model_name: qwen3-embedding`, all omlx
-rerankers share `qwen3-reranker`. No profile serves a separate vision model:
-the VLM chat/main model reads images (`qwen3.8-27b` in `mid`,
-`qwen3.8-flash-next` in `default`; `lean` has none). **Switching
-between omlx profiles never requires reindexing knowledge bases — do
-not change these served-model names without an explicit migration
-plan.** Each YAML carries an extensive header comment with slot-by-slot
-rationale, memory math, when-to-use, and assumptions-to-validate;
-review periodically and update the `Last reviewed:` line.
+## omlx and OpenWebUI
 
-## OpenWebUI feature toggles
-
-`bin/4lm-webui-start.sh` exports a baseline of feature env vars to give the
-WebUI Claude-Desktop-style behavior on first launch:
-
-- Memory (`ENABLE_MEMORIES`)
-- DuckDuckGo web search (`ENABLE_WEB_SEARCH`, `WEB_SEARCH_ENGINE=duckduckgo`)
-- Pyodide code interpreter (`ENABLE_CODE_INTERPRETER`, `CODE_INTERPRETER_ENGINE=pyodide`)
-- Follow-up + autocomplete suggestions
-- RAG embeddings via omlx (`RAG_EMBEDDING_ENGINE=openai`,
-  `RAG_EMBEDDING_MODEL=qwen3-embedding`, pointed at the local `:8000/v1`)
-- RAG hybrid search + reranker via omlx (`ENABLE_RAG_HYBRID_SEARCH=True`,
-  `RAG_RERANKING_ENGINE=external`, `RAG_EXTERNAL_RERANKER_URL` points at
-  the local `/v1/rerank`, `RAG_RERANKING_MODEL=qwen3-reranker`). omlx
-  serves `POST /v1/rerank` in Cohere/Jina-compatible shape;
-  OpenWebUI's `external` engine (verified in `open_webui/retrieval/
-  models/external.py`) speaks that contract directly. **The URL is the
-  full endpoint**, not a base — OpenWebUI does not append `/rerank`.
-
-Most `ENABLE_*` / `RAG_*` / `DEFAULT_*` vars in OpenWebUI are PersistentConfig:
-copied into `webui.db` on first init only. After that the admin UI is the
-source of truth — changing the env value won't override the DB. Set
-`ENABLE_PERSISTENT_CONFIG=False` to make env vars authoritative every start
-(at the cost of disabling all admin-UI persistence).
-
-## What a profile can and cannot configure
-
-`render_omlx_settings` writes these per-model keys to
-`~/.omlx/model_settings.json`: `is_pinned`, `ttl_seconds`, `max_context_window`,
-`mtp_enabled`, `chat_template_kwargs.reasoning_effort` and `top_k`. Everything
-else in a profile entry is either consumed by 4lm itself or is documentation.
-
-- **`model_type` never reaches omlx.** It is validated (`lm` | `vlm`) and
-  otherwise unused — omlx detects the type from the checkpoint's own
-  `config.json` (`Discovered model: … type: vlm, engine: vlm`). Set it
-  correctly for readers, but do not expect it to change behaviour.
-- **Chat-template defaults depend on the omlx version.** On 0.6.0 (measured
-  2026-08-17, Qwen3.8-27B) `chat_template_kwargs` in `model_settings.json` had
-  no effect; on omlx main `f0d8428a` (measured 2026-09-29, Qwen3.8-Flash-Next)
-  and on v0.7.0 (2026-10-02: the profile default produced the same output as
-  an explicit `medium` in the request, `xhigh` a different one) it does, so the
-  profile field `reasoning_effort` renders it. A request's own
-  `chat_template_kwargs` still wins. After an omlx bump, re-check with one
-  timed prompt before relying on it.
-
-## Changing a served_model_name
-
-Embedder, reranker and vision names are contractual (see below). The coder and
-chat names are not, but changing one still touches seven places: the profile
-YAMLs, `config/opencode.example.jsonc`, the profile tables in `README.md`,
-`index.md` and this file, the served-model examples in `docs/setup.md`, and
-any active SDD under `specs/sdd/` that describes the shipped stack. Grep for
-both the `served_model_name` and the `model_path` — they diverge in spelling
-(`qwen3.6-35b` vs `Qwen3.6-35B-A3B-4bit`), so one grep finds only half.
-
-## omlx pin
-
-omlx ships from git, not PyPI. The pin is one constant, `OMLX_GIT_REF` in
-`install.sh` §9b, and it is enforced **by commit**: pip records the resolved
-commit in the installed package's `direct_url.json` (`vcs_info.commit_id`), and
-the installer force-reinstalls whenever that differs from the pin or is
-missing. The version string cannot carry the pin — pipx drops the ref, and
-commits between releases report the same version (main after `0.7.0rc1` still
-says `0.7.0rc1`). The tests stub `jq`, so §9b reads the JSON with `grep`.
-
-## omlx path probe
-
-Phase 1 manual probe result (2026-05): omlx **does not** accept absolute HF
-snapshot paths in `model_settings.json`. Setting `model_path` to an absolute
-snapshot dir and starting `omlx serve --model-dir <empty>` returns no models
-from `/v1/models`. The staging layer (`stage_omlx_model_dir()` +
-`~/.4lm/runtime/<profile>/models/`) is therefore permanent; the TODO comment
-in `stage_omlx_model_dir()` remains as documentation of the probe outcome.
-
-See `specs/done/sdd/4lm-rework-2026-05-09.md` for the archived rework SDD
-that this repo state implements.
+- The omlx pin is `OMLX_GIT_REF` in `install.sh` §9b, enforced by commit (`direct_url.json`), never by version string.
+- omlx rejects absolute HF snapshot paths, so the staging layer (`stage_omlx_model_dir()`, `~/.4lm/runtime/<profile>/models/`) is permanent.
+- `RAG_EXTERNAL_RERANKER_URL` is the full `/v1/rerank` endpoint, not a base: OpenWebUI does not append `/rerank`.
+- Most OpenWebUI `ENABLE_*` / `RAG_*` / `DEFAULT_*` vars are PersistentConfig, copied into `webui.db` on first init only; afterwards the admin UI wins unless `ENABLE_PERSISTENT_CONFIG=False`.
