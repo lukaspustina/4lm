@@ -1,6 +1,16 @@
 {
+  "disableClaudeAiConnectors": true,
   "enabledPlugins": {
     "adlc-process@adlc": true,
     "adlc-sensors@adlc": true
+  },
+  "permissions": {
+    "deny": [
+      "Workflow",
+      "ScheduleWakeup",
+      "SendFeedback",
+      "ReportFindings",
+      "Artifact"
+    ]
   }
 }
