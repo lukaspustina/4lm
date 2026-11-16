@@ -1,8 +1,8 @@
 {
   "disableClaudeAiConnectors": true,
   "enabledPlugins": {
-    "adlc-process@adlc": true,
-    "adlc-sensors@adlc": true
+    "harness-process@harness": true,
+    "harness-sensors@harness": true
   },
   "permissions": {
     "deny": [
