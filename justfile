@@ -4,7 +4,7 @@
 # `just --list` builds the listing from these comments.
 #
 # This repository needed the least adjusting of the six: its `check` was already
-# the static, offline, refuting set. So `adlc-verify` is that set under the name
+# the static, offline, refuting set. So `harness-verify` is that set under the name
 # the ADLC reads, and `check` is an alias rather than something larger — there is
 # nothing slower to separate out. `ci` stays a verb of its own and is reachable
 # from neither: it runs `brew bundle`, which writes outside the repository, and
@@ -16,19 +16,19 @@ shfmt_opts := "-i 2 -ci"
 helpers_python := env_var_or_default("HELPERS_PYTHON", env_var("HOME") + "/.4lm/venv/bin/python")
 ci_venv := justfile_directory() / ".venv"
 
-default: adlc-verify
+default: harness-verify
 
 # --- the contract ------------------------------------------------------------
 
 # What the ADLC gate runs: every static check plus the suite. No network, no
 # brew, nothing that writes outside the repository.
-adlc-verify: lint syntax plist-lint yaml-lint test
+harness-verify: lint syntax plist-lint yaml-lint test
     @for t in tests/*.bats; do echo "ADLC-RAN $t"; done
 
-# Identical to adlc-verify, and that is not an oversight: everything this
+# Identical to harness-verify, and that is not an oversight: everything this
 # repository can check without installing something is already in it. When a
 # slower check appears, it goes here and the two part company.
-check: adlc-verify
+check: harness-verify
 
 # The bats suite, plus pytest when the helpers venv exists.
 test:
@@ -69,7 +69,7 @@ fmt:
 
 # --- setup: these write outside the repository -------------------------------
 #
-# Unreachable from adlc-verify and check, deliberately.
+# Unreachable from harness-verify and check, deliberately.
 
 # Brewfile (+ Brewfile-tui unless backend_only) and pipx ensurepath.
 bootstrap backend_only="":
@@ -160,7 +160,7 @@ _require-hf:
 # macOS, which plist-lint needs anyway.
 
 # Install the pinned shellcheck, shfmt and bats the contract needs.
-adlc-setup:
+harness-setup:
     #!/usr/bin/env bash
     set -euo pipefail
     uv tool install shellcheck-py==0.11.0.1
